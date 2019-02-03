@@ -56,7 +56,7 @@
 
 ### 其他常用命令  
 
-![git命令](https://github.com/Nixum/Java-Note/blob/master/Note/picture/git_command.jpg)
+![git命令](https://github.com/Nixum/Java-Note/blob/master/Note/picture/git_command.png)
 
 ## 参考
 
