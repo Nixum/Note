@@ -1,4 +1,4 @@
-![git流程](https://github.com/Nixum/Java-Note/blob/master/Note/picture/git%E6%B5%81%E7%A8%8B.jpg)
+![git流程](https://github.com/Nixum/Java-Note/blob/master/Note/picture/git_flow.jpg)
 
 ## 常用命令
 
@@ -53,3 +53,12 @@
 * git status
 
   可以查看本地和分支哪些文件有修改
+
+### 其他常用命令  
+
+![git命令](https://github.com/Nixum/Java-Note/blob/master/Note/picture/git_command.jpg)
+
+## 参考
+
+[廖雪峰 git教程]: https://www.liaoxuefeng.com/wiki/0013739516305929606dd18361248578c67b8067c8c017b000
+
