@@ -8,22 +8,22 @@ git init
 ##当对工作区内的文件做出修改后
 
 git add 文件名  
-表示将该文件的修改加入到暂存区
+表示将该文件的修改加入到暂存区  
 git add .  
 (注意后面有个 . )表示将当前目录下的所有文件的修改都加入到暂存区
 
-git commit -m "备注信息"
+git commit -m "备注信息"  
 表示将暂存区的修改提交到当前分支，提交之后暂存区清空
 
-git push -u origin master
+git push -u origin master  
 将本仓库更新到github上
 
-##如果想撤回暂存区的修改
-git reset -- 文件名
-使用当前分支上的修改覆盖暂存区，用来撤销最后一次 git add files
-git checkout -- 文件名
+##撤回修改
+git reset -- 文件名  
+使用当前分支上的修改覆盖暂存区，用来撤销最后一次 git add files  
+git checkout -- 文件名  
 使用暂存区的修改覆盖工作目录，用来撤销本地修改
 
 ##如果不小心提交了不想提交的文件到github上, 此时想保留工作目录的文件而删除刚刚不小心提交的文件
-git rm -r --cached 文件夹名
+git rm -r --cached 文件夹名  
 删除暂存区的修改，之后再git commit + git push -u origin master提交即可
