@@ -1,3 +1,5 @@
+![git流程](https://github.com/Nixum/Java-Note/blob/master/Note/picture/git%E6%B5%81%E7%A8%8B.jpg)
+
 ## 常用命令
 
 * git init
@@ -40,3 +42,13 @@
 * git rm -r --cached 文件夹名
 
   删除暂存区的修改，之后再commit保存到分支，如果不小心提交了不想提交的文件到分支上，此时想删除刚刚不小心提交的文件同时保留工作目录的文件时使用
+
+### 更新
+
+* git pull origin master
+
+  更新线上修改到本地分支
+
+### 查看状态
+* git status
+  可以查看本地和分支哪些文件有修改
