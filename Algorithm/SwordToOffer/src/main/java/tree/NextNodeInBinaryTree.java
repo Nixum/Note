@@ -1,3 +1,5 @@
+package tree;
+
 import org.junit.Test;
 
 /**

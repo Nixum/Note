@@ -1,3 +1,5 @@
+package string;
+
 import org.junit.Test;
 
 import java.net.StandardSocketOptions;

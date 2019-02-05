@@ -1,3 +1,5 @@
+package linkAndQueue;
+
 import dataStructure.LinkNode;
 import org.junit.Test;
 

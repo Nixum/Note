@@ -1,3 +1,5 @@
+package tree;
+
 import dataStructure.BinaryTreeNode;
 import org.junit.Test;
 
