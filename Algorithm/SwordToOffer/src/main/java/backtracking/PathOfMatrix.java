@@ -1,4 +1,4 @@
-package recursion.backtracking;
+package backtracking;
 
 import org.junit.Test;
 

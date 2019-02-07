@@ -1,4 +1,4 @@
-package recursion.dp;
+package dp;
 
 import org.junit.Test;
 
