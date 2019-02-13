@@ -1,4 +1,4 @@
-package dataStructure;
+package tree;
 
 public class BinaryTreeNodeParent {
 

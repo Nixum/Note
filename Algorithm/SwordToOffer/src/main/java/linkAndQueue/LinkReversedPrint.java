@@ -1,6 +1,6 @@
 package linkAndQueue;
 
-import dataStructure.LinkNode;
+import link.LinkNode;
 import org.junit.Test;
 
 import java.util.Stack;
