@@ -14,7 +14,7 @@ public class LinkNode {
 
     // 尾插法,返回头节点, 这里头节点和首节点都是指第一个有值的节点
     public static LinkNode createLink(Integer[] vlist) {
-        if(vlist == null || vlist.length < 0) {
+        if(vlist == null || vlist.length <= 0) {
             return null;
         }
         LinkNode head = new LinkNode(vlist[0],null);
