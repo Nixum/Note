@@ -13,7 +13,7 @@ public class BinaryTreeNode {
         this.value = value;
     }
 
-    // 传入满二叉树字符串，空节点使用#代替
+    // 传入满二叉树字符串，空节点使用#或者0代替,按照层次输入节点
     public static BinaryTreeNode create(int[] tree){
         BinaryTreeNode root = new BinaryTreeNode();
         int i = 0;
@@ -44,6 +44,14 @@ public class BinaryTreeNode {
         preOrderTraverse(root.rightNode);
     }
 
+    public static void symmetricalPreOrderTraverse(BinaryTreeNode root) {
+        if (root == null)
+            return;
+        System.out.print(root.value);
+        symmetricalPreOrderTraverse(root.rightNode);
+        symmetricalPreOrderTraverse(root.leftNode);
+    }
+
     public static void inOrderTraverse(BinaryTreeNode root) {
         if (root == null)
             return;
@@ -64,6 +72,8 @@ public class BinaryTreeNode {
         BinaryTreeNode root = BinaryTreeNode.create(new int[]{1,2,3,4,5,6,7});
 
         BinaryTreeNode.preOrderTraverse(root);
+        System.out.println();
+        BinaryTreeNode.symmetricalPreOrderTraverse(root);
         System.out.println();
         BinaryTreeNode.inOrderTraverse(root);
         System.out.println();
