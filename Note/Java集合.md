@@ -4,9 +4,26 @@
 
 # 一、Collection
 
-![javaCollection类图简版](G:\git repository\Java-Note\Note\picture\collection类图.png)
+![javaCollection类图简版](https://github.com/Nixum/Java-Note/blob/master/Note/picture/collection类图.png)
 
 ## 1. Set
+
+### HashSet
+
+#### 1.基本
+
+* 底层是HashMap，因此初始容量，默认负载因子这些都和HashMap一样
+
+* 由于HashSet只需要key，因此value统一使用静态不可变的Object对象来装，即所有key共享这一个对象
+
+ ```java
+private transient HashMap<E,Object> map;
+private static final Object PRESENT = new Object();
+ ```
+
+* HashSet允许存入null
+* 不是线程安全的
+* 不保证插入元素的顺序
 
 ## 2. Queue
 
@@ -159,12 +176,33 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 
 * Vector实现方式跟ArrayList类似，也是基于数组实现，默认大小也是10，但它是线程安全的
 * Vecotr扩容是扩容到原来的2倍，ArrayList是1.5倍
-* Vecotr的线程安全是因为其方法都使用了 synchronized 关键字进行修饰同步，效率比ArrayList差
+* Vecotr的线程安全是因为其方法都使用了 synchronized 关键字进行修饰同步，效率比ArrayList差，这也是不推荐使用Vector的原因，保证线程安全可以使用 juc 包里其他类
 * 当需要线程安全的ArrayList时，不使用Vector，而是使用 CopyOnWriteArrayList 类 或者 Collections.synchronizedList(List<T> list);
+
+### LinkedList
+
+#### 1.基本
+
+* 底层是链表，且是双向链表
+* 采用链表，因此插入、删除效率高，查找效率低，不支持随机查找，而ArrayList底层是数组，因此支持随机查找，查找效率高，但是插入，删除效率低
+* LinkedList底层是双向链表的缘故，可以当成队列使用，创建队列Queue或者Deque时，采用LinkedList作为实现
+* 不是线程安全的
+
+### CopyOnWriteArrayList
+
+#### 1.基本
+
+* 线程安全的ArrayList，基本使用同ArrayList
+* 底层是Object数组，但是有 volatile 修饰，还有一把可重入锁 ReentrantLock 保证线程安全
+* 保证线程安全的原理是 读写分离，读的时候使用 全局变量里的Object数组，写的时候加锁，在方法里创建一个新数组，将全局变量里的Object数组 通过Arrays.copyOf复制 给方法里的新数组，之后进行写操作，完了再把全局变量的Object数组指向新数组。由于存在复制操作，因此add()、set()、remove()的开销很大
+* 读操作不能读取实时性的数据，因为写操作的数据可能还未同步
+* 适合读多写少的场景
+
+
 
 # 二、Map
 
-![Map类图](G:\git repository\Java-Note\Note\picture\Map类图.png)
+![Map类图](https://github.com/Nixum/Java-Note/blob/master/Note/picture/Map类图.png)
 
 ### HashMap
 
@@ -211,18 +249,19 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 - 每次扩容为原来的 2 倍
 - 允许key=null，此时将该元素放入Node类型数组下标为0处
 - 不是线程安全的，支持fast-fail机制
+- 不保证插入顺序
 
 * 基本结构：
 
 1.8之前，数组的每一个元素中存放一条链表：
 
-![1.8之前的HashMap](G:\git repository\Java-Note\Note\picture\1.7HashMap.jpg)
+![1.8之前的HashMap](https://github.com/Nixum/Java-Note/blob/master/Note/picture/1.7HashMap.jpg)
 
 1.8，数组中的每一个元素存放一条链表，当链表的长度超过8（默认）之后，将链表转换成红黑树，以减少搜索时间
 
-![1.8HashMap](G:\git repository\Java-Note\Note\picture\1.8HashMap.jpg)
+![1.8HashMap](https://github.com/Nixum/Java-Note/blob/master/Note/picture/1.8HashMap.jpg)
 
-### 2.创建过程
+#### 2.创建过程
 
 * 构造方法：除留余数法
 
@@ -232,7 +271,7 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 Map<String, String> map = new HashMap<>();
 ```
 
-首先创建一个Map，调用空参构造方法，此时只是设置了默认的填充因子，Node数组还没有初始化；除了public HashMap(Map<? extends K, ? extends V> m) 这个构造方法外，其他的构造方法基本都是只设置了填充因子和容量，并没有对数组初始化，当第一次调用put方法时，才对数组进行内存分配，完成初始化
+首先创建一个Map，调用空参构造方法，此时只是设置了默认的填充因子，Node数组还没有初始化；除了public HashMap(Map<? extends K, ? extends V> m) 这个构造方法外，其他的构造方法基本都是只设置了填充因子和容量，并没有对数组初始化，当第一次调用put方法时，才对数组进行内存分配，完成初始化，延迟加载
 
 其中一个可以指定容量和填充因子的构造方法中，
 
@@ -262,7 +301,7 @@ map.put("key111", "value111");
 
 对put方法的解析具体请看[集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")
 
-### 3.确定键值对所在的桶的下标
+#### 3.确定键值对所在的桶的下标
 
 当向map中put进 key-value 时，对key采用除留余数法，确定该键值对所在的桶的下标
 
@@ -310,7 +349,7 @@ static final int hash(Object key) {
 
 在JDK1.8中，使用尾插法加入链表，当然还有一系列判断是否需要将链表转换为红黑树，具体条件看上面已说明
 
-### 4.扩容
+#### 4.扩容
 
 但加入到HashMap中的元素越来越多时，碰撞的概率也越来越高，链表的长度变长，查找效率降低，此时就需要对数组进行扩容。HashMap根据键值对的数量，来调整数组长度，保证查找效率
 
@@ -341,6 +380,39 @@ new capacity : 00100000
 - 它的哈希值如果在第 5 位上为 0，那么取模得到的结果和之前一样；
 - 如果为 1，那么得到的结果为原来的结果 +16。
 
+#### 5.与HashTable的区别
+
+* HashMap不是线程安全的，HashTable是线程安全的(因为其方法使用了synchronized修饰来保证同步，效率较差)
+* HashMap允许插入key为null的键值对，而HashTable不允许
+* 如果不指定容量，HashMap默认容量是16，每次扩容为原来的 2 倍；HashTable默认容量是11，每次扩容为原来的 2n+1 倍
+* jdk1.8后对HashMap链表的改变，HashTable没有
+
+### ConcurrentHashMap
+
+#### 1.基本
+
+* 线程安全的HashMap，使用方法同HashMap
+* 不允许存入key为null的键值对
+
+#### 2.线程安全的底层原理，JDK1.7和JDK1.8的实现不一样
+
+- JDK1.7
+
+  - JDK1.7 采用分段锁（segment）机制，每个分段锁维护几个桶，多个线程可以同时访问不同分段锁上的桶，并发度指segment的个数
+
+  - 默认的分段锁是16，segment的数量一经指定就不会再扩了；每个segment里面的HashEntry数组的最小容量是2，每次扩容 2 倍
+
+  - 也是延迟初始化，当第一次put的时候，执行第一次hash取模定位segment的位置，如果segment没有初始化，因为put可能出现并发操作，则通过CAS赋值初始化，之后执行第二次hash取模定位HashEntry数组的位置，通过继承 ReentrantLock的tryLock() 方法尝试去获取锁，如果获取成功就直接插入相应的位置，如果已经有线程获取该segment的锁，那当前线程会以自旋的方式去继续的调用 tryLock() 方法去获取锁，超过指定次数就挂起，等待唤醒
+  - size（统计键值对数量）操作：因为存在并发的缘故，size的可能随时会变，ConcurrentHashMap采用的做法是先采用不加锁的模式，尝试计算size的大小，比较前后两次计算的结果，结果一致就认为当前没有元素加入，计算的结果是准确的，尝试次数是 3 次，如果超过了 3 次，则会对segment加锁，锁住对segment的操作，之后再统计个数
+
+![1.7concurrentHashMap](G:\git repository\Java-Note\Note\picture\1.7concurrentHashMap.jpg)
+
+- JDK1.8 
+  - 采用CAS和synchronized来保证并发安全，更接近HashMap
+  - synchronized只锁定当前链表或红黑二叉树的首节点，这样只要hash不冲突，就不会产生并发
+  - 扩容的时候由于只有一个table数组，将在多线程下各个线程都会帮忙扩容，加快扩容速度
+  - size操作：在扩容和addCount()方法就进行处理，而不像1.7那样要等调用的时候才计算
+
 # 参考
 
 [Java：集合，Collection接口框架图](https://www.cnblogs.com/nayitian/p/3266090.html "")  
@@ -348,4 +420,5 @@ new capacity : 00100000
 [c.toArray might not return Object[]?](https://www.cnblogs.com/liqing-weikeyuan/p/7922306.html "")  
 [Java集合---ArrayList的实现原理](https://www.cnblogs.com/ITtangtang/p/3948555.html "")  
 [集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")  
-[JDK1.8 HashMap源码分析](https://www.cnblogs.com/xiaoxi/p/7233201.html "")
+[JDK1.8 HashMap源码分析](https://www.cnblogs.com/xiaoxi/p/7233201.html "")  
+[【JUC】JDK1.8源码分析之CopyOnWriteArrayList（六）](https://www.cnblogs.com/leesf456/p/5547853.html "")
