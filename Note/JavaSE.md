@@ -63,7 +63,7 @@ System.out.println(c == d); // false
 
     比较时传入基本类型，会进行装箱，之后进行equals比较
 
-    ​比较时有算术运算，自动拆箱，运算，之后根据运算完后的类型再装箱（可能会向上转型），之后再进行equals比较
+    比较时有算术运算，自动拆箱，运算，之后根据运算完后的类型再装箱（可能会向上转型），之后再进行equals比较
 
 
 ## 运算与转型
@@ -95,7 +95,7 @@ a += b; a -= b; //这种写法是可以的，会变成 a = (byte) (a+b)
 
 * 类本身被 final 修饰，使它不可被继承
 
-* String类的 “+"  本质是使用StringBuffer的append方法，最终返回new的string
+* String类的 “+"  本质是使用StringBuilder的append方法，最终返回new的string
 
 ## 2.不可变的好处
 
@@ -120,6 +120,10 @@ a += b; a -= b; //这种写法是可以的，会变成 a = (byte) (a+b)
 3和4具体参考[深入理解Java中的String](https://www.cnblogs.com/xiaoxi/p/6036701.html "")，这篇文章写得相当详细了
 
 # 四、equals()、hashCode()、clone()
+
+## equals
+
+在不重写的情况下，Object类下的 equals() 方法比较的是两个对象的引用
 
 
 
