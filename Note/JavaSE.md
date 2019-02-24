@@ -169,13 +169,20 @@ final关键字主要用在三个地方：变量、方法、类。
   继承中，子类重写父类方法
 
   * 子类方法的**访问权限**必须**大于等于**父类方法；
+
   * 子类方法的返回类型必须是**父类方法返回类型或为其子类型**。
+
+   关于静态方法重写
+
+  static方法不能被子类重写，子类如果定义了和父类完全相同的static方法，Son.staticmethod()或new Son().staticmethod()都是调用子类的，如果是Father.staticmethod()或Father f = new Son(); f.staticmethod()调用的是父类的
 
 * 重载（Overload）
 
   存在于同一个类中，指一个方法与已经存在的方法名称上相同，但是参数类型、个数、顺序至少有一个不同
 
   注意，返回值不同，其它都相同不算是重载。
+
+  
 
 ## 初始化顺序
 
@@ -193,23 +200,185 @@ final关键字主要用在三个地方：变量、方法、类。
 
 6. 子类（构造函数）
 
-# 反射
+# 内部类
+
+## 基础
+
+* 内部类是指在一个外部类的内部再定义一个类。内部类作为外部类的一个成员，并且依附于外部类而存在的。
+
+* 内部类可为静态，可用protected和private修饰（而外部类只能使用public和缺省的包访问权限）。
+
+* 内部类主要有以下几类：成员内部类、局部内部类、静态内部类、匿名内部类
 
 
+## 具体
 
-## 代理
+### 成员内部类
 
-### jdk动态代理
+* 在外部类里想调用内部类里的方法和变量，只能通过new的形式创建内部类实例才可以使用
+
+* 内部类调用外部类的方法，直接调用
+
+* 内部类里的成员可以和外部类的成员的名字相同，内部类调用外部类同名变量需要加上外部类名，如果没有同名变量就可以直接使用，不需要加外部类名
+
+* 在其他地方想要调用有内部类的类的内部类方法，需要实例化一个外部类，再使用外部类的实例变量实例化内部类
+
+* 不能有静态成员
+
+  ```java
+  Outer out = new Outer();
+  Outer.Inner outin = out.new Inner();
+  outin.inner_f1();
+  ```
+
+### 局部内部类
+
+* 局部内部类调用外部类的方法，直接调用
+* 外部类调用内部类方法，初始化外部类实例，调用有局部内部类的方法
+* 局部内部类 可以看成是 方法里的成员变量，只能在该方法里实例化
+* 局部内部类 对于同名变量的访问方式同成员内部类
+* 方法外的外部类的成员变量可以直接访问，但只能访问内部类所在方法里的final修饰的变量
+* 不能被static还有访问控制符修饰，可以被abstract、final修饰
+
+### 静态内部类
+
+* 静态内部类中可以定义静态或者非静态的成员或方法
+
+* 静态内部类只能访问外部类的静态成员，不能访问外部类的非静态的成员
+
+* 外部类方法访问内部类静态成员，直接 内部类名.静态成员变量
+
+  访问内部非静态成员，实例化内部类，在调用
+
+  说白了，静态属于整个类的，不属于某个对象的，可以直接使用，不依赖外部类，可以直接调用，或者实例化外部类里的静态类
+
+  ```java
+  Outer.Inner outin = new Outer.Inner();
+  outin.staticInner_f1();		// 或者直接调用 Outer.Inner.staticInner_f1()
+  outin.inner_f1();			// 不能直接 Outer.Inner.inner_f1()
+  System.out.print(outin.staticField + outin.field);
+  // 同理只能 Outer.Inner.staticField, 不能Outer.Inner.field；
+  ```
+
+* 不可以只实例化外部类，再使用这个实例去实例化内部类或者调用内部类里的成员，这点跟成员内部类是不一样的
 
 
+### 匿名内部类
 
-### cglib
+* 匿名内部类不能有构造方法
+* 无法被访问控制符、static修饰
+* 匿名内部类不能定义任何静态成员、方法和类
 
+匿名都没类名了，构造方法，静态成员之类的没办法调用了
 
+参考[深入理解java内部类](https://www.cnblogs.com/ITtangtang/p/3980460.html "")
+
+# 反射和内省
+
+反射：可以在运行时动态获取类信息或者动态调用类方法；JVM运行的时候，读入类的字节码到 JVM 中，对该类的属性、方法、构造方法进行获取和调用
+
+内省：针对JavaBean，只能对Bean的属性进行操作；加载类，得到它的属性，对属性进行get/set，是对反射的一层封装
+
+# 枚举
+
+* 使用enum定义的枚举类默认继承了java.lang.Enum，而不是继承Object类
+
+* 枚举类可以实现一个或多个接口
+
+* 使用enum定义、非抽象的枚举类默认使用final修饰，不可以被继承，定义的Enum类默认被final修饰，无法被其他类继承
+
+* 枚举类的所有实例都必须放在第一行展示，不需使用new 关键字，不需显式调用构造器。
+
+  自动添加public static final修饰
+
+* 枚举类的构造器只能是私有的
+
+* 枚举类也能定义属性和方法，可以是静态和非静态的
+
+参考 [java浅谈枚举类](https://www.cnblogs.com/sister/p/4700702.html "")
+
+具体例子
+
+反编译之后会发现，SPRING、SUMMER、FALL这些是静态常量(public static final 修饰)，而且是在静态代码块里初始化的，同时还附带有public static Season[] values()方法和public static Season valueOf(String s)方法
+
+```java
+public enum Season{
+    // 调用无参构造器、括号里的变量称为自定义变量，可以有多个，要跟构造方法对应
+    SPRING(),
+    // 调用有参构造器
+    SUMMER("夏天"),
+    // 默认调用无参构造器
+    FALL；
+
+    private String name;
+
+    // 默认是private的
+    Season() {}
+
+    private Season(String name) {
+        this.name = name;
+    }
+// ----------------------------------------------------    
+    // 如果在enum中定义了抽象方法,每个实例都要重写该方法
+    public abstract String whatSeason();
+    
+    // 调用无参构造器
+    SPRING() {
+        // 方法无法调用enum类里的非静态变量，只能调用非静态变量
+        @Override
+        public String whatSeason(){return "chun";}
+    },
+    // 调用有参构造器
+    SUMMER("夏天") {
+        @Override
+        public String whatSeason(){return "xia";}
+    },
+    // 默认调用无参构造器
+    FALL {
+        @Override
+        public String whatSeason(){return "qiu";}
+    };
+}
+
+```
+
+原理参考[深入理解java类型](https://blog.csdn.net/javazejian/article/details/71333103 "")
 
 # 泛型
 
+* 泛型会类型擦除，那它如何保证类型的正确？
 
+  java编译器是通过先检查代码中泛型的类型，然后再进行类型擦除，在进行编译的
+
+  只能在编译期保证类型相同
+
+* 泛型被擦除，统一使用原始类型Object，泛型类型变量最后都会被替换为原始类型，那为什么我们使用的时候不需要强转转换?
+
+  比如ArrayList，它会帮我们进行强转转换，它会做了一个checkcast操作，检查什么类型，之后进行强转
+
+* 类型擦除与多态导致冲突，如何解决
+
+  比如本意是进行重写，实现多态。可是类型擦除后，只能变为了重载。这样，类型擦除就和多态有了冲突，JVM采用桥方法解决此问题
+
+* 泛型擦除的优点
+
+  类型安全，编译器会帮我们检查、消除强制类型转换，提高代码可读性、为未来版本的 JVM 的优化带来可能
+
+* List<?>、List<Object>、List、List<? super T>、List<? extends T>的区别
+
+  List<? super T>：T的父类，包括T，表示范围
+
+  List<? extends T>：T的子类，包括T，表示范围
+
+  List<?> 表示任意类型，如果没明确，就是Object或者任意类，与List、List<Object>一样，表示 点
+
+  List 也可表示范围
+
+  
+
+参考 [10 道 Java 泛型面试题](https://cloud.tencent.com/developer/article/1033693 "")
+
+参考[java泛型（二）、泛型的内部原理：类型擦除以及类型擦除带来的问题](https://www.cnblogs.com/xll1025/p/6489088.html "")
 
 # 注解
 
