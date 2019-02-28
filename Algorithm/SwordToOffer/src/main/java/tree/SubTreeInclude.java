@@ -9,10 +9,10 @@ public class SubTreeInclude {
 
     @Test
     public void test() {
-        BinaryTreeNode root = BinaryTreeNode.create(new int[]{8, 8, 7, 9, 2, 1, 1});
+        BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{8, 8, 7, 9, 2, 1, 1});
         BinaryTreeNode.preOrderTraverse(root);
         System.out.println();
-        BinaryTreeNode subRoot = BinaryTreeNode.create(new int[]{8, 9, 2});
+        BinaryTreeNode subRoot = BinaryTreeNode.create(new Integer[]{8, 9, 2});
         System.out.println(isInclude(root, subRoot));
     }
 

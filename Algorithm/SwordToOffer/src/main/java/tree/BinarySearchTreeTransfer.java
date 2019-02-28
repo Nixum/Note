@@ -14,7 +14,7 @@ public class BinarySearchTreeTransfer {
 
     @Test
     public void test() {
-        BinaryTreeNode root = BinaryTreeNode.create(new int[]{10,6,14,4,8,12,16});
+        BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{10,6,14,4,8,12,16});
         BinaryTreeNode doublyLink = transferDoublyLink(root);
         while(doublyLink != null) {
             System.out.print(doublyLink.value + " ");

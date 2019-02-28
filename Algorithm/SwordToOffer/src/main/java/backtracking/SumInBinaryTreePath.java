@@ -14,7 +14,7 @@ public class SumInBinaryTreePath {
 
     @Test
     public void test() {
-        BinaryTreeNode root = BinaryTreeNode.create(new int[]{10, 5, 12, 4, 7});
+        BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{10, 5, 12, 4, 7});
         printPathOfSumInBinaryTree(root, 15);
     }
 

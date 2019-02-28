@@ -9,8 +9,8 @@ public class SymmetricalBinaryTree {
 
     @Test
     public void test() {
-        BinaryTreeNode root = BinaryTreeNode.create(new int[]{1,2,2,3,4,4,3});
-        BinaryTreeNode rootNoSymmetrical = BinaryTreeNode.create(new int[]{7,7,7,7,7,7});
+        BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{1,2,2,3,4,4,3});
+        BinaryTreeNode rootNoSymmetrical = BinaryTreeNode.create(new Integer[]{7,7,7,7,7,7});
         System.out.println(isSymmetrical(root));
         System.out.println(isSymmetrical(rootNoSymmetrical));
     }

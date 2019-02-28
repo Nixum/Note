@@ -5,7 +5,7 @@ import java.util.Queue;
 
 public class BinaryTreeNode {
 
-    public int value;
+    public Integer value;
     public BinaryTreeNode leftNode;
     public BinaryTreeNode rightNode;
 
@@ -17,26 +17,19 @@ public class BinaryTreeNode {
     }
 
     // 传入满二叉树字符串，空节点使用#或者0代替,按照层次输入节点
-    public static BinaryTreeNode create(int[] tree){
-        BinaryTreeNode root = new BinaryTreeNode();
-        int i = 0;
-        build(root, i, tree.length, tree);
-        return root;
+    public static BinaryTreeNode create(Integer[] tree){
+        return build(0, tree.length, tree);
     }
 
-    private static void build(BinaryTreeNode root, int i, int length, int[] str) {
-        if (i >= length) {
-            return ;
+    private static BinaryTreeNode build(int i, int length, Integer[] str) {
+        if (i >= length || str[i] == null) {
+            return null;
         }
+        BinaryTreeNode root = new BinaryTreeNode();
         root.value = str[i];
-        if (2*i+1 < length) {
-            root.leftNode = new BinaryTreeNode();
-        }
-        if (2*i+2 < length) {
-            root.rightNode = new BinaryTreeNode();
-        }
-        build(root.leftNode, 2*i+1, length, str);
-        build(root.rightNode, 2*i+2, length, str);
+        root.leftNode = build(2*i+1, length, str);
+        root.rightNode = build(2*i+2, length, str);
+        return root;
     }
 
     /**
@@ -104,7 +97,7 @@ public class BinaryTreeNode {
     }
 
     public static void main(String[] args) {
-        BinaryTreeNode root = BinaryTreeNode.create(new int[]{1,2,3,4,5,6,7});
+        BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{1,2,3,4,5,6,7});
 
         System.out.print("前序：");BinaryTreeNode.preOrderTraverse(root);
         System.out.println();

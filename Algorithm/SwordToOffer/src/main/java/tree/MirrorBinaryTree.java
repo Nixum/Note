@@ -12,7 +12,7 @@ public class MirrorBinaryTree {
 
     @Test
     public void test() {
-        BinaryTreeNode root = BinaryTreeNode.create(new int[]{1, 2, 3, 4, 5, 6, 7});
+        BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{1, 2, 3, 4, 5, 6, 7});
         BinaryTreeNode.preOrderTraverse(root);
         System.out.println();
         reverseBinaryTree(root);
