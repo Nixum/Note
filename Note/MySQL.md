@@ -115,7 +115,13 @@ b-树：所有节点为表的数据，只有一条路，从根节点开始
 
 ## 4.传播行为（Spring）
 
-
+* PROPERGATION_MANDATORY：方法必须运行在事务中，如果当前事务不存在，抛异常
+* PROPAGATION_NESTED：当前事务存在，则该方法运行在嵌套事务中
+* PROPAGATION_NEVER：方法不能运行事务中，否则抛异常
+* PROPAGATION_REQUIRED：当前方法必须运行在事务中，如果当前存在事务，该方法运行其中，否则创建新事务
+* PROPAGATION_REQUIRES_NEW：当前方法必须运行在事务中，如果当前存在事务，则该事务在方法运行期间被挂起
+* PROPAGATION_SUPPORTS：当前方法不需要运行在事务中，但如果存在事务，也可运行在事务中
+* PROPAGATION_NOT_SUPPORTED：当前方法不能运行在事务中，如果存在事务，则挂起该方法
 
 # 参考
 

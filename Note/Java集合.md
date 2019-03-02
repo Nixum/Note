@@ -40,7 +40,7 @@
 
 #### 1.基本
 
-* 底层是HashMap，因此初始容量，默认负载因子这些都和HashMap一样
+* 底层是HashMap，因此初始容量，默认负载因子、扩容倍数这些都和HashMap一样
 
 * 由于HashSet只需要key，因此value统一使用静态不可变的Object对象来装，即所有key共享这一个对象
 
@@ -441,6 +441,13 @@ new capacity : 00100000
   - 扩容的时候由于只有一个table数组，将在多线程下各个线程都会帮忙扩容，加快扩容速度
   - size操作：在扩容和addCount()方法就进行处理，而不像1.7那样要等调用的时候才计算
 
+红黑树的特性:
+（1）每个节点或者是黑色，或者是红色。
+（2）根节点是黑色。
+（3）每个叶子节点（NIL）是黑色。 [注意：这里叶子节点，是指为空(NIL或NULL)的叶子节点！]
+（4）如果一个节点是红色的，则它的子节点必须是黑色的。
+（5）从一个节点到该节点的子孙节点的所有路径上包含相同数目的黑节点。
+
 # 参考
 
 [Java：集合，Collection接口框架图](https://www.cnblogs.com/nayitian/p/3266090.html "")  
@@ -449,4 +456,5 @@ new capacity : 00100000
 [Java集合---ArrayList的实现原理](https://www.cnblogs.com/ITtangtang/p/3948555.html "")  
 [集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")  
 [JDK1.8 HashMap源码分析](https://www.cnblogs.com/xiaoxi/p/7233201.html "")  
-[【JUC】JDK1.8源码分析之CopyOnWriteArrayList（六）](https://www.cnblogs.com/leesf456/p/5547853.html "")
+[【JUC】JDK1.8源码分析之CopyOnWriteArrayList（六）](https://www.cnblogs.com/leesf456/p/5547853.html "")  
+[红黑树(一)之 原理和算法详细介绍](https://www.cnblogs.com/skywang12345/p/3245399.html "")  
