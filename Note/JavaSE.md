@@ -186,7 +186,9 @@ d = a + c; // 也会出错，a在运算时为自动提升为int
 
 * Object里的clone()方法被protected 修饰，一般类如果不重写的话是调用不了的，如果要重写的话，需要实现Cloneable接口，不然会抛出CloneNotSupportedException异常，之后可以通过super.clone()调用Object类中的原clone方法
 
-# final和static
+# 关键字
+
+## final和static
 
 * final关键字主要用在三个地方：变量、方法、类。
 
@@ -195,6 +197,11 @@ d = a + c; // 也会出错，a在运算时为自动提升为int
 3. 修饰方法，表明该方法不能被子类重写
 
 * 声明为static成员不能被序列化
+
+## instanceof
+
+* 是关键字，也是运算符
+* 用于判断一个对象是否是 一个类的实例，一个类的子类，一个接口的实现类
 
 # 抽象类和接口
 

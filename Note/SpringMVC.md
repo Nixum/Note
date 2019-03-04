@@ -29,3 +29,26 @@
 
 * afterCompletion()方法：该方法会在整个请求完成，即视图渲染结束之后执行。可以通过此方法实现一些资源清理、记录日志信息等工作。
 
+
+
+# Spring Security
+
+简单工作流程
+
+请求(包含用户名，密码之类)——>登陆信息封装成一个Authentication对象——>AuthenticationManager，调用authenticate ()方法处理——>该方法会将对象传递给一系列AuthenticationAdapter（一系列Filter），每一个AuthenticationAdapter会调用它们配置的UserDetailsService处理
+
+
+
+JWT验证方案 JSON WEB TOKEN
+
+JWT实际上是一个token(令牌)，分为三部分：Header(头部)、Payload(负载)、Signature(签名)。
+
+Header(头部) 记录 Signature(签名) 的加密方式 和 本token的类型，一般是SHA256
+
+Payload(负载) 记录用户登录信息，默认是不加密的，一般使用非对称加密
+
+Signature(签名) 记录 Header(头部)和Payload(负载)的公钥，自己本身使用Header(头部)里规定的方式加密
+
+也就是说，Header(头部)里的加密方式加密Signature(签名)，Signature(签名)加密Header(头部) 和Payload(负载) 这两部分，服务器里的私钥解密Payload(负载)，得到需要的登录信息
+
+可以存储在浏览器的本地缓存localStorage或者cookie中，发送请求的时候可以放在cookie里（但是不能跨域），或者放在请求头`Authorization`中

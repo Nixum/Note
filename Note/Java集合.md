@@ -457,4 +457,4 @@ new capacity : 00100000
 [集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")  
 [JDK1.8 HashMap源码分析](https://www.cnblogs.com/xiaoxi/p/7233201.html "")  
 [【JUC】JDK1.8源码分析之CopyOnWriteArrayList（六）](https://www.cnblogs.com/leesf456/p/5547853.html "")  
-[红黑树(一)之 原理和算法详细介绍](https://www.cnblogs.com/skywang12345/p/3245399.html "")  
+[红黑树(一)之 原理和算法详细介绍](http://www.cnblogs.com/skywang12345/p/3624343.html "")  
