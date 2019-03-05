@@ -64,7 +64,7 @@ b-树：所有节点为表的数据，只有一条路，从根节点开始
 
 ## 4.优化
 
-* 注意区分度，使用这个计算 count(distinct  left(列名,  索引长度))/count(*) from table，区分度越高越好
+* 注意区分度，使用这个计算 count(distinct  left(列名,  索引长度)) / count(*) from table，区分度越高越好
 * 其他参考
 
 # 存储引擎
@@ -99,7 +99,7 @@ b-树：所有节点为表的数据，只有一条路，从根节点开始
 
 * MyISAM是非事务安全，InnoDB是事务安全型
 * MyISAM的锁是表锁，InnoDB支持行锁
-* MyISAM支持全文索引，InnoDB不支持
+* MyISAM支持全文索引，InnoDB不支持（5.6版本后才支持）
 * MyISAM相对简单，效率上优于InnoDB，MyISAM读的快，InnoDB改的快
 * MyISAM表是保存成文件形式，跨平台转移方便
 * InnoDB表比MyISAM表安全

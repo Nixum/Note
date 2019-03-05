@@ -203,8 +203,7 @@ public class ProxyFactory implements MethodInterceptor{
 	//Method 为上文实体类所调用的被代理的方法引用
 	//Object[] 方法的参数列表
 	//MethodProxy 为生成的代理类对方法的代理引用
-	public Object intercept(Object obj,Method method,Object[] args
-				MethodProxy proxy) throws Throwable{
+	public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy) throws Throwable{
 		System.out.println("为被代理类进行一系列前置操作");
 		Object returnValue = method.invoke(target,args);
 		//或者写成 Object returnValue1 = proxy.invokeSuper(obj, args);
