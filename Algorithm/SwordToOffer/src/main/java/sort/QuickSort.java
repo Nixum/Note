@@ -6,6 +6,7 @@ import java.util.Arrays;
 
 /**
  * 快排
+ * 最好/平均时间复杂度 O(nlogn)  空间复杂度 O(nlogn)   最差时间复杂度O(n^2)
  */
 public class QuickSort {
 
@@ -23,7 +24,7 @@ public class QuickSort {
         sort(array, 0, array.length - 1);
     }
 
-    /** 普通快排，时间复杂度 平均为O(nlogn)，最好为O(nlogn)，最差为O(n^2)
+    /** 普通快排
      *  每一趟，取第一个数字为基数，left指针指向第一个，right指针指向最后一个，
      *  从后往前开始找(一定要，否则会因为基数原因导致后面的数字被覆盖)，找到比基数小的数，将这个数赋值给left
      *  换边，从前往后开始找，找到比基数大的数，将这个数赋值给right，如此反复，直到left<right，
