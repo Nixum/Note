@@ -146,6 +146,8 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 * 当synchronized(xxx.class)锁住的是类时，多个线程访问不同对象(它们同类),就会锁住代码段，当一个线程执行完这个代码段后才轮到别的线程，可以理解成全局锁
 * 当synchronized(object)锁住的是对象时，多个线程访问不同对象(它们同类),它们相互之间并不影响，只有当多个线程访问同一对象时，才会锁住代码段，等到一个线程执行完之后才轮到别的线程执行
 * 当synchronized(this)锁住的是当前的对象，当synchronized块里的内容执行完之后，释放当前对象的锁。同一时刻若有多个线程访问这个对象，则会被阻塞
+* synchronized加在方法上，作用同锁住this，即当前对象
+* synchronized所在的方法被static修饰，则锁住的是整个类
 * synchronized下不可被中断
 * synchronized是非公平锁
 
