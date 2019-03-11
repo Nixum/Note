@@ -1,3 +1,26 @@
+# Spring 和 Spring Boot区别
+
+Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要是为了解决使用Spring框架需要进行大量的配置太麻烦的问题，所以它并不是用来替代Spring的解决方案，而是和Spring框架紧密结合用于提升Spring开发者体验的工具。同时它集成了大量常用的第三方库配置(例如Jackson, JDBC, Mongo, Redis, Mail等等)，做到零配置即用
+
+SpringBoot自动配置流程：
+
+* 启动类 Application.java ：**@SpringBootApplication** 和 main方法里有个**SpringApplication.run(Application.class, args)**
+
+* @SpringBootApplication里包含了
+
+  @SpringBootConfiguration(**@Configuration**)：JavaConfig配置类，相当一个xml文件，@Bean的方法名为xml文件里\<bean\>的id
+
+  **@ComponentScan**：配上路径，用于扫描文件上的注解，并注入到IOC容器中，如扫描@Server@Controller
+
+  **@EnableAutoConfiguration**：自动配置，借助@Import的帮助，将所有符合自动配置条件的bean定义加载到IoC容器，里面的@Import(**EnableAutoConfigurationImportSelector.class**)帮助SpringBoot应用将所有符合条件的@Configuration配置都加载到当前SpringBoot创建并使用的IoC容器
+
+* **EnableAutoConfigurationImportSelector**类里有个SpringFactoriesLoader工厂加载器，通过里面的loadFactoryNames方法，传入**工厂类名称**和**对应的类加载器**，加载该类加器搜索路径下的指定文件**spring.factories文件**，传入的工厂类为接口，而文件中对应的类则是接口的实现类，或最终作为实现类，得到这些类名集合后，通过**反射**获取这些类的类对象、构造方法，最终生成实例。
+* 因此只要在maven中加入了所需依赖，根据spring.factories文件里的key-value，能够在类路径下找到对应的class文件，就会触发自动配置
+
+![SpringBoot启动流程](https://github.com/Nixum/Java-Note/blob/master/Note/picture/SpringBoot启动流程.png)
+
+参考[SpringBoot启动流程解析](https://www.cnblogs.com/trgl/p/7353782.html)
+
 # ContextLoaderListener
 
 [【Spring】浅谈ContextLoaderListener及其上下文与DispatcherServlet的区别](https://www.cnblogs.com/weknow619/p/6341395.html "")
@@ -19,19 +42,21 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 * 生命周期执行过程，引用[【Spring】Bean的生命周期](https://yemengying.com/2016/07/14/spring-bean-life-cycle/ "")
   * Bean容器找到配置文件中Spring Bean的定义。
-  * Bean容器利用Java Reflection API创建一个Bean的实例。
+  * Bean容器利用Java Reflection API创建一个Bean的实例（对scope为singleton且非懒加载的bean实例化）
   * 如果涉及到一些属性值 利用set方法设置一些属性值。
   * 如果Bean实现了BeanNameAware接口，调用setBeanName()方法，传入Bean的名字。
   * 如果Bean实现了BeanClassLoaderAware接口，调用setBeanClassLoader()方法，传入ClassLoader对象的实例。
   * 如果Bean实现了BeanFactoryAware接口，调用setBeanClassLoader()方法，传入ClassLoader对象的实例。
   * 与上面的类似，如果实现了其他*Aware接口，就调用相应的方法。
-  * 如果有和加载这个Bean的Spring容器相关的BeanPostProcessor对象，执行postProcessBeforeInitialization()方法
+  * 如果有和加载这个Bean的Spring容器相关的BeanPostProcessor对象，执行postProcessBeforeInitialization()方法(需手动注册该方法)
   * 如果Bean实现了InitializingBean接口，执行afterPropertiesSet()方法。
   * 如果Bean在配置文件中的定义包含init-method属性，执行指定的方法。
-  * 如果有和加载这个Bean的Spring容器相关的BeanPostProcessor对象，执行postProcessAfterInitialization()方法
+  * 如果有和加载这个Bean的Spring容器相关的BeanPostProcessor对象，执行postProcessAfterInitialization()方法(需手动注册该方法)
   * 此时bean已经准备就绪，可以被应用程序使用了，他们将一直驻留在应用上下文中，直到该应用上下文被销毁
   * 当要销毁Bean的时候，如果Bean实现了DisposableBean接口，执行destroy()方法。
   * 当要销毁Bean的时候，如果Bean在配置文件中的定义包含destroy-method属性，执行指定的方法。
+
+其他参考：[Spring Bean生命周期](https://www.jianshu.com/p/3944792a5fff)
 
 ## 3.初始化
 
@@ -225,3 +250,4 @@ Spring底层
 
 [Spring AOP原理分析](https://blog.csdn.net/yuexianchang/article/details/77018603 "")
 
+[常见的Spring面试题](http://www.codeceo.com/article/spring-top-25-interview.html#xml_based_configuration)

@@ -1,5 +1,7 @@
 # 数据类型及常用命名
 
+[一文揭秘单线程的Redis为什么这么快?](https://zhuanlan.zhihu.com/p/57089960?utm_source=wechat_session&utm_medium=social&utm_oi=632939468966072320)
+
 # 与Memcached的区别
 
 * Redis支持存储多种数据类型：string、list、hash、set、zset；而Memcached只支持string
@@ -13,6 +15,8 @@
 * 在 Redis 中，并不是所有数据都一直存储在内存中，可以将一些很久没用的 value 交换到磁盘； 
 
   Memcached 的数据则会一直在内存中，Memcached使用固定空间分配，将内存分为一组大小不同的slab_class，每个slab_class又分为一组大小相同的slab，每个slab又包含一组大小相同的chunk，根据数据大小，放到不同的chunk里，这种管理方式避免内存碎片管理问题，但是会带来内存浪费，即每个chunk内会放小于这个chunk大小的数据，chunk里有些空间没利用到
+
+  一致性哈希算法：构造一个长度为2的32次方的整数环，根据结点名称的Hash值([0，2^32-1])，将结点放置在这个Hash环上，根据数据的key值计算Hash值，在Hash环上顺时针查找距离这个Key的Hash值最近的结点，完成key到结点的Hash映射查找，这样当扩容结点时，只会影响到其中一个结点；为了解决负载不均衡问题，可以在此基础上增加一个虚拟层，key先在环上找到虚拟结点，再找到物理结点，将数据分散到各个结点，一般一个物理结点对应150个虚拟结点
 
 # 过期时间和数据淘汰策略
 

@@ -1,3 +1,5 @@
+[TOC]
+
 # 线程与进程的区别
 
 ## 进程
@@ -69,6 +71,10 @@
 ## 避免死锁
 
 互斥条件是保证线程安全的条件，因此不能破环，只能尽量破坏其他造成死锁的条件，比如提前分配各个线程所需资源；设置等待时间或者自旋次数，超时中断；分配好获得锁的顺序；
+
+## 死锁检测工具
+
+Jconsole, Jstack, visualVM
 
 
 
@@ -202,6 +208,76 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 参考[java中的锁](http://www.importnew.com/19472.html)
 
+# 线程池
+
+为了解决无限创建线程产生的问题，采用线程池来管理，减少在创建和销毁线程上所消耗的时间以及系统资源的开销，解决资源不足的问题。如果不使用线程池，有可能造成系统创建大量同类线程而导致消耗完内存或者“过度切换”的问题
+
+线程池 Executors静态类
+
+​	newCachedThreadPool：对于每个任务，如果有空闲线程可用，立即让他执行任务，如果没有可用得空闲线程，则创建新线程，超时设置是1分钟，线程池可无限扩展
+
+​	newFixedThreadPool：构建有固定大小的线程池，如果提交的任务数多余空闲线程数，则把任务放到队列中，等其他任务完成后再运行他，创建的线程不会超时
+
+​	newSingleThreadExecutor：大小为 1 的线程池，由一个线程执行提交的任务，一个接一个执行
+
+这三个静态方法 返回实现了ExecutorService接口的ThreadPoolExecutor类的对象
+
+使用方式：
+
+```java
+ExecutorService threadPool = Executors.newCachedThreadPool();
+threadPool.execute(线程实例);	// 无返回值
+Future<T> = threadPool.submit(实现了Callable<T>的实例); // 有返回值
+threadPool.shutdown();
+```
+
+在阿里巴巴开发手册中不提倡使用Executors创建，而是通过 ThreadPoolExecutor的方式去定制线程池，从而明确线程池的参数
+
+```java
+ExecutorService threadPool = new ThreadPoolExecutor(一系列参数，具体看构造器);
+// 构造器
+int corePoolSize,		// 线程池中的线程数量
+int maximumPoolSize,	// 线程池中允许的最大数量，当前阻塞队列满了，且继续提交任务，则创建新的线程执行任务，前提是当前线程数小于maximumPoolSize
+long keepAliveTime,	// 当活跃线程数大于corePoolSize时，空闲的多余线程最大存活时间
+TimeUnit unit,		// keepAliveTime单位
+BlockingQueue<Runnable> workQueue,	// 用来保存等待被执行的任务的阻塞队列，且任务必须实现Runable接口，常见的如ArrayBlockingQueue、LinkedBlockingQuene
+ThreadFactory threadFactory,	// 当线程池创建新线程时调用，例如为每个线程实现一个名字
+RejectedExecutionHandler handler	// 线程池的饱和策略，线程池提供4种饱和策略，默认是AbortPolicy
+```
+
+* 阻塞队列
+
+  1. ArrayBlockingQueue：是一个基于数组结构的有界阻塞队列，此队列按FIFO（先进先出）原则对元素进行排序
+  2.  LinkedBlockingQueue：一个基于链表结构的阻塞队列，此队列按FIFO排序元素，吞吐量通常要高于ArrayBlockingQueue。静态工厂方法Executors.newFixedThreadPool()使用了这个队列
+  3. SynchronousQueue：一个不存储元素的阻塞队列。每个插入操作必须等到另一个线程调用移除操作，否则插入操作一直处于阻塞状态，吞吐量通常要高于LinkedBlockingQueue，静态工厂方法newCachedThreadPool使用了这个队列
+  4. PriorityBlockingQueue：一个具有优先级的无界阻塞队列
+
+* 饱和策略
+
+  1. AbortPolicy：无法处理新任务时抛出异常，默认策略
+  2.  CallerRunsPolicy：只用调用者所在线程来运行任务
+  3.  DiscardOldestPolicy：丢弃队列里最近的一个任务，并执行当前任务
+  4. DiscardPolicy：不处理，丢弃掉。
+
+##  线程池处理过程：
+
+线程池内部有一个变量来表示线程的状态，根据这个变量表达的状态在操作的
+
+1. 如果当前运行的线程少于corePoolSize，则创建新线程来执行任务（注意，执行这一步骤需要获取全局锁）
+2. 如果运行的线程等于或多于corePoolSize，则将任务加入BlockingQueue
+3. 如果无法将任务加入BlockingQueue(队列已满)，则创建新的线程来处理任务(注意，执行这一步骤需要获取全局锁)
+4. 如果创建新线程将使当前运行的线程超出maximumPoolSize，任务将被拒绝，并调用RejectedExecutionHandler.rejectedExecution()方法
+
+即corePoolSize + BlockingQueue.size() + 临时创建的线程数 = maximumPoolSize，超过maximumPoolSize时交由RejectedExecutionHandler处理，根据饱和策略决定下一步的动作
+
+[线程池的实现原理](https://www.cnblogs.com/a8457013/p/7819044.html)
+
+## 线程池调优
+
+- 设置最大线程数，防止线程资源耗尽；
+- 使用有界队列，从而增加系统的稳定性和预警能力(饱和策略)；
+- 根据任务的性质设置线程池大小：CPU密集型任务(CPU个数个线程)，IO密集型任务(CPU个数两倍的线程)，混合型任务(拆分)。
+
 # JUC包内的一些类
 
 ## AQS
@@ -277,6 +353,8 @@ CAS + 自旋保证
 
 是java.lang包中的一个类，使用 ThreadLocal 维护变量时，其为每个使用该变量的线程提供独立的变量副本，把共享数据的可见范围限制在同一个线程之内，所以每一个线程都可以独立的改变自己的副本，而不会影响其他线程对应的副本。
 
+注意：ThreadLocal 无法解决共享对象的更新问题，ThreadLocal 对象建议使用 static修饰。这个变量是针对一个线程内所有操作共享的，所以设置为静态变量，所有此类实例共享此静态变量  ，也就是说在类第一次被使用时装载，只分配一块存储空间，所有此类的对象(只要是这个线程内定义的)都可以操控这个变量
+
 ### 原理
 
 每个线程内部都会维护一个 静态的ThreadLocalMap对象，该对象里有一个 Entry（K-V 键值对）数组
@@ -289,7 +367,7 @@ Entry 对 Key 的引用是弱引用；Entry 对 Value 的引用是强引用；
 
 每次对ThreadLocal做 get、set操作时，以get方法为例，先通过Thread.currentThread()获得当前线程，在获取该线程对象里的ThreadLocalMap，以当前对象为key(当前线程的ThreadLoacl)在ThreadLocalMap中找到value，强转返回
 
-在一些场景 (尤其是使用线程池) 下，由于 ThreadLocal.ThreadLocalMap 的底层数据结构导致 ThreadLocal 有内存泄漏的情况，应该尽可能在每次使用 ThreadLocal 后手动调用 remove()，以避免出现 ThreadLocal 经典的内存泄漏甚至是造成自身业务混乱的风险
+在一些场景 (尤其是使用线程池) 下，由于 ThreadLocal.ThreadLocalMap 的底层数据结构导致 ThreadLocal 有内存泄漏的情况，应该尽可能在每次使用 ThreadLocal 后手动调用 remove()，以避免出现 ThreadLocal 经典的内存泄漏甚至是造成自身业务混乱的风险，因为ThreadLocal里的key是弱引用，当释放掉对threadlocal对象的强引用后，map里面的value没有被回收，但却永远不会被访问到了
 
 
 
@@ -310,6 +388,10 @@ Entry 对 Key 的引用是弱引用；Entry 对 Value 的引用是强引用；
 [Java并发-AQS及各种Lock锁的原理](https://blog.csdn.net/zhangdong2012/article/details/79983404)
 
 [Java并发之AQS详解](https://www.cnblogs.com/daydaynobug/p/6752837.html)
+
+[Java并发编程JUC总结](http://www.cnblogs.com/chenpi/p/5614290.html)
+
+阿里巴巴Java开发手册1.40
 
 Java并发编程实战
 
