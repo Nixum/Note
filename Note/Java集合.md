@@ -448,6 +448,10 @@ new capacity : 00100000
 （4）如果一个节点是红色的，则它的子节点必须是黑色的。
 （5）从一个节点到该节点的子孙节点的所有路径上包含相同数目的黑节点。
 
+# 使用Stream处理集合
+
+[Java 8 中的 Streams API 详解](https://www.ibm.com/developerworks/cn/java/j-lo-java8streamapi/index.html)
+
 # 参考
 
 [Java：集合，Collection接口框架图](https://www.cnblogs.com/nayitian/p/3266090.html "")  

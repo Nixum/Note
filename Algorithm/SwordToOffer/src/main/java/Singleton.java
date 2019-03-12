@@ -13,9 +13,9 @@ public class Singleton {
             new Thread(new Runnable() {
                 public void run() {
 //                    DoubleCheckedLocking s = DoubleCheckedLocking.getInstance();
-                    LazyInstance s = LazyInstance.getInstance();
+//                    LazyInstance s = LazyInstance.getInstance();
 //                    HungryInstance s = HungryInstance.getInstance();
-//                    StaticInnerClassMode s = StaticInnerClassMode.getInstance();
+                    StaticInnerClassMode s = StaticInnerClassMode.getInstance();
 //                    EnumMode s = EnumMode.SINGLETON;
                     System.out.println("thread-" + t + " " + s.hashCode());
                 }
@@ -38,6 +38,8 @@ class LazyInstance {
 
     /** 1.1
      * 想要线程安全只需在方法上加上synchronized关键字，缺点是，多线程访问时锁的操作耗时
+     * public synchronized static LazyInstance getInstance()
+     * public static synchronized LazyInstance getInstance() synchronized写在static前后都可以
      */
     public static LazyInstance getInstance() {
         if (singleton == null) {

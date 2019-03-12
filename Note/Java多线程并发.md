@@ -259,7 +259,7 @@ RejectedExecutionHandler handler	// 线程池的饱和策略，线程池提供4�
   3.  DiscardOldestPolicy：丢弃队列里最近的一个任务，并执行当前任务
   4. DiscardPolicy：不处理，丢弃掉。
 
-##  线程池处理过程：
+##  线程池处理过程
 
 线程池内部有一个变量来表示线程的状态，根据这个变量表达的状态在操作的
 
