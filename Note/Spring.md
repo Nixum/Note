@@ -1,3 +1,18 @@
+- [Spring 和 Spring Boot区别](#spring-%E5%92%8C-spring-boot%E5%8C%BA%E5%88%AB)
+- [ContextLoaderListener](#contextloaderlistener)
+- [IOC](#ioc)
+  - [1.Bean的作用域](#1bean%E7%9A%84%E4%BD%9C%E7%94%A8%E5%9F%9F)
+  - [2.Bean的生命周期](#2bean%E7%9A%84%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F)
+  - [3.初始化](#3%E5%88%9D%E5%A7%8B%E5%8C%96)
+  - [4.注入方式](#4%E6%B3%A8%E5%85%A5%E6%96%B9%E5%BC%8F)
+- [AOP](#aop)
+  - [原理](#%E5%8E%9F%E7%90%86)
+  - [静态代理](#%E9%9D%99%E6%80%81%E4%BB%A3%E7%90%86)
+  - [JDK动态代理](#jdk%E5%8A%A8%E6%80%81%E4%BB%A3%E7%90%86)
+  - [CGLIB代理](#cglib%E4%BB%A3%E7%90%86)
+
+
+
 # Spring 和 Spring Boot区别
 
 Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要是为了解决使用Spring框架需要进行大量的配置太麻烦的问题，所以它并不是用来替代Spring的解决方案，而是和Spring框架紧密结合用于提升Spring开发者体验的工具。同时它集成了大量常用的第三方库配置(例如Jackson, JDBC, Mongo, Redis, Mail等等)，做到零配置即用

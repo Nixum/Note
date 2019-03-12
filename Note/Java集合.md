@@ -26,7 +26,12 @@
     - [ConcurrentHashMap](#concurrenthashmap)
       - [1.基本](#1%E5%9F%BA%E6%9C%AC-5)
       - [2.线程安全的底层原理，JDK1.7和JDK1.8的实现不一样](#2%E7%BA%BF%E7%A8%8B%E5%AE%89%E5%85%A8%E7%9A%84%E5%BA%95%E5%B1%82%E5%8E%9F%E7%90%86jdk17%E5%92%8Cjdk18%E7%9A%84%E5%AE%9E%E7%8E%B0%E4%B8%8D%E4%B8%80%E6%A0%B7)
+- [使用Stream处理集合](#%E4%BD%BF%E7%94%A8stream%E5%A4%84%E7%90%86%E9%9B%86%E5%90%88)
 - [参考](#%E5%8F%82%E8%80%83)
+
+
+
+[TOC]
 
 以下笔记如没指定版本，都是基于JDK1.8
 
@@ -433,7 +438,7 @@ new capacity : 00100000
   - 也是延迟初始化，当第一次put的时候，执行第一次hash取模定位segment的位置，如果segment没有初始化，因为put可能出现并发操作，则通过CAS赋值初始化，之后执行第二次hash取模定位HashEntry数组的位置，通过继承 ReentrantLock的tryLock() 方法尝试去获取锁，如果获取成功就直接插入相应的位置，如果已经有线程获取该segment的锁，那当前线程会以自旋的方式去继续的调用 tryLock() 方法去获取锁，超过指定次数就挂起，等待唤醒
   - size（统计键值对数量）操作：因为存在并发的缘故，size的可能随时会变，ConcurrentHashMap采用的做法是先采用不加锁的模式，尝试计算size的大小，比较前后两次计算的结果，结果一致就认为当前没有元素加入，计算的结果是准确的，尝试次数是 3 次，如果超过了 3 次，则会对segment加锁，锁住对segment的操作，之后再统计个数
 
-![1.7concurrentHashMap](G:\git repository\Java-Note\Note\picture\1.7concurrentHashMap.jpg)
+![1.7concurrentHashMap](https://github.com/Nixum/Java-Note/blob/master/Note/picture/1.7concurrentHashMap.jpg)
 
 - JDK1.8 
   - 采用CAS和synchronized来保证并发安全，更接近HashMap
