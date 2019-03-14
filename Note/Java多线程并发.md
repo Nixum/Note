@@ -229,9 +229,11 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 * synchronized，是关键字，底层靠JVM实现，通过操作系统调度；ReentrantLock是JDK提供的类，源码可查
 
-* synchronized锁的范围看{}，由JVM控制锁的添加和释放；ReentrantLock手动控制锁的添加和释放，可以灵活控制加锁解锁的位置，相对来讲锁的灵活，锁的细粒度都比synchronized好些
+* synchronized锁的范围看{}，能对类、对象、方法加锁，由JVM控制锁的添加和释放；
 
-* synchronized是非公平锁，ReentrantLock支持公平锁和非公平锁，默认是公平锁
+  ReentrantLock锁代码块，可以灵活控制加锁解锁的位置，需要手动控制锁的添加和释放，相对来讲锁的灵活，锁的细粒度都比synchronized好些
+
+* synchronized是非公平锁，ReentrantLock支持公平锁和非公平锁，默认是非公平锁
 
 * synchronized不可中断，除非抛异常，否则只能等同步的代码执行完；ReentrantLock持锁在长期不释放锁时，正在等待的线程可以选择放弃等待，方法如下：
 
@@ -261,6 +263,8 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 - 禁止指令重排序优化，普通变量只会保证该方法执行过程中所依赖赋值的结果都能获得正确的结果，不能保证变量赋值操作的顺序与程序代码的执行顺序一致
 
 典型用法是 检查某个状态标记以判断是否退出循环
+
+参考[Java多线程学习（三）volatile关键字](https://blog.csdn.net/qq_34337272/article/details/79680771)
 
 # 一些锁的概念
 

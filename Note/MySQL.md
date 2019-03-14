@@ -45,12 +45,12 @@
 # 常用SQL
 
 ## Count(\*)、Count(1)、Count([列])区别
-    1. Count(\*)或者Count(1) 返回的数量都一样，count(\*)会引起全表扫描
+    1. Count(*)或者Count(1) 返回的数量都一样，count(*)会引起全表扫描
     2. Count（列）会计算列或这列的组合不为空的计数。
-    3. 假如表沒有主键(Primary key), 那么count(1)比count(\*)快，
+    3. 假如表沒有主键(Primary key), 那么count(1)比count(*)快，
     4. 如果有主键的話，那主键作为count的条件时候count(主键)最快
-    5. 如果你的表只有一个字段的话那count(\*)就是最快的
-    6. count(\*) 跟 count(1) 的结果一样，都包括对NULL的统计，而count(column) 是不包括NULL的统计
+    5. 如果你的表只有一个字段的话那count(*)就是最快的
+    6. count(*) 跟 count(1) 的结果一样，都包括对NULL的统计，而count(column) 是不包括NULL的统计
 
 ## having的使用
 

@@ -139,7 +139,7 @@ final byte c = 127;
 a += b; a -= b; //这种写法是可以的，会变成 a = (byte) (a+b) 
 而 a = a + b； a = a - b；则会因为没有类型转化而出错，int无法转成byte
 d = a + c; // 也会出错，a在运算时为自动提升为int
-如果是final修饰 a、b，那么byte c = a + b 就不会出先编译错
+如果是final修饰 a、b，那么byte c = a + b 就不会编译错误
 ```
 
 # 三、String
@@ -243,7 +243,7 @@ d = a + c; // 也会出错，a在运算时为自动提升为int
 
 * 抽象类可以包含非抽象的普通方法，接口中的方法必须是抽象的，不能有非抽象方法
 
-* 抽象类中的抽象方法访问类型可以是public、protected和不写，接口中的方法默认是public abstract
+* 抽象类中的**抽象方法访问类型**可以是**public、protected和不写**，接口中的方法默认是public abstract
 
 * 抽象类中可以包含静态方法(可以调用)，接口不行
 

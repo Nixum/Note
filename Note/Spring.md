@@ -102,6 +102,12 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
   注解注入：@Resource默认是使用byName进行装配，@Autowired默认使用byType
 
+## 5.IOC模拟
+
+[SpringIOC简单模拟，菜鸟篇](https://blog.csdn.net/wangaiheng/article/details/79793397)
+
+[Spring——原理解析-利用反射和注解模拟IoC的自动装配](https://www.cnblogs.com/weilu2/p/spring_ioc_analysis_principle_bsici_on_reflection_annotation.html)
+
 # AOP
 
 ## 原理
