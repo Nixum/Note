@@ -309,12 +309,16 @@ RejectedExecutionHandler handler	// 线程池的饱和策略，线程池提供4�
 
 * 阻塞队列
 
-  1. ArrayBlockingQueue：是一个基于数组结构的有界阻塞队列，此队列按FIFO（先进先出）原则对元素进行排序
-  2.  LinkedBlockingQueue：一个基于链表结构的阻塞队列，此队列按FIFO排序元素，吞吐量通常要高于ArrayBlockingQueue。静态工厂方法Executors.newFixedThreadPool()使用了这个队列
+  当线程池中的线程数量大于等于corePoolSize的时候，把该任务封装成一个Worker对象放入等待队列
+
+  1. ArrayBlockingQueue：是一个基于数组结构的有界阻塞队列，此队列按FIFO（先进先出）原则对元素进行排序，此时maximumPoolSize就会限制任务数
+  2.  LinkedBlockingQueue：一个基于链表结构的阻塞队列，此队列按FIFO排序元素，吞吐量通常要高于ArrayBlockingQueue。静态工厂方法Executors.newFixedThreadPool()使用了这个队列。队列无界时，maximumPoolSize也不起作用了
   3. SynchronousQueue：一个不存储元素的阻塞队列。每个插入操作必须等到另一个线程调用移除操作，否则插入操作一直处于阻塞状态，吞吐量通常要高于LinkedBlockingQueue，静态工厂方法newCachedThreadPool使用了这个队列
   4. PriorityBlockingQueue：一个具有优先级的无界阻塞队列
 
 * 饱和策略
+
+  当运行的线程数量大于等于maximumPoolSize，且阻塞队列满了，才执行饱和策略
 
   1. AbortPolicy：无法处理新任务时抛出异常，默认策略
   2.  CallerRunsPolicy：只用调用者所在线程来运行任务
@@ -338,7 +342,7 @@ TERMINATED：terminated()方法执行过后变成这个
 3. 如果无法将任务加入BlockingQueue(队列已满)，则创建新的线程来处理任务(注意，执行这一步骤需要获取全局锁)
 4. 如果创建新线程将使当前运行的线程超出maximumPoolSize，任务将被拒绝，并调用RejectedExecutionHandler.rejectedExecution()方法
 
-即corePoolSize + BlockingQueue.size() + 临时创建的线程数 = maximumPoolSize，超过maximumPoolSize时交由RejectedExecutionHandler处理，根据饱和策略决定下一步的动作
+当corePoolSize  = maximumPoolSize时，多出的任务都会交给阻塞队列去处理，如果阻塞队列满了，就执行饱和策略，如果队列无界，则任务堆积
 
 [线程池的实现原理](https://www.cnblogs.com/a8457013/p/7819044.html)
 
