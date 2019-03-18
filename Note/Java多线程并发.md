@@ -299,7 +299,7 @@ threadPool.shutdown();
 ExecutorService threadPool = new ThreadPoolExecutor(一系列参数，具体看构造器);
 // 构造器
 int corePoolSize,		// 线程池中的线程数量
-int maximumPoolSize,	// 线程池中允许的最大数量，当前阻塞队列满了，且继续提交任务，则创建新的线程执行任务，前提是当前线程数小于maximumPoolSize
+int maximumPoolSize,	// 线程池中允许的最大数量，当前阻塞队列满了，且继续提交任务，则创建新的线程执行任务，前提是当前线程数小于maximumPoolSize，如果使用无界队列，该参数就没什么用了
 long keepAliveTime,	// 当活跃线程数大于corePoolSize时，空闲的多余线程最大存活时间
 TimeUnit unit,		// keepAliveTime单位
 BlockingQueue<Runnable> workQueue,	// 用来保存等待被执行的任务的阻塞队列，且任务必须实现Runable接口，常见的如ArrayBlockingQueue、LinkedBlockingQuene
@@ -335,16 +335,32 @@ TIDYING ：所有的任务都销毁，workcount=0，线程池在转换为此状�
 TERMINATED：terminated()方法执行过后变成这个
 ```
 
-线程池内部有一个变量(private final AtomicInteger变量ctl)来表示线程的状态，根据这个变量表达的状态在操作
+线程池内部有一个变量（private final AtomicInteger变量ctl，高3位保存运行状态runState，低29位保存有效线程数量workerCount）来表示线程的状态，根据这个变量表达的状态在操作
 
 1. 如果当前运行的线程少于corePoolSize，则创建新线程来执行任务（注意，执行这一步骤需要获取全局锁）
 2. 如果运行的线程等于或多于corePoolSize，则将任务加入BlockingQueue
-3. 如果无法将任务加入BlockingQueue(队列已满)，则创建新的线程来处理任务(注意，执行这一步骤需要获取全局锁)
+3. 如果无法将任务加入BlockingQueue(队列已满)，则创建新的线程来处理任务（注意，执行这一步骤需要获取全局锁）
 4. 如果创建新线程将使当前运行的线程超出maximumPoolSize，任务将被拒绝，并调用RejectedExecutionHandler.rejectedExecution()方法
 
 当corePoolSize  = maximumPoolSize时，多出的任务都会交给阻塞队列去处理，如果阻塞队列满了，就执行饱和策略，如果队列无界，则任务堆积
 
+线程池里线程的锁是不可重入锁
+
+执行任务的时候要对工作线程加锁的理由：工作线程run方法中有个判断，当阻塞队列中没任务时，会阻塞，循环等待任务；调用shutdown方法时，会将线程池状态设置为SHUTDOWN，并且不允许将任务加入到阻塞队列中，中断各个工作线程；如果shutdown方法中没有对工作线程加锁，并在锁内修改状态，中断工作线程，如果此时操作系统分配的时间片给到工作线程的判断中，阻塞队列没有任务，就一直阻塞了，这样线程池就一直关闭不了了。
+
+加锁操作发生在创建线程、工作线程在获取到任务后、工作线程没任务处理后退出、判断是否结束线程池、关闭线程池；线程池状态(ctl)的改变使用自旋+CAS判断操作
+
 [线程池的实现原理](https://www.cnblogs.com/a8457013/p/7819044.html)
+
+[深入理解Java线程池](https://juejin.im/entry/58fada5d570c350058d3aaad)，这篇文章写得十分详细易理解了
+
+## 对线程池复用的简单理解
+
+这里先不谈如何保证线程安全，只说复用。比如corePoolSize  = 5，就是内部有5个线程Worker（继承了AQS和Runnable接口），通过ThreadFactory创建，保持在一个HashSet里，任务task就是实现了Runnable接口的类。当任务数如果大于corePoolSize  ，则加入到阻塞队列workQueue中；当然如果BlockingQueue存满了，corePoolSize  线程里的任务还没执行完，会继续创建线程达到maximumPoolSize，多于corePoolSize 的线程没有被复用
+
+线程worker的run方法里通过**直接获取任务**或者**从阻塞队列workQueue里获取任务**作为**循环**条件来执行**任务的run方法**来达到线程重用，注意不是start方法
+
+
 
 ## 线程池调优
 
