@@ -266,6 +266,8 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 参考[Java多线程学习（三）volatile关键字](https://blog.csdn.net/qq_34337272/article/details/79680771)
 
+[全面理解Java内存模型(JMM)及volatile关键字](https://blog.csdn.net/javazejian/article/details/72772461)
+
 # 一些锁的概念
 
 参考[java中的锁](http://www.importnew.com/19472.html)
@@ -423,7 +425,7 @@ TERMINATED：terminated()方法执行过后变成这个
 * 独占式每次释放锁只唤醒后继结点；共享式每次释放锁会唤醒所有后继结点，使它们同时获取同步状态
 * 独占锁的同步状态值为1，同一时刻只能有一个线程成功获取同步状态；共享锁的同步状态>1，取值由上层同步组件确定
 
-* 公平锁和非公平锁是分别重写tryAcquire()和tryRelease()方法实现，是两套方案，是独占模式的实现
+* 公平锁和非公平锁是分别重写tryAcquire()和tryRelease()方法实现，是两套方案，独占模式和共享模式都可以有公平锁非公平锁的实现
 
   公平锁，当线程请求到来时先会判断同步队列是否存在结点，如果存在先执行同步队列中的结点线程，当前线程将封装成node加入同步队列等待（新加入的线程获取锁，如果队列不为空，加入队尾，执行队头的线程）
 
