@@ -207,7 +207,7 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 ## 5.优化
 
-* 注意区分度，使用这个计算 count(distinct  left(列名,  索引长度)) / count(*) from table，区分度越高越好
+* 注意区分度，计算索引最优长度，使用这个计算 count(distinct  left(列名,  索引长度)) / count(*) from table，区分度越高越好
 * 其他参考
 
 ## 6.分析

@@ -193,7 +193,7 @@ public E get(int index) {
 
 检查的原理就是使用 全局变量 modCount 来检查，modCount 用来记录 ArrayList 内数组修改(增加、删除或调整内部数组的大小)的次数，当比较前后的modCount不一致时，抛出ConcurrentModificationException异常
 
-单线程中，如果需要在迭代中remove元素，应该使用迭代器迭代，并且使用迭代器提供的remove()方法，而不是ArrayList的remove方法，多线程的情况下只能使用线程安全的集合类了
+单线程中，如果需要在迭代中remove元素，应该使用迭代器迭代，并且使用迭代器提供的remove()（里面也是调用了ArrayList的remove方法，只是有修改modCount的值）方法，而不是ArrayList的remove方法，多线程的情况下只能使用线程安全的集合类了
 
 #### 6.序列化
 
@@ -315,6 +315,7 @@ public HashMap(int initialCapacity, float loadFactor)
 如果传入的容量不是 2的n次幂，HashMap总会保证其数组的容量为2的n次幂，使用下面方法，原因是为了加快取模的运算速度，具体解释看下一节
 
 ```java
+// 用于保证容量为2的n次，原理是求出一个数的掩码 + 1，即可得到大于该数的最小2的n次
 static final int tableSizeFor(int cap) {
     int n = cap - 1;
     n |= n >>> 1;
@@ -452,6 +453,8 @@ new capacity : 00100000
 （3）每个叶子节点（NIL）是黑色。 [注意：这里叶子节点，是指为空(NIL或NULL)的叶子节点！]
 （4）如果一个节点是红色的，则它的子节点必须是黑色的。
 （5）从一个节点到该节点的子孙节点的所有路径上包含相同数目的黑节点。
+
+是一种平衡树，但是平衡不是非常严格，因此结点的旋转次数少，插入、删除效率高，插入、删除、搜索都是时间复杂度都是O(log2 n)
 
 # 使用Stream处理集合
 
