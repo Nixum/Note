@@ -28,6 +28,7 @@ public class ShortestPath {
         int n = graph.length;
         // path数组用于保存 点i到j 的最短路径中点j的前一个点的编号
         int[][] path = new int[n][n];
+        // result表示点i到点j所的最小路径的权值和
         int[][] result = new int[n][n];
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {

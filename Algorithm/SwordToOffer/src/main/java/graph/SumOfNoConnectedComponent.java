@@ -32,11 +32,11 @@ public class SumOfNoConnectedComponent {
             return 0;
         List<List<Integer>> resultList = new ArrayList<>();
         int sumOfNode = graph.length;
-        int[] visited = new int[sumOfNode];
+        int[] visited = new int[sumOfNode]; // 标记访问过的结点
         int count = 0;
         for (int i = 0; i < sumOfNode; i++) {
             if (visited[i] == 0) {
-                count ++;
+                count ++;   // 深度遍历每一个结点到结束时就会走完一次其连通子图
                 List<Integer> res = new ArrayList<>();
                 dfs(graph, i, visited, res);
                 resultList.add(res);
