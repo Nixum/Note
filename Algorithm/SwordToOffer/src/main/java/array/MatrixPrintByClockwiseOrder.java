@@ -23,7 +23,7 @@ public class MatrixPrintByClockwiseOrder {
         }
         int start = 0, row = matrix.length - 1, col = matrix[0].length - 1;
         // 判断有多少圈
-        while (row > start * 2 && col > start * 2) {
+        while (start * 2 < row && start * 2 < col) {
             int endX = col - start, endY = row - start;
             // 从左往右打印上行
             for (int i = start; i <= endX; i++) {
