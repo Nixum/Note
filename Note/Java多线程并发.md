@@ -282,11 +282,13 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 线程池 Executors静态类
 
-​	newCachedThreadPool：对于每个任务，如果有空闲线程可用，立即让他执行任务，如果没有可用得空闲线程，则创建新线程，超时设置是1分钟，线程池可无限扩展
+​	newCachedThreadPool：核心数是0，最大数是Integer.MAX_VALUE，使用SynchronousQueue，不存储任务。对于每个任务，如果有空闲线程可用，立即让他执行任务，如果没有可用得空闲线程，则创建新线程，空闲线程超时设置是1分钟，线程池可无限扩展。容易造成堆外内存溢出，一般用于大量短期任务
 
-​	newFixedThreadPool：构建有固定大小的线程池，如果提交的任务数多余空闲线程数，则把任务放到队列中，等其他任务完成后再运行他，创建的线程不会超时
+​	newFixedThreadPool：构建有固定大小的线程池，使用LinkedBlockingQueue。如果提交的任务数多于核心线程数，则把任务放到队列中，等其他任务完成后再运行他，创建的线程不会超时
 
-​	newSingleThreadExecutor：大小为 1 的线程池，由一个线程执行提交的任务，一个接一个执行
+​	newSingleThreadExecutor：大小为 1 的线程池，使用LinkedBlockingQueue，每次只有一个线程执行任务，从阻塞队列中取任务一个接一个执行
+
+
 
 这三个静态方法 返回实现了ExecutorService接口的ThreadPoolExecutor类的对象
 
@@ -306,7 +308,7 @@ ExecutorService threadPool = new ThreadPoolExecutor(一系列参数，具体看�
 // 构造器
 int corePoolSize,		// 线程池中的线程数量
 int maximumPoolSize,	// 线程池中允许的最大数量，当前阻塞队列满了，且继续提交任务，则创建新的线程执行任务，前提是当前线程数小于maximumPoolSize，如果使用无界队列，该参数就没什么用了
-long keepAliveTime,	// 当活跃线程数大于corePoolSize时，空闲的多余线程最大存活时间
+long keepAliveTime,	// 当活跃线程数大于corePoolSize时，多余的空闲线程最大存活时间
 TimeUnit unit,		// keepAliveTime单位
 BlockingQueue<Runnable> workQueue,	// 用来保存等待被执行的任务的阻塞队列，且任务必须实现Runable接口，常见的如ArrayBlockingQueue、LinkedBlockingQuene
 ThreadFactory threadFactory,	// 当线程池创建新线程时调用，例如为每个线程实现一个名字
@@ -366,7 +368,9 @@ TERMINATED：terminated()方法执行过后变成这个
 
 线程worker的run方法里通过**直接获取任务**或者**从阻塞队列workQueue里获取任务**作为**循环**条件来执行**任务的run方法**来达到线程重用，注意不是start方法
 
+## 线程池是如何做到当线程数量大于corePoolSize ，多余的空闲线程在等待keepAliveTime之后被回收
 
+在Worker类里的runWorker方法里，当阻塞队列里取不出任务task.take()==null，即task.take()方法里会根据timed属性作为是否回收空闲线程的标志，在取阻塞队列里的任务为null时，会等待keepAliveTime时间，返回null的任务，相应的空闲线程数将减少，runWorker方法的finally块里根据线程数目判断是否结束此方法，以此达到当前线程被回收的目的
 
 ## 线程池调优
 

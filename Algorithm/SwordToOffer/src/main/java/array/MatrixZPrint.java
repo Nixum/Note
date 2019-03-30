@@ -34,7 +34,7 @@ public class MatrixZPrint {
      * 斜线的走法是 matrix[i++][j--]和matrix[j--][i++] 注意不要越界即可
      */
     public void printOfZ(int[][] matrix) {
-        if (matrix == null || matrix.length <= 0 && matrix[0].length <= 0) {
+        if (matrix == null || matrix.length <= 0 || matrix[0].length <= 0) {
             return ;
         }
         boolean reverse = true;
