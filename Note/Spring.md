@@ -185,6 +185,7 @@ public static Object newProxyInstance(ClassLoader loader,	// 被代理类的类�
 ```java
 public class ProxyFactory {
 
+    // 被代理类
 	private Object target;
 	public ProxyFactory(Object target){
 		this.target = target;

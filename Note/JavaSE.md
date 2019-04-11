@@ -185,7 +185,7 @@ d = a + c; // 也会出错，a在运算时为自动提升为int
 ## equals()
 
 * 在不重写的情况下，Object类下的 equals() 方法比较的是两个对象的引用，即判断两个对象是否是同一个对象，此时等价于 ==
-* 重写的情况下，看具体类重写后的equals方法，像String类的 equals 方法比较字符的内容
+* 重写的情况下，看具体类重写后的equals方法，像String类的 equals 方法是先判断是否是String类型，再比较字符的内容
 
 ## hashCode()
 
