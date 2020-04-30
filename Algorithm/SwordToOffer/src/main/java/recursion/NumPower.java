@@ -25,12 +25,12 @@ public class NumPower {
      *        = a^((n-1)/2) * a^((n-1)/2) * a，n为奇数
      */
     public double power(double base, int exponent) {
-        if (exponent == 0)
+        if (exponent == 0)  // 指数为0
             return 1;
-        if (exponent == 1)
+        if (exponent == 1)  // 指数为1
             return base;
         boolean isNegative = false;
-        if (exponent < 0) {
+        if (exponent < 0) { // 指数小于0
             isNegative = true;
             exponent = -exponent;
         }

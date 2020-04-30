@@ -2,6 +2,7 @@ package tree;
 
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Stack;
 
 public class BinaryTreeNode {
 
@@ -60,9 +61,9 @@ public class BinaryTreeNode {
     public static void inOrderTraverse(BinaryTreeNode root) {
         if (root == null)
             return;
-        preOrderTraverse(root.leftNode);
+        inOrderTraverse(root.leftNode);
         System.out.print(root.value + " ");
-        preOrderTraverse(root.rightNode);
+        inOrderTraverse(root.rightNode);
     }
 
     /**
@@ -71,13 +72,13 @@ public class BinaryTreeNode {
     public static void postOrderTraverse(BinaryTreeNode root) {
         if (root == null)
             return;
-        preOrderTraverse(root.leftNode);
-        preOrderTraverse(root.rightNode);
+        postOrderTraverse(root.leftNode);
+        postOrderTraverse(root.rightNode);
         System.out.print(root.value + " ");
     }
 
     /**
-     * 层次遍历
+     * 层次遍历 bfs广度优先遍历
      * 从上到下打印二叉树节点，每次打印一个节点，如果该节点有叶子节点，
      * 则把该节点的子节点入队，接下来出队头节点，重复打印操作
      */
@@ -96,6 +97,99 @@ public class BinaryTreeNode {
         }
     }
 
+    /**
+     * dfs深度优先遍历二叉树，其实就是一个先序遍历
+     * 利用栈，先进右子树再进左子树
+     */
+    public static void dfsTraverse(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        stack.push(root);
+        while (!stack.isEmpty()) {
+            BinaryTreeNode temp = stack.pop();
+            System.out.print(temp.value + " ");
+            if (temp.rightNode != null) {
+                stack.push(temp.rightNode);
+            }
+            if (temp.leftNode != null)
+                stack.push(temp.leftNode);
+        }
+    }
+
+    /**
+     * 非递归，先序遍历
+     * 循环内，左结点边打印边进栈，当左结点为null时，更换成右结点，继续循环
+     */
+    public static void preOrderTraverseNoRecursion(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        while (root != null || !stack.isEmpty()) {
+            while (root != null) {
+                System.out.print(root.value + " ");
+                stack.push(root);
+                root = root.leftNode;
+            }
+            if (!stack.isEmpty()) {
+                root = stack.pop().rightNode;
+            }
+        }
+    }
+
+    /**
+     * 非递归，中序遍历
+     * 循环，左结点不断进栈，null时，出栈打印，更换成右结点，继续循环
+     */
+    public static void inOrderTraverseNoRecursion(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        while (root != null || !stack.isEmpty()) {
+            while (root != null) {
+                stack.push(root);
+                root = root.leftNode;
+            }
+            if (!stack.isEmpty()) {
+                root = stack.pop();
+                System.out.print(root.value + " ");
+                root = root.rightNode;
+            }
+        }
+    }
+
+    /**
+     * 非递归，后序遍历
+     * 循环，左结点不断进栈，当左结点为空时，进入二层循环，判断右结点是否被访问过，如果被访问过，
+     * 则出栈打印结点，不然更换右结点，退出二层循环，继续一层循环
+     */
+    public static void postOrderTraverseNoRecursion(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        while (root != null || !stack.isEmpty()) {
+            while (root != null) {
+                stack.push(root);
+                root = root.leftNode;
+            }
+            BinaryTreeNode preNode = null;  // 记录上次访问的结点
+            while (!stack.isEmpty()) {
+                root = stack.peek();
+                // 针对根结点来看的，判断其右子树是否被访问过，是就打印根节点
+                if (root.rightNode == preNode) {
+                    root = stack.pop();
+                    System.out.print(root.value + " ");
+                    preNode = root;
+                } else {
+                    root = root.rightNode;
+                    break;
+                }
+                if (stack.isEmpty())
+                    return ;
+            }
+        }
+    }
+
     public static void main(String[] args) {
         BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{1,2,3,4,5,6,7});
 
@@ -109,5 +203,15 @@ public class BinaryTreeNode {
         System.out.println();
 
         System.out.print("层次：");levelOrderTraverse(root);
+        System.out.println();
+        System.out.print("深度dfs：");dfsTraverse(root);
+        System.out.println();
+
+        System.out.print("先序非递归："); preOrderTraverseNoRecursion(root);
+        System.out.println();
+        System.out.print("中序非递归："); inOrderTraverseNoRecursion(root);
+        System.out.println();
+        System.out.print("后序非递归："); postOrderTraverseNoRecursion(root);
+        System.out.println();
     }
 }
