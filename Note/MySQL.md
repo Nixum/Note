@@ -16,15 +16,19 @@
 
 ## 日志系统
 
-* redo log重做日志：InnoDB独有，物理日志，记录这个页做了什么改动，使用二阶段提交保证两份日志逻辑一致。记录操作到redo log后状态是prepare，binlog写入磁盘，事务提交，redo log改为commit状态
+* redo log重做日志：InnoDB独有，物理日志，记录这个页做了什么改动，使用二阶段提交保证两份日志逻辑一致。记录操作到redo log后状态是prepare，binlog写入磁盘，事务提交，redo log改为commit状态，在写的时候是先写进redo log buffer，commit后才写进redo log(磁盘)
 
-  当有记录要更新的时候，InnoDB会先把记录(包含数据变更和change buffer的变更)写到redo log里，并更新内存，再在恰当的时候更到磁盘里，InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环形队列”，首位指针表示当前记录的位置和当前擦除位置，擦除前会把记录更新到磁盘，这种能力也称为crash-safe
+  当有记录要更新的时候，InnoDB会先把记录(包含数据变更和change buffer的变更)写到redo log里，并更新内存，再在恰当的时候更到磁盘里，redo log prepare、commit 的XID对应bin log的XID实现关联。
+
+  InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环形队列”，首位指针表示当前记录的位置和当前擦除位置，擦除前会把记录更新到磁盘，这种能力也称为crash-safe
 
   建议设置innodb_flush_log_at_trx_commit=1，表示每次事务的redo log会持久化到磁盘
 
-* bin log归档日志：属于server层的日志，逻辑日志，记录所有逻辑操作，追加写入，不会覆盖以前的日志，bin log有两种模式，statement 格式的话是记sql语句， row格式会记录行的内容，一般使用row，记录行变化前和变化后的数据，缺点是日志变大
+* bin log归档日志：属于server层的日志，逻辑日志，记录所有逻辑操作，追加写入，不会覆盖以前的日志，bin log有两种模式，statement 格式的话是记sql语句， row格式会记录行的内容，一般使用row，记录行变化前和变化后的数据，缺点是日志变大。从库是使用bin log进行备份的
 
   建议设置sync_binlog=1，表示每次事务的bin log都会持久化到磁盘
+
+可以只使用redo log来实现崩溃恢复，但无法只使用bin log，原因是 InnoDB使用WAL机制，执行事务时，写完内存和日志，事务就完成了，如果此时数据库崩溃，要依赖日志来恢复数据页，但是bin log并没有记录数据页的更新细节，而redo log因为环形写入的问题，无法对所有记录进行归档，仅仅只能实现崩溃恢复
 
 备份时间的长短会影响日志文件的大小，文件的完整性，从而影响到恢复速度和恢复效果
 
@@ -37,10 +41,9 @@
 以下归纳基于InnoDB，count会返回满足条件的结果集的总行数，它会使用存储引擎进行全表扫描获取结果，比如count(1)会直接返回1，count(主键)会获取主键，返回给server层，由server层进行计数，因此按效率排序是：count( 字 段) < count( 主 键 id) < count( 1) ≈ count(*)
 
 * Count（列）会计算列或这列的组合不为空的计数。
-
 * 如果表只有一个字段的话那count(*)就是最快的
-
 *  count(*) 跟 count(1) 的结果一样，都包括对NULL的统计，而count([列]) 是不包括NULL的统计
+*  对于计数，也可以通过创建列为表名、total的表进行计数，利用事务能力，一般是先insert在update，理由是并发进行total值的更新时，是会上行锁的，如果先update total值可能会导致事务处理时间过长
 
 ## having的使用
 
@@ -75,6 +78,16 @@
 select 网站名称, **SUM(点击数)**   
 from Log where 网站名称!='D'   
 group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)  
+
+## group by
+
+* 全字段排序：查询条件是索引，但是order by 条件不是，会先遍历索引，再回表取值，每次取到数据就丢sort_buffer，完了之后在sort_buffer里根据order by条件排序 （利用sort_buffer + 临时表），会根据数据量采用内存排序或者外部归并排序，
+* rowId排序：如果select的字段太多，超过设置的最大长度```max_length_for_sort_data```，就会只取主键和order by的条件丢进去sort_buffer里进行排序，最后再回表根据主键取出其他select的字段
+* 如果order by的条件正好是索引顺序，就不需要使用sort_buffer进行排序了，直接使用索引顺序即可
+* order by rand()，随机排序，使用内存临时表，使用rowId + 随机数进行排序
+* 不带查询条件进行order by，就算order by条件是索引，是不一定会走索引进行排序，原因是如果MySQL优化器判断走索引后要去回表数量太大，就不会走
+* 带limit的order by，mysql会采用堆排
+* 默认的临时内存表是16M，由```tmp_table_size```设置
 
 ## 日期类查询
 
