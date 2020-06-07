@@ -1,4 +1,24 @@
-# 数据类型及常用命名
+# 数据类型及结构
+
+## string
+
+
+
+## list
+
+
+
+## set
+
+
+
+## hash
+
+
+
+## zset
+
+
 
 [一文揭秘单线程的Redis为什么这么快?](https://zhuanlan.zhihu.com/p/57089960?utm_source=wechat_session&utm_medium=social&utm_oi=632939468966072320)
 
