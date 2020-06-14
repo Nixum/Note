@@ -320,7 +320,17 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
   * 查看 information_schema.innodb_trx表可以看到事务具体的状态
 
 
-* 使用show engine innodb status
+* 使用```show engine innodb status```查看数据库请求情况
+
+* 使用```show status like 'innodb_row_lock%';```查询行锁竞争情况
+
+* 使用```show status like 'table%';```查询表锁竞争情况
+
+* ```select trx_id,trx_state,trx_started,trx_wait_started,trx_operation_state,trx_tables_in_use,trx_rows_locked,trx_rows_modified,trx_query from information_schema.innodb_trx;```查询当前事务情况
+
+* ```select * from information_schema.innodb_lock_waits;```查看锁等待对应关系
+
+*  ```select * from information_schema.innodb_locks;```查看当前出现的锁
 
 * 当有语句执行过久或有语句一直被阻塞时，可以kill掉它
 
@@ -511,6 +521,7 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 2. 如果查询的对象不存在，会在该查询条件所在的位置的前后遇到的第一个存在的数据的这段范围加上间隙锁
 3. 索引上的等值查询，如果是唯一索引，加的是行锁，如果非唯一索引，需要访问到第一个不满足条件的值，这个范围加上间隙锁（左开右开）
 4. 范围查询上，无论是否是唯一索引，范围查询都需要访问到第一个不满足条件的值为止，在这个范围加间隙锁（左开右闭）
+5. 锁是加在索引上的，根据where条件依次加上，比如有表A，索引为id、a、b，当update时的条件是where a=xx时，会对索引a、id、b的顺序加锁
 
 以上规则需要组合起来使用，InnoDB会对扫描过的行都加上行锁和间隙锁，所以如果查询条件不是索引，此时锁的是整张表，因此也可以理解锁是加在索引上的。
 
