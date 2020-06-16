@@ -425,7 +425,7 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 * DEFAULT：默认隔离级别，即使用底层数据库默认的隔离级别；
 
-* READ_UNCOMMITTED：未提交读，保证了读取过程中不会读取到非法数据。隔离级别在于处理多事务的并发问题
+* READ_UNCOMMITTED：未提交读，一个事务未提交时，它的变更可以被其他事务看到
 
   可能出现 脏读、不可重复读、丢失更新、幻读；
 
@@ -472,8 +472,9 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 ## 4.事务相关命令
 
-1. 显示启动事务，使用begin或strart transaction启动事务，commit提交事务，rollback回滚
-2. set autocommit=0，关掉自动提交，只要执行了任意语句，事务就开启了，并且不会自动提交，直到显示使用commit、rollback或断开连接，一般是使用set autocommit=1，开启事务，再commit提交事务，执行commit work and chain则提交事务并开启下一次事务
+1. 显式启动事务，使用begin或strart transaction启动事务，commit提交事务，rollback回滚
+2. set autocommit=0，关掉自动提交，任何语句执行都需要显式的提交(主动commit或rollback)才算执行完成
+3. set autocommit=1，执行任意一条语句都会默认开启单次事务执行完成后隐式提交，事务也可以显式开启，直到显示使用commit、rollback或断开连接。一般是使用set autocommit=1，开启事务，再commit提交事务，执行commit work and chain则提交事务并开启下一次事务
 
 # 5.锁
 
