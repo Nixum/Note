@@ -5,7 +5,7 @@
 
 ## MySQL逻辑架构图
 
-![](G:\git repository\Java-Note\Note\picture\MySQL逻辑结构图.jpg)
+![](https://github.com/Nixum/Java-Note/blob/master/Note/picture/MySQL逻辑结构图.jpg)
 
 * 连接器：负责跟客户端建立连接、获取权限、维持和管理连接。登录进去后修改权限，默认是将在下一次登录后生效
 * 查询缓存：MySQL接收到查询请求后会先查询缓存，key是查询语句，value是查询结果，之后经过执行器的权限判断再返回，如果查不到则往后走。不建议使用，因为若有更新操作，会删除对应表的缓存，可能导致缓存命中低，可以设置query_cache_type=demand，默认不使用缓存，需要在查询时显示指定。MySQL8.0删除此功能
