@@ -835,6 +835,8 @@ ResultSet下标从1开始
 
 [CyC2018/CS-Notes/MySQL](https://github.com/CyC2018/CS-Notes/blob/master/docs/notes/MySQL.md)
 
+[Innodb中的事务隔离级别和锁的关系](https://tech.meituan.com/2014/08/20/innodb-lock.html)
+
 [极客时间 - MySQL实战45讲]()
 
 后记
