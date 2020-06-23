@@ -32,7 +32,7 @@ SpringBoot自动配置流程：
 * **EnableAutoConfigurationImportSelector**类里有个SpringFactoriesLoader工厂加载器，通过里面的loadFactoryNames方法，传入**工厂类名称**和**对应的类加载器**，加载该类加器搜索路径下的指定文件**spring.factories文件**，传入的工厂类为接口，而文件中对应的类则是接口的实现类，或最终作为实现类，得到这些类名集合后，通过**反射**获取这些类的类对象、构造方法，最终生成实例。
 * 因此只要在maven中加入了所需依赖，根据spring.factories文件里的key-value，能够在类路径下找到对应的class文件，就会触发自动配置
 
-![SpringBoot启动流程](https://github.com/Nixum/Java-Note/blob/master/Note/picture/SpringBoot启动流程.png)
+![SpringBoot启动流程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/SpringBoot启动流程.png)
 
 参考[SpringBoot启动流程解析](https://www.cnblogs.com/trgl/p/7353782.html)
 

@@ -32,7 +32,7 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 ### 容器网络
 
-![](https://github.com/Nixum/Java-Note/blob/master/Note/picture/容器网络.png)
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/容器网络.png)
 
 在 Linux 中，能够起到虚拟交换机作用的网络设备，是网桥（Bridge）。它是一个工作在数据链路层（Data Link）的设备，主要功能是根据 MAC 地址来将数据包转发到网桥的不同端口（Port）上，因此Docker 项目会默认在宿主机上创建一个名叫 docker0 的网桥，凡是连接在 docker0 网桥上的容器，就可以通过它来进行通信。
 
@@ -46,7 +46,7 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 容器相当于进程，Kubernetes相当于操作系统
 
-![](https://github.com/Nixum/Java-Note/blob/master/Note/picture/k8s项目架构.jpg)
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/k8s项目架构.jpg)
 
 kubelet 负责管理运行时的容器，这个交互的依赖是CRI的远程调用接口（接口定义了容器运行时的各项核心操作），OCI则是容器运行时对底层操作系统的规范，CRI就是将请求翻译成对底层系统的操作
 
@@ -317,7 +317,7 @@ Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示
 
 k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在etcd里的完整资源路径是由Group（API 组）、Version（API 版本）和 Resource（API 资源类型）三个部分组成的
 
-![](https://github.com/Nixum/Java-Note/blob/master/Note/picture/API对象树形结构.png)
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/API对象树形结构.png)
 
 ```
 apiVersion: batch/v2alpha1
@@ -373,7 +373,7 @@ spec:
 
 控制器的原理：
 
-![](https://github.com/Nixum/Java-Note/blob/master/Note/picture/控制器工作流程.png)
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/控制器工作流程.png)
 
 控制器通过APIServer获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应
 

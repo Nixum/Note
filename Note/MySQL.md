@@ -5,7 +5,7 @@
 
 ## MySQL逻辑架构图
 
-![](https://github.com/Nixum/Java-Note/blob/master/Note/picture/MySQL逻辑结构图.jpg)
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/MySQL逻辑结构图.jpg)
 
 * 连接器：负责跟客户端建立连接、获取权限、维持和管理连接。登录进去后修改权限，默认是将在下一次登录后生效
 * 查询缓存：MySQL接收到查询请求后会先查询缓存，key是查询语句，value是查询结果，之后经过执行器的权限判断再返回，如果查不到则往后走。不建议使用，因为若有更新操作，会删除对应表的缓存，可能导致缓存命中低，可以设置query_cache_type=demand，默认不使用缓存，需要在查询时显示指定。MySQL8.0删除此功能
@@ -209,7 +209,7 @@ b+树：表的数据为叶子节点，非叶子节点为索引，有两条路径
 
 注意
 
-![B+树](https://github.com/Nixum/Java-Note/blob/master/Note/picture/B+树.png)
+![B+树](https://github.com/Nixum/Java-Note/raw/master/Note/picture/B+树.png)
 
 注：
 
@@ -220,7 +220,7 @@ b+树：表的数据为叶子节点，非叶子节点为索引，有两条路径
 
 b-树，也称b树：所有节点为表的数据，只有一条路，从根节点开始
 
-![B树](https://github.com/Nixum/Java-Note/blob/master/Note/picture/B树.png)                                                                                
+![B树](https://github.com/Nixum/Java-Note/raw/master/Note/picture/B树.png)                                                                                
 
 ### 为什么说B+树比B树更适合数据库索引
 
@@ -665,7 +665,7 @@ bin log上会记录每台机子的server id，用于避免循环复制
 - **I/O 线程** ：负责从主服务器上读取二进制日志，并写入从服务器的重放日志（replay log）中。
 - **SQL 线程** ：负责读取replay log日志并重放其中的 SQL 语句。MySQL 5.6前只支持单线程，5.6后改为多线程，SQL线程分为container对事务进行分发，调度不同的worker线程进行执行，分发策略：1、更新同一行的两个事务，必须被分发到同一个worker；2、同一个事务不能被拆开，必须在同一worker中执行
 
-![MySQL主从复制](https://github.com/Nixum/Java-Note/blob/master/Note/picture/MySQL主从复制.png)
+![MySQL主从复制](https://github.com/Nixum/Java-Note/raw/master/Note/picture/MySQL主从复制.png)
 
 针对复制同步带来的读延时问题，可以采取 一主多从，主写从读，分散压力；利用好缓存中间件；持久化层的处理
 

@@ -37,7 +37,7 @@
 
 # 一、Collection
 
-![javaCollection类图简版](https://github.com/Nixum/Java-Note/blob/master/Note/picture/collection类图.png)
+![javaCollection类图简版](https://github.com/Nixum/Java-Note/raw/master/Note/picture/collection类图.png)
 
 ## 1. Set
 
@@ -235,7 +235,7 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 
 # 二、Map
 
-![Map类图](https://github.com/Nixum/Java-Note/blob/master/Note/picture/Map类图.png)
+![Map类图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Map类图.png)
 
 ### HashMap
 
@@ -288,11 +288,11 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 
 1.8之前，数组的每一个元素中存放一条链表：
 
-![1.8之前的HashMap](https://github.com/Nixum/Java-Note/blob/master/Note/picture/1.7HashMap.jpg)
+![1.8之前的HashMap](https://github.com/Nixum/Java-Note/raw/master/Note/picture/1.7HashMap.jpg)
 
 1.8，数组中的每一个元素存放一条链表，当链表的长度超过8（默认）之后，将链表转换成红黑树，以减少搜索时间
 
-![1.8HashMap](https://github.com/Nixum/Java-Note/blob/master/Note/picture/1.8HashMap.jpg)
+![1.8HashMap](https://github.com/Nixum/Java-Note/raw/master/Note/picture/1.8HashMap.jpg)
 
 #### 2.创建过程
 
@@ -439,7 +439,7 @@ new capacity : 00100000
   - 也是延迟初始化，当第一次put的时候，执行第一次hash取模定位segment的位置，如果segment没有初始化，因为put可能出现并发操作，则通过CAS赋值初始化，之后执行第二次hash取模定位HashEntry数组的位置，通过继承 ReentrantLock的tryLock() 方法尝试去获取锁，如果获取成功就直接插入相应的位置，如果已经有线程获取该segment的锁，那当前线程会以自旋的方式去继续的调用 tryLock() 方法去获取锁，超过指定次数就挂起，等待唤醒
   - size（统计键值对数量）操作：因为存在并发的缘故，size的可能随时会变，ConcurrentHashMap采用的做法是先采用不加锁的模式，尝试计算size的大小，比较前后两次计算的结果，结果一致就认为当前没有元素加入，计算的结果是准确的，尝试次数是 3 次，如果超过了 3 次，则会对segment加锁，锁住对segment的操作，之后再统计个数
 
-![1.7concurrentHashMap](https://github.com/Nixum/Java-Note/blob/master/Note/picture/1.7concurrentHashMap.jpg)
+![1.7concurrentHashMap](https://github.com/Nixum/Java-Note/raw/master/Note/picture/1.7concurrentHashMap.jpg)
 
 - JDK1.8 
   - 采用CAS和synchronized来保证并发安全，更接近HashMap

@@ -19,7 +19,7 @@
 
   A ----> B ： A use B （虚线+箭头）
 
-![A use B](https://github.com/Nixum/Java-Note/blob/master/Note/picture/UML-use.png)
+![A use B](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-use.png)
 
 ### 2. 关联（Association）
 
@@ -31,7 +31,7 @@
 
 A ——————> B ： A has B （实心线 + 箭头）
 
- ![A has B](https://github.com/Nixum/Java-Note/blob/master/Note/picture/UML-association.png)
+ ![A has B](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-association.png)
 
 ### 3. 聚合（Aggregation）
 
@@ -39,7 +39,7 @@ A ——————> B ： A has B （实心线 + 箭头）
 
 A <>—————— B :   A是集体，B是个体 （实线 + 空心菱形）
 
-  ![A是集体，B是个体](https://github.com/Nixum/Java-Note/blob/master/Note/picture/UML-aggregation.png)
+  ![A是集体，B是个体](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-aggregation.png)
 
 ### 4. 组合（Composition）
 
@@ -47,7 +47,7 @@ A <>—————— B :   A是集体，B是个体 （实线 + 空心菱形）
 
 A <#>———— B： A是整体，B是部分  （实线线 + 实心菱形）
 
-  ![A是整体，B是部分](https://github.com/Nixum/Java-Note/blob/master/Note/picture/UML-composition.png)
+  ![A是整体，B是部分](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-composition.png)
 
 ### 5. 泛化
 
@@ -55,12 +55,12 @@ A <#>———— B： A是整体，B是部分  （实线线 + 实心菱形）
 
 A ——————|> B : A继承了B  （实心线 + 空心三角箭头）
 
-![A继承了B](https://github.com/Nixum/Java-Note/blob/master/Note/picture/UML-generalization.png)
+![A继承了B](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-generalization.png)
 
 #### 5.2. 实现（Implementation）
 
 A --------------|> B : A实现了接口B （虚心线 + 空心三角箭头）
 
-![A实现了接口B](https://github.com/Nixum/Java-Note/blob/master/Note/picture/UML-implementation.png)
+![A实现了接口B](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-implementation.png)
 
 PS：为了方便，继承和接口实现也都可以用实线加空心三角箭头

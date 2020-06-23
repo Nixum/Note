@@ -94,7 +94,7 @@
 
 ## 1.状态转换
 
-![线程状态转换](https://github.com/Nixum/Java-Note/blob/master/Note/picture/线程状态转换.png)
+![线程状态转换](https://github.com/Nixum/Java-Note/raw/master/Note/picture/线程状态转换.png)
 
 “阻塞”与“等待”的区别：
 “阻塞”状态是等待着获取到一个排他锁，进入“阻塞”状态都是被动的，离开“阻塞”状态是因为其它线程释放了锁，不阻塞了；
