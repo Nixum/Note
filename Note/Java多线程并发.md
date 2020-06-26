@@ -1,61 +1,3 @@
-- [线程与进程的区别](#%E7%BA%BF%E7%A8%8B%E4%B8%8E%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%8C%BA%E5%88%AB)
-  - [进程](#%E8%BF%9B%E7%A8%8B)
-  - [线程](#%E7%BA%BF%E7%A8%8B)
-  - [区别](#%E5%8C%BA%E5%88%AB)
-
-- [线程的状态](#%E7%BA%BF%E7%A8%8B%E7%9A%84%E7%8A%B6%E6%80%81)
-  - [1.状态转换](#1%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2)
-  - [2. 状态](#2-%E7%8A%B6%E6%80%81)
-
-- [死锁](#%E6%AD%BB%E9%94%81)
-  - [死锁产生的条件](#%E6%AD%BB%E9%94%81%E4%BA%A7%E7%94%9F%E7%9A%84%E6%9D%A1%E4%BB%B6)
-  - [避免死锁](#%E9%81%BF%E5%85%8D%E6%AD%BB%E9%94%81)
-  - [死锁检测工具](#%E6%AD%BB%E9%94%81%E6%A3%80%E6%B5%8B%E5%B7%A5%E5%85%B7)
-
-- [Object和Thread中关于线程的一些方法](#object%E5%92%8Cthread%E4%B8%AD%E5%85%B3%E4%BA%8E%E7%BA%BF%E7%A8%8B%E7%9A%84%E4%B8%80%E4%BA%9B%E6%96%B9%E6%B3%95)
-  - [Object类中wait()和notify()、notifyAll()](#object%E7%B1%BB%E4%B8%ADwait%E5%92%8Cnotifynotifyall)
-  - [Thread中的yield()](#thread%E4%B8%AD%E7%9A%84yield)
-  - [Thread中的 suspend() 和resume()](#thread%E4%B8%AD%E7%9A%84-suspend-%E5%92%8Cresume)
-  - [Thread类中的sleep()方法](#thread%E7%B1%BB%E4%B8%AD%E7%9A%84sleep%E6%96%B9%E6%B3%95)
-  - [Thread类中的join()方法](#thread%E7%B1%BB%E4%B8%AD%E7%9A%84join%E6%96%B9%E6%B3%95)
-  - [Condition类中的await()和signal()、signalAll()](#condition%E7%B1%BB%E4%B8%AD%E7%9A%84await%E5%92%8Csignalsignalall)
-
-- [中断](#%E4%B8%AD%E6%96%AD)
-
-- [关键字](#%E5%85%B3%E9%94%AE%E5%AD%97)
-
-  - [synchronized](#synchronized)
-
-  - [synchronized和ReentrantLock区别](#synchronized%E5%92%8Creentrantlock%E5%8C%BA%E5%88%AB)
-
-  - [volatile](#volatile)
-
-- [一些锁的概念](#%E4%B8%80%E4%BA%9B%E9%94%81%E7%9A%84%E6%A6%82%E5%BF%B5)
-
-- [线程池](#%E7%BA%BF%E7%A8%8B%E6%B1%A0)
-  - [线程池处理过程](#%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86%E8%BF%87%E7%A8%8B)
-  - [线程池调优](#%E7%BA%BF%E7%A8%8B%E6%B1%A0%E8%B0%83%E4%BC%98)
-
-- [JUC包内的一些类](#juc%E5%8C%85%E5%86%85%E7%9A%84%E4%B8%80%E4%BA%9B%E7%B1%BB)
-  - [AQS](#aqs)
-    - [同步方式](#%E5%90%8C%E6%AD%A5%E6%96%B9%E5%BC%8F)
-      - [独占式：如ReentrantLock](#%E7%8B%AC%E5%8D%A0%E5%BC%8F%E5%A6%82reentrantlock)
-      - [共享式：如Semaphore，CountDownLatch](#%E5%85%B1%E4%BA%AB%E5%BC%8F%E5%A6%82semaphorecountdownlatch)
-      - [区别](#%E5%8C%BA%E5%88%AB-1)
-  - [原子操作类](#%E5%8E%9F%E5%AD%90%E6%93%8D%E4%BD%9C%E7%B1%BB)
-    - [原理](#%E5%8E%9F%E7%90%86)
-  - [ReentrantLock](#reentrantlock)
-    - [原理](#%E5%8E%9F%E7%90%86-1)
-
-- [无同步方案](#%E6%97%A0%E5%90%8C%E6%AD%A5%E6%96%B9%E6%A1%88)
-  - [CAS](#cas)
-  - [ThreadLocal\<T\>](#threadlocal%5Ct%5C)
-    - [原理](#%E5%8E%9F%E7%90%86-2)
-
-- [参考](#%E5%8F%82%E8%80%83)
-
-  
-
 [TOC]
 
 # 线程与进程的区别
@@ -274,7 +216,13 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 # 一些锁的概念
 
-参考[java中的锁](http://www.importnew.com/19472.html)
+![java中的锁](https://github.com/Nixum/Java-Note/raw/master/Note/picture/java-锁.png)
+
+参考：
+
+[java中的锁](http://www.importnew.com/19472.html)
+
+[美团技术团队 - 不可不说的Java“锁”事](https://tech.meituan.com/2018/11/15/java-lock.html)
 
 # 线程池
 
@@ -358,13 +306,17 @@ TERMINATED：terminated()方法执行过后变成这个
 
 加锁操作发生在创建线程、工作线程在获取到任务后、工作线程没任务处理后退出、判断是否结束线程池、关闭线程池；线程池状态(ctl)的改变使用自旋+CAS判断操作
 
+> 线程池的本质是一个生产者-消费者模型，解耦了线程和任务，达到线程复用的目的。任务管理部分充当生产者的角色，当任务提交后，线程池会判断该任务后续的流转：（1）直接申请线程执行该任务；（2）缓冲到队列中等待线程执行；（3）拒绝该任务。线程管理部分是消费者，它们被统一维护在线程池内，根据任务请求进行线程的分配，当线程执行完任务后则会继续获取新的任务去执行，最终当线程获取不到任务的时候，线程就会被回收。
+
 [线程池的实现原理](https://www.cnblogs.com/a8457013/p/7819044.html)
 
-[深入理解Java线程池](https://juejin.im/entry/58fada5d570c350058d3aaad)，这篇文章写得十分详细易理解了
+[深入理解Java线程池](https://juejin.im/entry/58fada5d570c350058d3aaad)
+
+[Java线程池实现原理及其在美团业务中的实践](https://tech.meituan.com/2020/04/02/java-pooling-pratice-in-meituan.html)，这篇文章写得十分详细易理解了
 
 ## 对线程池复用的简单理解
 
-这里先不谈如何保证线程安全，只说复用。比如corePoolSize  = 5，就是内部有5个线程Worker（继承了AQS和Runnable接口），通过ThreadFactory创建，保持在一个HashSet里，任务task就是实现了Runnable接口的类。当任务数如果大于corePoolSize  ，则加入到阻塞队列workQueue中；当然如果BlockingQueue存满了，corePoolSize  线程里的任务还没执行完，会继续创建线程达到maximumPoolSize，多于corePoolSize 的线程没有被复用
+这里先不谈如何保证线程安全，只说复用。比如corePoolSize  = 5，就是内部有5个线程Worker（继承了AQS和Runnable接口），通过ThreadFactory创建，保持在一个HashSet里，任务task就是实现了Runnable接口的类。当任务数如果大于corePoolSize  ，则加入到阻塞队列workQueue中；当然如果BlockingQueue存满了，corePoolSize  线程里的任务还没执行完，会继续创建线程达到maximumPoolSize，多于corePoolSize 的线程没有被复用，当workQueue里没有任务了，并且线程池里也没其他任务了，这个时候就会等待keepAliveTime之后对线程进行回收。复用指的是对于接下来要执行的一系列任务，可以通过几个线程来执行，而不用重复的开启线程结束线程、一个任务对应一个线程。
 
 线程worker的run方法里通过**直接获取任务**或者**从阻塞队列workQueue里获取任务**作为**循环**条件来执行**任务的run方法**来达到线程重用，注意不是start方法
 
@@ -476,6 +428,8 @@ CAS + 自旋保证
 # 无同步方案
 
 ## CAS
+
+Compare-and-Swap, 是一种算法，CAS 指令需要有 3 个操作数，分别是内存地址 V、旧的预期值 A 和新值 B。当执行操作时，只有当 V 的值等于 A，才将 V 的值更新为 B。
 
 ## ThreadLocal\<T\>
 
