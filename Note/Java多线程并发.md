@@ -340,7 +340,7 @@ TERMINATED：terminated()方法执行过后变成这个
 
   还有一个`双端队列（遵循FIFO）`用于存放资源堵塞的线程，被阻塞的线程加入队尾，队列头结点释放锁时，唤醒后面结点
 
-* AQS提供了一些同步组件，如下面提到的方法，使我们能制作自定义同步组件，像ReentrantLock的公平锁非公平锁就是分别重写tryAcquire()和tryRelease()方法
+* AQS提供了一些同步组件，如下面提到的方法，使我们能制作自定义同步组件，公平锁和非公平锁是通过FairSync类和NonFairSync内部类实现的，独占式和共享式就是实现了这两个类的tryAcquire - tryRelease方法或tryAcquireShared-tryReleaseShared，像ReentrantLock是独占式就只实现了tryAcquire - tryRelease方法
 
 * AQS内部有两种队列，一种是同步队列，用于锁的获取和释放时使用；一种是等待队列，用于Condition类，每个Condition对应一个队列
 
@@ -408,6 +408,8 @@ singal()：判断当前线程是否持有锁，没有则抛异常，有的话唤
 [深入剖析基于并发AQS的重入锁(ReetrantLock)及其Condition实现原理](https://juejin.im/entry/59756e5051882566d86d8a5d)
 
 [(JDK)ReetrantLock手撕AQS](https://zhuanlan.zhihu.com/p/54297968?utm_source=wechat_session&utm_medium=social&utm_oi=632939468966072320)
+
+[从ReentrantLock的实现看AQS的原理及应用](https://tech.meituan.com/2019/12/05/aqs-theory-and-apply.html)
 
 ## 原子操作类
 
