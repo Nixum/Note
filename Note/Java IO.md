@@ -208,14 +208,24 @@ import java.util.Iterator;
 import java.util.Set;
 
 public class NIOServer {
-  public static void main(String[] args) throws Exception{
-    ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
-    Selector selector = Selector.open();
-    serverSocketChannel.socket().bind(new InetSocketAddress(8080));
-    // 需要显式设置为非阻塞
-    serverSocketChannel.configureBlocking(false);
-    // 注册serverSocketChannel，触发事件为 OP_ACCEPT，用于建立连接
-    serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+  private ServerSocketChannel serverSocketChannel;
+  private Selector selector;
+
+  public NIOServer(int port) {
+    try {
+      serverSocketChannel = ServerSocketChannel.open();
+      selector = Selector.open();
+      serverSocketChannel.socket().bind(new InetSocketAddress(port));
+      // 需要显式设置为非阻塞
+      serverSocketChannel.configureBlocking(false);
+      // 注册serverSocketChannel，触发事件为 OP_ACCEPT，用于建立连接
+      serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  public void run() throws Exception {
     while (true) {
       // 等待1s获取事件，这样一次性可以获取多个事件进行处理，如果没有则继续
       if(selector.select(1000) == 0) {
@@ -225,35 +235,48 @@ public class NIOServer {
       // 监听到事件发生， 获取发生的事件集合
       Set<SelectionKey> selectionKeys = selector.selectedKeys();
       Iterator<SelectionKey> keyIterator = selectionKeys.iterator();
-        
+
       // 判断事件的类型
       while (keyIterator.hasNext()) {
         SelectionKey key = keyIterator.next();
         // 触发的是OP_ACCEPT事件
         if (key.isAcceptable()) {
-          // 建立连接
-          SocketChannel socketChannel = serverSocketChannel.accept();
-          // 将SocketChannel 设置为非阻塞
-          socketChannel.configureBlocking(false);
-          // 建立连接后，将socketChannel注册到selector，初始化一个Buffer用来装数据，发送OP_READ给selector，当selector收到OP_READ事件后，就会使用该socketChannel处理该Buffer
-          socketChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(1024));
+          connectionHandler(selector, serverSocketChannel);
         }
         // 触发OP_READ事件
         if (key.isReadable()) {
-          // 获取处理该事件的channel
-          SocketChannel channel = (SocketChannel) key.channel();
-          // 获取该channel关联的Buffer
-          ByteBuffer buffer = (ByteBuffer) key.attachment();
-          // 将channel里的数据读到buffer里
-          channel.read(buffer);
-          System.out.println("接收到请求是：" + new String(buffer.array()));
+          readHandler(key);
         }
         // 将处理完的事件集合移除，防止重复操作
         keyIterator.remove();
       }
-	  // 处理完事件集合
+      // 处理完事件集合
     }
-	// 退出
+  }
+
+  private void connectionHandler(Selector selector, ServerSocketChannel serverSocketChannel) throws Exception {
+    // 建立连接
+    SocketChannel socketChannel = serverSocketChannel.accept();
+    // 将SocketChannel 设置为非阻塞
+    socketChannel.configureBlocking(false);
+    // 建立连接后，将socketChannel注册到selector，初始化一个Buffer用来装数据，发送OP_READ给selector，当selector收到OP_READ事件后，就会使用该socketChannel处理该Buffer
+    socketChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(1024));
+  }
+
+  private void readHandler(SelectionKey key) throws Exception {
+    // 获取处理该事件的channel
+    SocketChannel channel = (SocketChannel) key.channel();
+    // 获取该channel关联的Buffer
+    ByteBuffer buffer = (ByteBuffer) key.attachment();
+    // 将channel里的数据读到buffer里
+    channel.read(buffer);
+    System.out.println("接收到请求是：" + new String(buffer.array()));
+  }
+
+  public static final int PORT = 8080;
+  public static void main(String[] args) throws Exception{
+    NIOServer server = new NIOServer(PORT);
+    server.run();
   }
 }
 ```
@@ -299,17 +322,40 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 
 ### 1. 单Reactor单线程
 
+![单Reactor单线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/单Reactor单线程模型.jpg)
 
+* Acceptor实际上也是一个Handler，只是处理的事件不同，当Reactor收到(select)连接事件时调用
+* 当Reactor收到(select)非连接事件，比如读事件、写事件、处理其他业务的事件等，会起一个handler来处理
+* 当Handler处理完当前事件后，将下一次要处理的事件和相关参数丢给Reactor进行select和dispatch
+* 单线程模型，天然是线程安全的，但是当handler处理过慢时就会造成事件堆积，阻塞主线程(Reactor)，处理能力下降，因此要求handler处理尽可能的快。
+* 异常处理要小心，否则会导致整个线程垮掉
+* 比如上面NIO的例子就是这个模型，当业务复杂时，也可将handler抽出。不同的Handler类实现不同的业务处理，再配合对象池实现复用
 
 ### 2. 单Reactor多线程
 
+![单Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/单Reactor多线程模型.jpg)
 
+* 在单Reactor单线程模型的基础上，因为Handler的处理流程相对固定，就将比较耗时的业务处理包装成任务交由线程池处理，加快Handler的处理速度
+* 实际上如果只是在Handler处将业务逻辑交给线程池去做，在同步等待结果，只是一种伪异步，本质上Handler还是要等任务执行完才能执行send操作。优化的方法是先将Handler存起来，把业务处理提交给线程池后，就结束handler的执行了，这样就能把主线程释放出来，处理其他事件。当线程池里的任务执行完，只需将结果、handlerId、事件交由Reactor，Reactor根据事件和HandlerId找到对应的Handler去响应结果就可以了。
+* 由于业务处理使用了多线程，需要注意共享数据的问题，处理起来会比较复杂，线程安全只存在于Reactor所在的线程
+* Reactor需要处理的事件变多，高并发下容易出现性能瓶颈
 
 ### 3. 主从Reactor多线程
+
+![多Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/多Reactor多线程模型.jpg)
+
+* 在单Reactor多线程模型的基础上，将Handler下沉处理，通过子Reactor来提高并发处理能力。Acceptor处理连接事件后，将连接分配给SubReactor处理，例如一个连接对应一个SubReactor，SubReactor负责处理连接后的业务处理，可以把这层理解为单Reactor多线程模型的Reactor
+* 由于又多了一层，线程处理更加复杂，同一Reactor下才能保证线程安全，不同Reactor间要注意数据共享问题
 
 # Netty
 
 对NIO的包装，简化NIO的使用，基于主从Reactor多线程模型，事件驱动
+
+![Netty线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Netty线程模型.jpg)
+
+Demo
+
+
 
 # 参考：
 
