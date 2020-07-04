@@ -456,7 +456,41 @@ spec:
 
 在lifecycle里的postStart，指的是容器启动后，要执行的操作，但是它不是串行的，即在docker的ENTRYPOINT命令执行后就开始执行了，此时ENTRYPOINT命令执行的动作可能还没完成；preStart，指的是在容器被杀死之前，要执行的操作，只有这个动作执行完成，才允许容器被杀死
 
+### 常用命令
 
+```
+
+查看所有Pod等，也可将pod换成cm、svc，下同
+kubectl get pod -A
+
+查看某个configmap的内容
+kubectl describe configmap [confing名字] -n [命名空间]
+
+将更新的configmap内容更新到etcd中
+kubectl apply -f [文件名]
+
+删除pod
+kubectl delete pod [pod名称] -n [命名空间]
+
+删除整个命名空间, 同时会把命名空间内所有的pod、svc、deployment等删掉
+kubectl delete ns [命名空间]
+
+查看所有Pod以及ip之类的信息
+kubectl get pods --all-namespaces -o wide
+
+进入pod里的指定容器, sh打开命令行
+kubectl exec [pod名称] -n [名称空间] -c [pod内容器名称] -it sh
+
+查看pod 的event
+kubectl get event -n [名称空间]
+
+查看容器日志
+kubectl logs [pod名称] -n [名称空间] -c [pod内容器名称] -f
+
+查看pod的yaml内容，pod、cm、svc等，也可将yaml换成json，即以json的格式查看
+kubectl get pod [pod名称] -n [命名空间] -o yaml
+
+```
 
 ## 参考
 
