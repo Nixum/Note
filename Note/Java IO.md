@@ -351,7 +351,7 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 
 对NIO的包装，简化NIO的使用，基于主从Reactor多线程模型，事件驱动
 
-![Netty线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Netty线程模型.jpg)
+![Netty线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/netty线程模型.jpg)
 
 Demo
 
