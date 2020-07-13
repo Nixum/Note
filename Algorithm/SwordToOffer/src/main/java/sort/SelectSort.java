@@ -5,7 +5,7 @@ import org.junit.Test;
 import java.util.Arrays;
 
 /**
- * 选择排序
+ * 选择排序，不稳定排序
  * 取第i个，与i后面的数进行比较，找出这一趟中最小的，与 i 交换
  *
  * 最好/最差/时间复杂度 O(n^2)  空间复杂度 O(1)

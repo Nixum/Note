@@ -33,12 +33,14 @@ public class QuickSort {
      *  实质上，每次递归都会以基数为中心，小的在基数左边，大的在基数右边，当数组足够小的时候，就是有序的了
      */
     private static void sort(int[] array, int left, int right) {
+        // 递归终止条件
         if (left >= right) {
             return ;
         }
         int l = left, h = right;
         int temp = array[l];
         while (l < h) {
+            // 一定要先从后往前找，记得要取等号，否则无法处理重复数字
             while (array[h] >= temp && l < h) {
                 h--;
             }
@@ -49,7 +51,7 @@ public class QuickSort {
             array[h] = array[l];
         }
         array[l] = temp;
-        sort(array, left, l - 1);
+        sort(array, left, l - 1); // 减一是为了排除掉排好的基数，不减也没关系，会算多一次而已
         sort(array, l + 1, right);
     }
 }

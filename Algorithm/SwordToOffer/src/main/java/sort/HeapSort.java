@@ -91,7 +91,7 @@ public class HeapSort {
     }
 
     /**
-     * 调整堆，使其满足大根堆的定义，即根结点大于左右结点
+     * 调整堆，找到该树中比根节点大的数，然后交换，且要满足大根堆的定义，即所有子树的根结点大于左右结点
      * 注意这是在数组已经是大根堆的前提下
      */
     private void adjust(int[] array, int rootIndex, int length) {
@@ -105,6 +105,7 @@ public class HeapSort {
             // 大的结点和根节点交换
             if (array[i] > temp) {
                 array[rootIndex] = array[i];
+                // 根节点变更
                 rootIndex = i;
             } else {
                 // 直到左右结点都比根结点小
