@@ -2,9 +2,8 @@ package other;
 
 import org.junit.Test;
 
-import java.util.*;
-
-import javax.swing.plaf.synth.SynthSpinnerUI;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TestOther {
 

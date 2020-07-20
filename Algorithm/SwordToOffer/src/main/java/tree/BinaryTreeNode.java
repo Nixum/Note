@@ -87,7 +87,7 @@ public class BinaryTreeNode {
             return ;
         Queue<BinaryTreeNode> queue = new LinkedList<>();
         queue.offer(root);
-        while (queue.isEmpty() == false) {
+        while (!queue.isEmpty()) {
             BinaryTreeNode node = queue.poll();
             System.out.print(node.value + " ");
             if (node.leftNode != null)

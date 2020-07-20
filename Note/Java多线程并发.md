@@ -228,7 +228,7 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 为了解决无限创建线程产生的问题，采用线程池来管理，减少在创建和销毁线程上所消耗的时间以及系统资源的开销，解决资源不足的问题。如果不使用线程池，有可能造成系统创建大量同类线程而导致消耗完内存或者“过度切换”的问题
 
-线程池 Executors静态类
+**线程池 Executors静态类**，工厂方法生成以下线程池
 
 ​	newCachedThreadPool：核心数是0，最大数是Integer.MAX_VALUE，使用SynchronousQueue，不存储任务。对于每个任务，如果有空闲线程可用，立即让他执行任务，如果没有可用得空闲线程，则创建新线程，空闲线程超时设置是1分钟，线程池可无限扩展。容易造成堆外内存溢出，一般用于大量短期任务
 
@@ -316,7 +316,7 @@ TERMINATED：terminated()方法执行过后变成这个
 
 ## 对线程池复用的简单理解
 
-这里先不谈如何保证线程安全，只说复用。比如corePoolSize  = 5，就是内部有5个线程Worker（继承了AQS和Runnable接口），通过ThreadFactory创建，保持在一个HashSet里，任务task就是实现了Runnable接口的类。当任务数如果大于corePoolSize  ，则加入到阻塞队列workQueue中；当然如果BlockingQueue存满了，corePoolSize  线程里的任务还没执行完，会继续创建线程达到maximumPoolSize，多于corePoolSize 的线程没有被复用，当workQueue里没有任务了，并且线程池里也没其他任务了，这个时候就会等待keepAliveTime之后对线程进行回收。复用指的是对于接下来要执行的一系列任务，可以通过几个线程来执行，而不用重复的开启线程结束线程、一个任务对应一个线程。
+这里先不谈如何保证线程安全，只说复用。比如corePoolSize  = 5，就是内部有5个线程Worker（继承了AQS和Runnable接口），通过ThreadFactory创建，保持在一个HashSet里，任务task就是实现了Runnable接口的类。当任务数如果大于corePoolSize  ，则加入到阻塞队列workQueue中；当然如果BlockingQueue存满了，corePoolSize 个线程里的任务还没执行完，会继续创建线程达到maximumPoolSize，多于corePoolSize 的线程没有被复用，当workQueue里没有任务了，并且线程池里也没其他任务了，这个时候就会等待keepAliveTime之后对线程进行回收。复用指的是对于接下来要执行的一系列任务，可以通过几个线程来执行，而不用重复的开启线程结束线程、一个任务对应一个线程。
 
 线程worker的run方法里通过**直接获取任务**或者**从阻塞队列workQueue里获取任务**作为**循环**条件来执行**任务的run方法**来达到线程重用，注意不是start方法
 
@@ -344,7 +344,7 @@ TERMINATED：terminated()方法执行过后变成这个
 
 * AQS内部有两种队列，一种是同步队列，用于锁的获取和释放时使用；一种是等待队列，用于Condition类，每个Condition对应一个队列
 
-* AQS内控制线程阻塞和唤醒使用的是Unsafe类里native方法，就是下面的park、unpark方法
+* AQS内控制线程阻塞和唤醒使用的是Unsafe类里native方法，如park、unpark方法
 
 ### 同步方式
 

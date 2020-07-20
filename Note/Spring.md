@@ -175,7 +175,7 @@ public interface InvocationHandler {
 }
 ```
 
-还有java.lang.reflect包中的Proxy类的newProxyInstance方法,，他是静态的，作用是为被代理类构建代理类，并返回，在这个动态生成的代理类中已经织入了InvocationHandler h，而它又持有被代理类，对代理对象的所有接口方法调用都会转发到InvocationHandler.invoke()方法
+还有java.lang.reflect包中的Proxy类的newProxyInstance方法,，他是静态的，作用是为被代理类构建代理类，并返回，在这个动态生成的代理类中已经织入了InvocationHandler，而它又持有被代理类，对代理对象的所有接口方法调用都会转发到InvocationHandler.invoke()方法
 
 ```java
 public static Object newProxyInstance(ClassLoader loader,	// 被代理类的类加载器，如上面B类的类加载器

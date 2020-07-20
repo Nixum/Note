@@ -31,7 +31,7 @@ private static final Object PRESENT = new Object();
 
 #### 1.分类
 
-注：无界指的是在创建队列时，不能指定队列最大容量
+注：有界指的是，对阻塞队列初始化时**必须**指明队列大小
 
 | 名称                  | 说明                                                         |
 | --------------------- | ------------------------------------------------------------ |
@@ -411,12 +411,11 @@ static final int hash(Object key) {
 
 #### 4.扩容
 
-但加入到HashMap中的元素越来越多时，碰撞的概率也越来越高，链表的长度变长，查找效率降低，此时就需要对数组进行扩容。HashMap根据键值对的数量，来调整数组长度，保证查找效率
+当加入到HashMap中的元素越来越多时，碰撞的概率也越来越高，链表的长度变长，查找效率降低，此时就需要对数组进行扩容。HashMap根据键值对的数量，来调整数组长度，保证查找效率
 
 在两种情况下，HashMap会进行扩容
 
-* 当put操作时，键值对 的数量超过阈值 threshold（容量x负载因子），JDK1.7、1.8都是
-* 链表长度多于8，但数组长度没达到64（JDK1.8）；达阈值且发生哈希冲突（JDK1.7）
+* 当put操作时，数组大小超过阈值 threshold（容量 x 负载因子），JDK1.7、1.8都是
 
 ```java
 final Node<K,V>[] resize()；
@@ -473,14 +472,16 @@ new capacity : 00100000
   - 扩容的时候由于只有一个table数组，将在多线程下各个线程都会帮忙扩容，加快扩容速度
   - size操作：在扩容和addCount()方法就进行处理，而不像1.7那样要等调用的时候才计算
 
-红黑树的特性:
+**红黑树的特性**:
 （1）每个节点或者是黑色，或者是红色。
 （2）根节点是黑色。
 （3）每个叶子节点（NIL）是黑色。 [注意：这里叶子节点，是指为空(NIL或NULL)的叶子节点！]
 （4）如果一个节点是红色的，则它的子节点必须是黑色的。
 （5）从一个节点到该节点的子孙节点的所有路径上包含相同数目的黑节点。
 
-是一种平衡树，但是平衡不是非常严格，因此结点的旋转次数少，插入、删除效率高，插入、删除、搜索都是时间复杂度都是O(log2 n)
+是一种二叉平衡树，但是平衡不是非常严格，因此结点的旋转次数少，插入、删除效率高，插入、删除、搜索都是时间复杂度都是O(log2 n)
+
+插入和删除时，先理解为二叉搜索树的插入和删除，然后再进行变色，优先变色，变色后仍无法达到上面那五个特性才开始旋转，来达到上面的特性，插入时节点一般是红色
 
 # 使用Stream处理集合
 
@@ -488,11 +489,18 @@ new capacity : 00100000
 
 # 参考
 
-[Java：集合，Collection接口框架图](https://www.cnblogs.com/nayitian/p/3266090.html "")  
-[CyC2018/CS-Notes/java容器.md](https://github.com/CyC2018/CS-Notes/blob/master/docs/notes/Java%20%E5%AE%B9%E5%99%A8.md "")  
-[c.toArray might not return Object[]?](https://www.cnblogs.com/liqing-weikeyuan/p/7922306.html "")  
-[Java集合---ArrayList的实现原理](https://www.cnblogs.com/ITtangtang/p/3948555.html "")  
-[集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")  
-[JDK1.8 HashMap源码分析](https://www.cnblogs.com/xiaoxi/p/7233201.html "")  
-[【JUC】JDK1.8源码分析之CopyOnWriteArrayList（六）](https://www.cnblogs.com/leesf456/p/5547853.html "")  
-[红黑树(一)之 原理和算法详细介绍](http://www.cnblogs.com/skywang12345/p/3624343.html "")  
+[Java：集合，Collection接口框架图](https://www.cnblogs.com/nayitian/p/3266090.html "")
+
+[CyC2018/CS-Notes/java容器.md](https://github.com/CyC2018/CS-Notes/blob/master/docs/notes/Java%20%E5%AE%B9%E5%99%A8.md "")
+
+[c.toArray might not return Object[]?](https://www.cnblogs.com/liqing-weikeyuan/p/7922306.html "")
+
+[Java集合---ArrayList的实现原理](https://www.cnblogs.com/ITtangtang/p/3948555.html "")
+
+[集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")
+
+[JDK1.8 HashMap源码分析](https://www.cnblogs.com/xiaoxi/p/7233201.html "")
+
+[【JUC】JDK1.8源码分析之CopyOnWriteArrayList（六）](https://www.cnblogs.com/leesf456/p/5547853.html "")
+
+[红黑树(一)之 原理和算法详细介绍](http://www.cnblogs.com/skywang12345/p/3624343.html "")
