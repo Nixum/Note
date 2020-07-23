@@ -340,6 +340,8 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 慢查询日志中，rows_examined字段，表示某个语句执行过程中扫描了多少行
 
+[MySQL索引原理及慢查询优化](https://tech.meituan.com/2014/06/30/mysql-index.html)
+
 # 存储引擎
 
 ## 1.MyISAM
