@@ -165,15 +165,51 @@ Java内存模型是多线程情况下数据的分布
 
 ### jps：虚拟机进程状况工具
 
+用来查看机器上的Java进程，如pid，启动时的JVM参数，启动时的主类、jar包全路径名称，类似ps命令
+
+```
+无参数：显示进程ID和类名称
+-q：只输出进程ID
+-m：输出传入 main 方法的参数，即main方法的String[] args
+-l：输出完全的包名，应用主类名，jar的完全路径名
+-v：输出启动时带的jvm参数
+```
+
 ### jstat：虚拟机统计信息监视工具
+
+一般用来查看堆内gc情况，比如年轻代、老年代大小、YGC次数，平均耗时等
+
+https://www.jianshu.com/p/213710fb9e40
 
 ### jmap：Java内存印象工具
 
+用来查看堆内存的使用情况，比如输出内存中的所有对象，可以配合eclipse MAT分析内存泄漏情况
+
+https://www.cnblogs.com/huanglog/p/10302901.html
+
+官方的：https://docs.oracle.com/javase/7/docs/technotes/tools/share/jstat.html
+
 ### jhat：虚拟机堆转储快照分析工具
+
+分析由jmap导出来的堆dump文件，作用类似Eclipse MAT，但是没MAT直观
 
 ### jstack：Java堆栈跟踪工具
 
+查看方法或线程的执行情况，线程的堆栈信息，死锁检测，死锁原因
+
+https://blog.csdn.net/wufaliang003/article/details/80414267
+
+官方：https://docs.oracle.com/javase/7/docs/technotes/tools/share/jstack.html
+
 ### jinfo：Java配置信息工具
+
+实时查看和调整JVM各项参数配置，进程运行时也能改JVM的配置
+
+```
+jinfo -sysprops [pid] 查看当前JVM全部系统属性
+jinfo -flags [pid] 查看进程所有JVM参数，比jps -v更详细
+jinfo -flag [[+代表打开，-代表关闭，都不写代表查看][JVM参数][赋值使用=][JVM参数值]] [pid]
+```
 
 ## 可视化工具
 
