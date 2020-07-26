@@ -222,13 +222,15 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 ![B树](https://github.com/Nixum/Java-Note/raw/master/Note/picture/B树.png)                                                                                
 
-### 为什么说B+树比B树更适合数据库索引
+### 为什么说B+树比B树更适合MySQL数据库索引
 
 > B+树的磁盘读写代价更低：B+树的内部节点并没有指向关键字具体信息的指针，因此其内部节点相对B树更小，如果把所有同一内部节点的关键字存放在同一盘块中，那么盘块所能容纳的关键字数量也越多，一次性读入内存的需要查找的关键字也就越多，相对IO读写次数就降低了。
 >
 > B+树的查询效率更加稳定：由于非终结点并不是最终指向文件内容的结点，而只是叶子结点中关键字的索引。所以任何关键字的查找必须走一条从根结点到叶子结点的路。所有关键字查询的路径长度相同，导致每一个数据的查询效率相当。
 >
 > 由于B+树的数据都存储在叶子结点中，分支结点均为索引，方便扫库，只需要扫一遍叶子结点即可，但是B树因为其分支结点同样存储着数据，我们要找到具体的数据，需要进行一次中序遍历按序来扫，所以B+树更加适合在区间查询的情况，所以通常B+树用于数据库索引。
+>
+> B树不适合遍历数据，B树比较合适查询单一记录，常用与NoSQL的索引结构，NoSQL一般是Key-value形式的存储，文档性一般是Json存储
 
 ### 与二叉查找树、AVL树的比较
 
@@ -299,21 +301,23 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 ## 6.分析
 
-* 使用explain
-
-  Explain + SQL语句，给出该SQL语句的分析结果，看看查询的类型，有没有用到索引，是不是全表扫描
+* Explain + SQL语句，给出该SQL语句的分析结果，看看查询的类型，有没有用到索引，是不是全表扫描
 
   比较重要的字段：
 
   * **select_type**：查询类型，如 简单查询、联合查询、子查询等
-  * **type**：访问类型，ALL(全表扫描)、index(索引查询)、range(索引范围查询)、ref(表间的连接匹配条件)、const(常量)，一个好的SQL起码得达到range级
+* **type**：访问类型，ALL(全表扫描)、index(索引查询)、range(索引范围查询)、ref(表间的连接匹配条件)、const(常量)，一个好的SQL起码得达到range级
   * **Key**：索引列的名称
   * **rows**：扫描的行数
   * **extra**：额外信息说明，using index指使用到了覆盖索引，using index condition指使用了索引下推，using join buffer（block nested loop）指使用join连表，算法是block nested loop
+  
+* show processlist，此命令用于查看目前执行的sql语句执行的状态
 
-* 使用show processlist，此命令用于查看目前执行的sql语句执行的状态
+* show status，查看数据库运行的实时状态，比如查询运行期间SQL的执行次数、连接数、缓存内的线程数量、连接数等，具体看 [mysql SHOW STATUS 变量](https://www.jianshu.com/p/836f07dd89ec)
 
-* 使用performance_chema和sys系统库
+* show variables，查看系统参数，一些静态参数，比如开启慢查询，设置索引缓冲区大小，具体参考：[Mysql show variables命令详解](https://baike.xsoftlab.net/view/218.html)
+
+* performance_schema和sys系统库
 
   * MySQL启动前需要设置```performance_schema=on```，但是性能会比off少10%
 
@@ -340,7 +344,17 @@ b-树，也称b树：所有节点为表的数据，只有一条路，从根节�
 
 * 慢查询分析
 
-慢查询日志中，rows_examined字段，表示某个语句执行过程中扫描了多少行
+打开：`set global slow_query_log='ON'`，临时开启，无需重启，永久开启则在my.cnf文件里设置
+
+设置日志存放位置：`set global slow_query_log_file='/usr/local/mysql/data/slow.log';`
+
+设置超过x秒就会记录到慢查询日志中：`set global long_query_time=x;`
+
+查看慢查询相关设置：`show variables like 'slow_query%';`
+
+慢查询日志分析工具：mysqlsla、mysqldumpslow 
+
+慢查询日志中，**rows_examined**字段，表示某个语句执行过程中扫描了多少行
 
 [MySQL索引原理及慢查询优化](https://tech.meituan.com/2014/06/30/mysql-index.html)
 

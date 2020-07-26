@@ -42,6 +42,22 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 对于在不同节点的容器通信，Docker 默认配置下，一台宿主机上的 docker0 网桥，和其他宿主机上的 docker0 网桥，没有任何关联，它们互相之间也没办法连通，因此需要创建一个整个集群的公用网桥，然后把集群里的所有容器都连接到这个网桥上，即每台宿主机上有一个特殊网桥来构成这个公用网桥
 
+### dockerfile
+
+[指令详解](https://www.cnblogs.com/panwenbin-logs/p/8007348.html)
+
+* RUN
+
+后面一般接shell命令，但是会构建一层镜像
+
+要注意RUN每执行一次指令都会在docker上新键一层，如果层数太多，镜像就会太过膨胀影响性能，虽然docker允许的最大层数是127层。
+
+有多条命令可以使用&&连接
+
+* CMD
+
+要注意CMD只允许有一条，如果有多条只有最后一条会生效
+
 ## Kubernetes
 
 容器相当于进程，Kubernetes相当于操作系统
