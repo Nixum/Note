@@ -441,7 +441,9 @@ Compare-and-Swap, 是一种算法，CAS 指令需要有 3 个操作数，分别�
 
 ### 原理
 
-每个线程内部都会维护一个 静态的ThreadLocalMap对象，该对象里有一个 Entry（K-V 键值对）数组
+每个线程内部都会维护一个 静态的ThreadLocalMap对象，该对象里有一个 Entry（K-V 键值对）**数组**
+
+ThreadLocalMap不同于HashMap，其解决哈希冲突不使用拉链法，而是使用线性探测法，当出现哈希冲突时，由于key是弱引用，还会有不同的逻辑进行插入
 
 Entry 的 Key 是一个 ThreadLocal 实例，Value 是一个线程特有对象。
 
@@ -451,9 +453,9 @@ Entry 对 Key 的引用是弱引用；Entry 对 Value 的引用是强引用；
 
 每次对ThreadLocal做 get、set操作时，以get方法为例，先通过Thread.currentThread()获得当前线程，在获取该线程对象里的ThreadLocalMap，以当前对象为key(当前线程的ThreadLoacl)在ThreadLocalMap中找到value，强转返回
 
-在一些场景 (尤其是使用线程池) 下，由于 ThreadLocal.ThreadLocalMap 的底层数据结构导致 ThreadLocal 有内存泄漏的情况，应该尽可能在每次使用 ThreadLocal 后手动调用 remove()，以避免出现 ThreadLocal 经典的内存泄漏甚至是造成自身业务混乱的风险，因为ThreadLocal里的key是弱引用，当释放掉对threadlocal对象的强引用后，map里面的value没有被回收，但却永远不会被访问到了
+ThreadLocal本身有探测式清理和启发式清理过期的key，但在一些场景 (尤其是使用线程池) 下，由于 ThreadLocal.ThreadLocalMap 的底层数据结构导致 ThreadLocal 有内存泄漏的情况，应该尽可能在每次使用 ThreadLocal 后手动调用 remove()，以避免出现 ThreadLocal 经典的内存泄漏甚至是造成自身业务混乱的风险，因为ThreadLocal里的key是弱引用，当释放掉对threadlocal对象的强引用后，map里面的value没有被回收，但却永远不会被访问到了
 
-
+详细的可参考[threadlocalset方法源码详解](https://snailclimb.gitee.io/javaguide/#/docs/java/Multithread/ThreadLocal?id=threadlocalset%e6%96%b9%e6%b3%95%e6%ba%90%e7%a0%81%e8%af%a6%e8%a7%a3)
 
 # 参考
 
