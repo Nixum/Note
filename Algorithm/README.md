@@ -10,5 +10,5 @@
 
 [图解排序算法(五)之快速排序——三数取中法](http://www.cnblogs.com/chengxiao/p/6262208.html)
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/sort_info.png)
+![排序算法总结](https://github.com/Nixum/Java-Note/raw/master/Note/picture/sort_info.png)
 
