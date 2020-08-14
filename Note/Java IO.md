@@ -110,7 +110,7 @@ public class BIOClient {
 
 特点：
 
-* 同步非阻塞，通过缓冲区进行缓冲增加处理的灵活性，当某一线程里没有数据可用时，则去处理其他事情，保证线程不阻塞
+* 同步非阻塞，通过缓冲区进行缓冲增加处理的灵活性，当某一线程里**没有数据可用**时，则去处理其他事情，保证线程不阻塞
 * 由三个部分组成：Channel、Buffer、Selector
 
 * 数据总是从Channel读到Buffer中，或从Buffer写到Channel中，事件 + Selector监听Channel，实现一个线程处理多个操作。每一个Channel会对应一个Buffer、一个Selector对应多个Channel，Selector通过事件决定使用哪个Channel

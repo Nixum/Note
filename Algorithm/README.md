@@ -9,3 +9,6 @@
 [图解排序算法(四)之归并排序](http://www.cnblogs.com/chengxiao/p/6194356.html)
 
 [图解排序算法(五)之快速排序——三数取中法](http://www.cnblogs.com/chengxiao/p/6262208.html)
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/sort_info.png)
+
