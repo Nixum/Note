@@ -36,11 +36,31 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 在 Linux 中，能够起到虚拟交换机作用的网络设备，是网桥（Bridge）。它是一个工作在数据链路层（Data Link）的设备，主要功能是根据 MAC 地址来将数据包转发到网桥的不同端口（Port）上，因此Docker 项目会默认在宿主机上创建一个名叫 docker0 的网桥，凡是连接在 docker0 网桥上的容器，就可以通过它来进行通信。
 
-容器通过名叫 **Veth Pair** 的虚拟设备，将容器连接到docker0网桥上，Veth Pair是连接不同network namespace的网线
+容器通过名叫 **Veth Pair** 的虚拟设备，即容器内的eth0网卡，将容器连接到docker0网桥上，多个容器会将其Veth Pair注册到宿主机的eth0上，Veth Pair相当于是连接不同network namespace的网线，一端在容器，一端在宿主机
 
-所以网络请求实际上就是在这些虚拟设备上进行映射（经过路由表，IP转MAC，MAC转IP）和转发，到达目的地的。
+网络请求实际上就是在这些虚拟设备上进行映射（经过路由表，IP转MAC，MAC转IP）和转发，到达目的地的。
 
-对于在不同节点的容器通信，Docker 默认配置下，一台宿主机上的 docker0 网桥，和其他宿主机上的 docker0 网桥，没有任何关联，它们互相之间也没办法连通，因此需要创建一个整个集群的公用网桥，然后把集群里的所有容器都连接到这个网桥上，即每台宿主机上有一个特殊网桥来构成这个公用网桥
+所以当容器无法访问外网时，就可以检查docker0网桥是否能ping通，查看docker0和Veth Pair设备的iptables规则是否有异常
+
+同一节点内的容器通信一般流程：容器A往容器B的IP发出请求，请求先经过容器A的eth0网卡，发送一个ARP广播，找到容器B IP对应的MAC地址，宿主机上的docker0网桥，把广播转发到注册到其身上的其他容器的eth0，容器B收到该广播后把MAC地址发给docker0，docker0回传给容器A，容器A发送数据包给docker0，docker0接收到数据包后，根据数据包的目的MAC地址，将其转发到容器B的eth0，
+
+同一节点内，宿主机与容器通信一般流程：宿主机往容器的IP发出请求，这个请求的数据包先根据路由规则到达docker0网桥，转发到对应的Veth Pair设备上，由Veth Pair转发给容器内的应用
+
+一个节点内的容器访问另一个节点一般流程：其实跟同一节点内，宿主机与容器通信类似，最终会转化为节点间的通信
+
+对于在不同节点的容器通信，Docker 默认配置下，一台宿主机上的 docker0 网桥，和其他宿主机上的 docker0 网桥，没有任何关联，它们互相之间也没办法连通，因此需要创建一个整个集群的公用网桥，然后把集群里的所有容器都连接到这个网桥上，即每台宿主机上有一个特殊网桥来构成这个公用网桥，这个技术被称为overlay network（覆盖网络）
+
+解决方案有flannel、calico，其中，flannel有VXLAN、host-gw、UDP三种实现
+
+UDP模式下的跨主机通信
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
+
+在由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
+
+> UDP模式下，在发送IP包的过程，经过三次用户态与内核态的数据拷贝
+> 1. 用户态的容器进程发出IP包经过docker0网桥进入内核态
+> 2. IP包根据路由表进入flannel0设备，从而回到用户态的flanneld进程
+> 3. flanneld进行UDP封包后重新进入内核态，将UDP包通过宿主机的eth0发送出去
 
 ### dockerfile
 
