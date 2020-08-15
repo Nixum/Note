@@ -330,14 +330,28 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 ### Service
 
-为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以负载均衡的方式进行访问
+Pod的IP是不固定的，为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以负载均衡的方式进行访问
 
-#### 如何被访问
+一般是pod指定一个访问端口和label，service selector指明绑定的pod，配置端口映射，这个被selector选中的pod就称为service的endpoints，通过service的VIP就能访问它代理的pod了。
 
-* service暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod
-* service暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；另一种是访问这个DNS，解析得到Pod的IP，直接访问这个Pod，这种也被称为headless service，这里的headless，指的就是中间不用通过virtual IP转发
+service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中。
 
+#### 如何被集群外部访问
 
+* service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod
+* service设置type=LoadBalancer，设置一个外部均衡服务，这个一般由公有云提供，比如aws，阿里云的k8s服务
+* service设置type=ExternalName，并设置externalName的值，这样就可以通过externalName访问，service会暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；
+* service设置externalIPs的值，这样也能通过该ip进行访问
+
+关于headless service
+
+* headless service是指spec:clusterIP: None的service。一般用在statefulSet
+* 一个service对应多个pod，通过dns访问service时，会根据dns查询出service的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡
+* 当service是headless service时，通过dns访问service，会根据dns查出该service关联的所有pod的ip和dns名字，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡
+
+### Ingress
+
+作用与service类似，主要是用于对多个service的包装，作为service的service，设置一个统一的负载均衡，设置ingress rule，进行反向代理
 
 ### 声明式API
 
