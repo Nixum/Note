@@ -2,11 +2,11 @@
 
 以下笔记如没指定版本，都是基于JDK1.8
 
-# 一、Collection
+# Collection
 
 ![javaCollection类图简版](https://github.com/Nixum/Java-Note/raw/master/Note/picture/collection类图.png)
 
-## 1. Set
+## Set
 
 ### HashSet
 
@@ -25,7 +25,7 @@ private static final Object PRESENT = new Object();
 * 不是线程安全的
 * 不保证插入元素的顺序
 
-## 2. Queue
+## Queue
 
 ### BlockingQueue
 
@@ -39,7 +39,7 @@ private static final Object PRESENT = new Object();
 | LinkedBlockingQueue   | 底层是链表，有界，默认容量是Integer.MAX_VALUE，使用读锁和写锁，因此吞吐量比ArrayBlockingQueue大 |
 | PriorityBlockingQueue | 底层是数组 + 堆排实现排序，无界，默认容量是11，最大是Integer.MAX_VALUE - 8，默认对元素使用自然顺序排序，也可指定比较器 |
 | DelayQueue            | 无界，支持延时获取，不允许take或poll移除未过期元素，size=过期元素 + 非过期元素 |
-| SynchronousQueue      | 一个线程的插入必须等待另一个线程的删除后才能完成，反之亦然，不能被迭代，容量只有1，支持公平和非公平模式 |
+| SynchronousQueue      | 有界，一个线程的插入必须等待另一个线程的删除后才能完成，反之亦然，不能被迭代，容量只有1，支持公平和非公平模式 |
 | LinkedTransferQueue   | 底层是链表，无界，生产者会一直阻塞直到所添加到队列的元素被某一个消费者所消费，主要用于线程间消息的传递 |
 | LinkedBlockingDeque   | 底层是链表，双向队列，无界                                   |
 
@@ -69,7 +69,7 @@ private final Condition notFull;
 ##### LinkedBlockingQueue
 
 ```java
-// 整体分为读锁和写锁，而不像ArrayBlockingQueue只使用一个锁，原因是LinkedBlockingQueue底层是链表的，只需要关心头尾两个节点就行了，头节点加读锁，尾节点加写锁，因此读写锁是是不阻塞，而ArrayBlockingQueue底层是数组，对其操作只能把整个数组锁上
+// 整体分为读锁和写锁，而不像ArrayBlockingQueue只使用一个锁，原因是LinkedBlockingQueue底层是链表的，只需要关心头尾两个节点就行了，头节点加读锁，尾节点加写锁，因此读写时是不阻塞的，而ArrayBlockingQueue底层是数组，对其操作只能把整个数组锁上
 
 // take操作时上读锁，队列为空则等待，不为空时则移除并获取，再不为空则唤醒其他消费线程，解开读锁，允许中断
 // 然后判断出消费元素之前队列是满的(此时是临界状态，但刚又被消费了一次)，则加写锁，唤醒其他生产线程，解写锁，不允许中断
@@ -86,7 +86,7 @@ private final Condition notFull = putLock.newCondition();
 
 [java阻塞队列详解](https://www.jianshu.com/p/4028efdbfc35)
 
-## 3. List
+## List
 
 ### ArrayList
 
@@ -116,7 +116,7 @@ private final Condition notFull = putLock.newCondition();
 
 * 允许存入null对象，size也会计入
 
-* 每次扩容原来的 1.5 倍，如果扩容后仍然不够用，则采用满足够用时的容量
+* 每次扩容原来的 1.5 倍，如果扩容后仍然不够用，则采用满足够用时的数量
 
 #### 2.扩容
 
@@ -195,7 +195,7 @@ public E remove(int index) {
 
 读取：直接获取数组对应下标的值
 
-注意到两个方法都有 checkForComodification(); 的判断，该方法的判断主要是提示并发修改异常，[看这里](#5.循环迭代)
+注意到两个方法都有 checkForComodification(); 的判断，该方法的判断主要是提示并发修改异常
 
 ```java
 public E set(int index, E e) {
@@ -243,7 +243,7 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 #### 1.基本
 
 * 底层是链表，且是双向链表
-* 采用链表，因此插入、删除效率高，查找效率低，不支持随机查找，而ArrayList底层是数组，因此支持随机查找，查找效率高，但是插入，删除效率低
+* 采用链表，因此插入、删除效率高(但需要知道被删除节点)，查找效率低，不支持随机查找，而ArrayList底层是数组，因此支持随机查找，查找效率高，但是插入，删除效率低
 * LinkedList底层是双向链表的缘故，可以当成队列使用，创建队列Queue或者Deque时，采用LinkedList作为实现
 * 不是线程安全的
 
@@ -257,9 +257,7 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 * 读操作不能读取实时性的数据，因为写操作的数据可能还未同步
 * 适合读多写少的场景
 
-
-
-# 二、Map
+# Map
 
 ![Map类图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Map类图.png)
 
@@ -363,7 +361,7 @@ map.put("key111", "value111");
 
 #### 3.确定键值对所在的桶的下标
 
-当向map中put进 key-value 时，对key采用除留余数法，确定该键值对所在的桶的下标
+当向map中put进 key-value 时，对key采用哈希 + 除留余数法，确定该键值对所在的桶的下标
 
 首先计算key的hash值，之后对数组的容量取模，得到的余数就是桶的下标
 

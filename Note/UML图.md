@@ -53,13 +53,13 @@ A <#>———— B： A是整体，B是部分  （实线线 + 实心菱形）
 
 #### 5.1 继承（Generalization）
 
-A ——————|> B : A继承了B  （实心线 + 空心三角箭头）
+A ——————|> B : A继承了B  （实心线 + 空心三角箭头），A is B
 
 ![A继承了B](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-generalization.png)
 
 #### 5.2. 实现（Implementation）
 
-A --------------|> B : A实现了接口B （虚心线 + 空心三角箭头）
+A --------------|> B : A实现了接口B （虚心线 + 空心三角箭头）， A like B
 
 ![A实现了接口B](https://github.com/Nixum/Java-Note/raw/master/Note/picture/UML-implementation.png)
 
