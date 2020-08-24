@@ -32,6 +32,12 @@ SpringBoot自动配置流程：
 * 实现了ServletContextListener 接口，监听ServletContext，如果 ServletContext 发生变化（如服务器启动时ServletContext 被创建，服务器关闭时 ServletContext 将要被销毁）时，执行监听器里的方法
 * 为IOC容器提供环境，扫描包，将带有注解的Bean加入到容器用于依赖注入，或者加载xml文件，将xml注册的bean加入容器用于依赖注入
 
+# 三级缓存
+
+1. 第一级缓存：单例缓存池singletonObjects。
+2. 第二级缓存：早期提前暴露的对象缓存earlySingletonObjects。（属性还没有值对象也没有被初始化）
+3. 第三级缓存：singletonFactories单例对象工厂缓存。
+
 # IOC和DI
 
 **控制反转**：实际上就是把开发人员对程序执行流程的控制，反转到由程序自己来执行，代表性的例子就是 模板方法设计模式，实际上是一种设计思想，就像spring把依赖注入给抽成框架，由框架来自动创建对象、管理对象生命周期、注入等，开发者只需要关注类间的关系即可

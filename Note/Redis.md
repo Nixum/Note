@@ -2,7 +2,7 @@
 
 [一文揭秘单线程的Redis为什么这么快?](https://zhuanlan.zhihu.com/p/57089960?utm_source=wechat_session&utm_medium=social&utm_oi=632939468966072320)
 
-
+总结一下就是：存内存操作、非阻塞IO多路复用，避免频繁的上下文切换，高效的数据结构和数据压缩
 
 # 与Memcached的区别
 
