@@ -166,7 +166,11 @@ MMap存储引擎的 主键索引、普通索引、组合索引的数据结构都
 
 # 事务
 
-mongo是分布式数据库，通过部署多复制集来实现
+mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB server不支持事务，至少需要一主一从两个。
+
+4.0版本支持多文档事务，4.2版本支持分片事务，但其实3.2版本有支持单文档原子操作了，主要是用在单文档嵌套更新上，默认自动的，MongoDB中文档 = 行记录。
+
+另外，Spring 5.1.1 / SpringBoot 2.x 以上 @Transactional可以支持Mongo，需要为TransactionManager注入MongoDBFactory
 
 ## 分布式下的写操作
 
