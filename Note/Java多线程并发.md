@@ -120,7 +120,9 @@ Jconsole, Jstack, visualVM
 
   因为wait()和notify()、notifyAll()是对象中的方法，如果wait()没有释放锁，其他线程就无法获得锁进入同步代码块中，也就无法执行notify()或者notifyAll()方法唤醒挂起的线程，造成死锁
 
-* 这套方法只能在同步块synchronized中使用，否则会抛IllegalMonitorStateException异常
+* **这套方法只能在同步块synchronized中使用**，否则会抛IllegalMonitorStateException异常，因为如果没有synchronized，有可能会导致多线程wait时对共享资源的竞争导致问题
+
+* wait、notify、synchronized都是对同一个对象进行操作
 
 * wait() 方法可以设置时间，时间到了也会进入就绪状态
 
@@ -137,10 +139,10 @@ java提供的锁是对象级别的，等待需要锁，把每个对象看成一�
 ## Thread中的yield()
 
 * 静态方法
-* yield()的作用是让步。它能让当前线程由“运行状态”进入到“就绪状态”，从而让其它具有相同优先级的等待线程获取执行权
+* yield()的作用是让步。它能让当前线程由“运行状态”进入到“就绪状态”，从而**让其它具有相同优先级的等待线程获取执行权**
 * 该方法只是对线程调度器的一个建议，而且也只是建议具有相同优先级的其它线程可以运行，并不能保证在当前线程调用yield()之后，其它具有相同优先级的线程就一定能获得执行权，也有可能是当前线程又进入到“运行状态”继续运行
 
-## Thread中的 suspend() 和resume()
+## Thread中的 suspend() 和resume()，已过期
 
 * 不是静态方法
 * suspend()用于挂起线程， resume() 用于唤醒线程，需要配套使用，这两个方法被标为**过期，不推荐**
