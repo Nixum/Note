@@ -234,7 +234,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 使用：需要在mongo的配置文件的server参数中，增加`enableMajorityReadConcern: true`，
 
-对于available、local、majority、linearizable，需要在查询语句后 + .readConcern("local")开启使用；
+对于值枚举未available、local、majority、linearizable，需要在查询语句后 + .readConcern("local或者其他枚举")开启使用；
 
 对于snapshot，则是在开启事务时指定，`var session = db.getMongo().startSession(); session.startTransaction({readConcern: {level: "snapshot"}, writeConcern: {w: "majority"}});`  session作为事务对象，配合snapshot快照、MVCC、redo log来实现事务。
 

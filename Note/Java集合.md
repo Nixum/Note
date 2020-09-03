@@ -21,7 +21,7 @@ private transient HashMap<E,Object> map;
 private static final Object PRESENT = new Object();
  ```
 
-* HashSet允许存入null
+* HashSet**允许存入null**
 * 不是线程安全的
 * 不保证插入元素的顺序
 
@@ -56,7 +56,7 @@ private static final Object PRESENT = new Object();
 
 ```java
 // 把数组当成环形队列使用
-// 在执行插入或获取操作前会上锁，方法执行完解锁，允许中断
+// 在执行插入或获取操作前会上锁，上的是同一把锁，方法执行完解锁，允许中断
 final ReentrantLock lock;
 
 // 在take方法中，如果数组长度为0，则调用await()方法进行等待，否则就获取第一个元素，调用singal()方法唤醒等待线程生产
@@ -69,7 +69,7 @@ private final Condition notFull;
 ##### LinkedBlockingQueue
 
 ```java
-// 整体分为读锁和写锁，而不像ArrayBlockingQueue只使用一个锁，原因是LinkedBlockingQueue底层是链表的，只需要关心头尾两个节点就行了，头节点加读锁，尾节点加写锁，因此读写时是不阻塞的，而ArrayBlockingQueue底层是数组，对其操作只能把整个数组锁上
+// 整体分为读锁和写锁，而不像ArrayBlockingQueue只使用一个锁，原因是LinkedBlockingQueue底层是链表的，只需要关心头尾两个节点就行了，头节点加读锁，尾节点加写锁，使用的是不同的锁，因此读写时是不阻塞的；另外，由于节点是链表实例，在高并发下也会影响GC，而ArrayBlockingQueue是数组，不用包多一层
 
 // take操作时上读锁，队列为空则等待，不为空时则移除并获取，再不为空则唤醒其他消费线程，解开读锁，允许中断
 // 然后判断出消费元素之前队列是满的(此时是临界状态，但刚又被消费了一次)，则加写锁，唤醒其他生产线程，解写锁，不允许中断
@@ -81,6 +81,8 @@ private final Condition notEmpty = takeLock.newCondition();
 private final ReentrantLock putLock = new ReentrantLock();   // 写锁
 private final Condition notFull = putLock.newCondition();
 ```
+
+其实ArrayBlockingQueue也可以像LinkedBlockingQueue使用读写锁，但此时的count和index就需要使用AtomicInteger来保证线程安全，加之数组不像链表那样还要构建节点，使用读写锁带来的收益不是特别大，所以没有使用了。
 
 #### 参考
 
