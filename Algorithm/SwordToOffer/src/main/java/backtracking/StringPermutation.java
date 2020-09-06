@@ -1,4 +1,4 @@
-package string;
+package backtracking;
 
 import org.junit.Test;
 
@@ -37,12 +37,12 @@ public class StringPermutation {
         if(str == null || str.length() <= 0 || "".equals(str.trim()))
             return null;
         List<String> resultList = new ArrayList<>();
-        permuation(0, str.toCharArray(), resultList);
+        permutation(0, str.toCharArray(), resultList);
         return resultList;
     }
 
     // index为固定字符的下标
-    private void permuation(int index,char[] str, List<String> resultList) {
+    private void permutation(int index,char[] str, List<String> resultList) {
         if (index == str.length - 1) {
             resultList.add(String.valueOf(str));
         } else {
@@ -52,7 +52,7 @@ public class StringPermutation {
                 str[index] = str[i];
                 str[i] = temp;
 
-                permuation(index + 1, str, resultList);
+                permutation(index + 1, str, resultList);
 
                 // 换回来
                 temp = str[index];

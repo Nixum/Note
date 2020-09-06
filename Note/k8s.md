@@ -52,7 +52,7 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 解决方案有flannel、calico，其中，flannel有VXLAN、host-gw、UDP三种实现
 
-UDP模式下的跨主机通信
+**flannel UDP模式下的跨主机通信**
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
 
 在由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
@@ -61,6 +61,10 @@ UDP模式下的跨主机通信
 > 1. 用户态的容器进程发出IP包经过docker0网桥进入内核态
 > 2. IP包根据路由表进入flannel0设备，从而回到用户态的flanneld进程
 > 3. flanneld进行UDP封包后重新进入内核态，将UDP包通过宿主机的eth0发送出去
+
+**calico的跨主机通信**
+
+简单来说，calico会在宿主机上创建一个路由表，维护集群内各个物理机，容器的路由规则，通过这张路由表实现跨主机通信
 
 ### dockerfile
 

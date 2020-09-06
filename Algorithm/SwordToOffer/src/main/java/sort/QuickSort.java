@@ -41,11 +41,11 @@ public class QuickSort {
         int temp = array[l];
         while (l < h) {
             // 一定要先从后往前找，记得要取等号，否则无法处理重复数字
-            while (array[h] >= temp && l < h) {
+            while (l < h && array[h] >= temp) {
                 h--;
             }
             array[l] = array[h];
-            while (array[l] < temp && l < h) {
+            while (l < h && array[l] < temp) {
                 l++;
             }
             array[h] = array[l];

@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 
 public class TestOther {
 
@@ -116,7 +117,7 @@ public class TestOther {
 
     public void add(Integer a) {
         a += new Integer(1);
-        System.out.println(a);
+        System.out.println(a);  // =2
     }
 }
 

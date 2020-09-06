@@ -364,6 +364,67 @@ TERMINATED：terminated()方法执行过后变成这个
 
 # JUC包内的一些类
 
+## BlockingQueue
+
+### 1.分类
+
+注：有界指的是，对阻塞队列初始化时**必须**指明队列大小
+
+| 名称                  | 说明                                                         |
+| --------------------- | ------------------------------------------------------------ |
+| ArrayBlockingQueue    | 底层是数组，有界，需要初始化时指明容量大小，支持公平模式，默认非公平模式，读写都是只有一把锁 |
+| LinkedBlockingQueue   | 底层是链表，有界，默认容量是Integer.MAX_VALUE，使用读锁和写锁，因此吞吐量比ArrayBlockingQueue大 |
+| PriorityBlockingQueue | 底层是数组 + 堆排实现排序，无界，默认容量是11，最大是Integer.MAX_VALUE - 8，默认对元素使用自然顺序排序，也可指定比较器 |
+| DelayQueue            | 无界，支持延时获取，不允许take或poll移除未过期元素，size=过期元素 + 非过期元素 |
+| SynchronousQueue      | 有界，一个线程的插入必须等待另一个线程的删除后才能完成，反之亦然，不能被迭代，容量只有1，支持公平和非公平模式 |
+| LinkedTransferQueue   | 底层是链表，无界，生产者会一直阻塞直到所添加到队列的元素被某一个消费者所消费，主要用于线程间消息的传递 |
+| LinkedBlockingDeque   | 底层是链表，双向队列，无界                                   |
+
+### 2.常用方法
+
+| 操作        | 操作失败时会抛异常 | 操作后会返回特殊值 | 操作时会阻塞 | 超时退出返回特殊值   |
+| ----------- | ------------------ | ------------------ | ------------ | -------------------- |
+| 插入        | add(e)             | offer(e)           | put(e)       | offer(e, time, unit) |
+| 移除 / 获取 | remove()           | poll()             | take()       | poll(time, unit)     |
+
+### 3.原理
+
+#### ArrayBlockingQueue
+
+```java
+// 把数组当成环形队列使用
+// 在执行插入或获取操作前会上锁，上的是同一把锁，方法执行完解锁，允许中断
+final ReentrantLock lock;
+
+// 在take方法中，如果数组长度为0，则调用await()方法进行等待，否则就获取第一个元素，调用singal()方法唤醒等待线程生产
+private final Condition notEmpty;
+
+// 在put方法中，往数组中添加一个元素，更新索引，再调用singal()方法唤醒等待线程消费，如果数组满了，则调用await()方法进行等待
+private final Condition notFull;
+```
+
+#### LinkedBlockingQueue
+
+```java
+// 整体分为读锁和写锁，而不像ArrayBlockingQueue只使用一个锁，原因是LinkedBlockingQueue底层是链表的，只需要关心头尾两个节点就行了，头节点加读锁，尾节点加写锁，使用的是不同的锁，因此读写时是不阻塞的；另外，由于节点是链表实例，在高并发下也会影响GC，而ArrayBlockingQueue是数组，不用包多一层
+
+// take操作时上读锁，队列为空则等待，不为空时则移除并获取，再不为空则唤醒其他消费线程，解开读锁，允许中断
+// 然后判断出消费元素之前队列是满的(此时是临界状态，但刚又被消费了一次)，则加写锁，唤醒其他生产线程，解写锁，不允许中断
+private final ReentrantLock takeLock = new ReentrantLock();  // 读锁
+private final Condition notEmpty = takeLock.newCondition();
+
+// put操作时上写锁，队列满则等待，不满时则插入，插入后还不满则唤醒其他生产线程，解开写锁，允许中断
+// 然后判断入队前只有一个元素(此时的该元素是刚刚加的)，则加读锁，唤醒其他消费线程，解读锁，不允许中断
+private final ReentrantLock putLock = new ReentrantLock();   // 写锁
+private final Condition notFull = putLock.newCondition();
+```
+
+其实ArrayBlockingQueue也可以像LinkedBlockingQueue使用读写锁，但此时的count和index就需要使用AtomicInteger来保证线程安全，加之数组不像链表那样还要构建节点，使用读写锁带来的收益不是特别大，所以没有使用了。
+
+### 参考
+
+[java阻塞队列详解](https://www.jianshu.com/p/4028efdbfc35)
+
 ## AQS
 
 * AbstractQueuedSynchronized的缩写，全名：抽象队列同步器，基本是JUC包中各个同步组件的底层基础了
