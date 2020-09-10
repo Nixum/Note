@@ -4,7 +4,7 @@
 
 Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要是为了解决使用Spring框架需要进行大量的配置太麻烦的问题，所以它并不是用来替代Spring的解决方案，而是和Spring框架紧密结合用于提升Spring开发者体验的工具。同时它集成了大量常用的第三方库配置(例如Jackson, JDBC, Mongo, Redis, Mail等等)，做到零配置即用
 
-SpringBoot自动配置流程：
+## SpringBoot自动配置流程
 
 * 启动类 Application.java ：**@SpringBootApplication** 和 main方法里有个**SpringApplication.run(Application.class, args)**
 
@@ -23,34 +23,61 @@ SpringBoot自动配置流程：
 
 参考[SpringBoot启动流程解析](https://www.cnblogs.com/trgl/p/7353782.html)
 
-# ContextLoaderListener
+## ContextLoaderListener
 
 [【Spring】浅谈ContextLoaderListener及其上下文与DispatcherServlet的区别](https://www.cnblogs.com/weknow619/p/6341395.html "")
 
 * 作为Spring启动入口
-
 * 实现了ServletContextListener 接口，监听ServletContext，如果 ServletContext 发生变化（如服务器启动时ServletContext 被创建，服务器关闭时 ServletContext 将要被销毁）时，执行监听器里的方法
 * 为IOC容器提供环境，扫描包，将带有注解的Bean加入到容器用于依赖注入，或者加载xml文件，将xml注册的bean加入容器用于依赖注入
 
-# 三级缓存
+## starter的原理
 
-1. 第一级缓存：单例缓存池singletonObjects，存放完全初始化完的实例(此时已经完成注入，直接可用了)。
-2. 第二级缓存：早期提前暴露的对象缓存earlySingletonObjects，用于检测循环引用，与singletonFactories互斥，如果一级缓存获取不到，则在此层获取实例，如果获取不到，且允许去三级缓存获取，则从三级缓存中获取，并remove加入二级缓存。
-3. 第三级缓存：singletonFactories单例对象工厂缓存，存放初始化不完全的实例(还有依赖没注入)，如果到了三级缓存都获取不到，就会进行初始化，并加入。
 
-当出现循环依赖的对象注入时，会利用这三级缓存来解决问题，但是Spring只能解决Setter方法的注入，无法解决构造器注入，原因是如果通过构造器注入，需要先准备好需要注入的属性
 
-假如现在有类A，持有属性B，类B，持有属性A
+# 常用注解
 
-通过构造器注入：初始化A，此时需要B，那初始化B，此时需要A，但是A因为构造器注入需要先有B，此时无法完成初始化。
+## @Controller与@RestController
 
-通过Setter方法注入：
+* @Controller 默认是返回视图，即方法的return返回的是视图层的路径，只有+@ResponseBody才会返回Json格式的数据
+* @RestController实际上是@Controller + @ResponseBody组合，默认返回json格式的数据
 
-1. 初始化A，会先依次从三级缓存中获取A实例，获取不到，说明A还未初始化，初始化A产生实例，将实例A加入singletonFactories中。
-2. 对A进行依赖注入，发现需要注入B，依次从三级缓存里获取B实例，到了第三层都获取不到，说明还未初始化，初始化B产生实例，发现依赖了A，依次从三级缓存里获取A实例，在singletonFactories获取到还未初始化完全的实例A，将A进行注入，此时B完全初始化完成，将B加入到singletonObjects中
-3. 回到对A进行依赖注入部分，由于B刚刚初始化完成加入了singletonObjects，所以A获取到B，进行注入，A初始化完全，加入singletonObjects中
+## @Autowired与@Resource
 
-总结：Spring在实例化一个bean的时候，是首先递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性的。
+* @Autowired 注解，修饰类成员变量、方法及构造方法，完成自动装配的工作，默认按 byType 自动注入。只有一个required属性，默认是true，表示必须注入，不能为null
+
+  @Autowired 自动注入时，Spring 容器中匹配的候选 Bean 数目必须有且仅有一个。因为它是按类型注入的，如果有多个同类型的Bean会导致出错，此时可以配合@Qualifier来规避这种情况，通过 @Qualifier("实例名称") 指定注入bean的名称，消除歧义，此时与 @Resource指定name属性作用相同。
+
+* @Resource 的作用相当于 @Autowired，只不过 @Autowired 按 byType 自动注入，面@Resource 默认按 byName 自动注入，该注解有两个属性，name和type，分别代表通过名称查找bean和通过类型查找bean。
+
+  此外@Resource还有其他属性，如lookup、shareable、mappedName等
+
+## @Component与@Bean
+
+两者都是用于标记，被标记的实例会被Spring管理
+
+* @Component只能作用类，配合@ComponentScan注解让Spring启动时进行扫描，当扫描到@Component修饰的类时会进行实例化和依赖注入
+
+  @Component是一个比较通用的语义，@Service、@Repository的作用与@Component相同的，只是语义不同，修饰的类所在的层次不同
+
+* @Bean只能作用于方法，通过方法来实例化Bean，Bean的名称为方法的名称（如果有前缀get会自动忽略），交由Spring容器管理，通常与@Configuration配合使用，等价于xml文件中的<bean>配置
+
+  @Bean的方式初始化bean会更加灵活，因为可以在方法内部进行逻辑处理，比如利用配置文件 + 工厂模式实例化不同的bean
+
+## @Configuration与@ConfigurationProperties
+
+* @Configuration作用于类，相当于加载bean的xml文件，一般配合@Bean注解使用，让Spring容器管理我们声明的bean
+* @ConfigurationProperties用于读取key-value的那种配置文件，如properties、yaml等，类似于@Value，主要用于配置文件的字段注入，有属性prefix表示前缀，key为属性名称，将配置文件里的配置绑定到类的属性上。
+
+## @SpringBootApplication与@ComponentScan
+
+两者都用于告知Spring在哪里找到bean，只是扫描的路径不同
+
+* @SpringBootApplication作用与main方法所在的类，用于启动Spring容器，默认会扫描该类所在包及其子包下，进行Bean的实例化和管理
+
+  @SpringBootApplication实际上包含了三个注解，@ComponentScan、@EnableAutoConfiguration、@SpringBootConfiguration，详情见上面SpringBoot启动流程。
+
+* @ComponentScan("包路径")，用于扫描指定包及其子包下的类，哪些需要交由spring容器管理，一般用于扫描@SpringBootApplication扫描不到的包。在非SpringBoot项目下，必须使用。
 
 # IOC和DI
 
@@ -107,19 +134,47 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 * setter注入
 
-* 构造器注入
+* 构造器注入，无法解决循环依赖问题
 
 * 自动装配：xml下使用“autowire”属性，有no、byName、byType、constructor、autodetect方式可选
 
-  注解注入：@Resource默认是使用byName进行装配，@Autowired默认使用byType
+  注解注入：@Resource默认是使用byName进行装配，@Autowired默认使用byType。
+  
+  byName和byType指的是依赖注入时寻找bean的方式。@Resource和@Autowired都可以修饰属性、setter方法、构造器，此时表示的是以哪种方式进行注入
 
-## 5.IOC模拟
+## 5.三级缓存解决循环依赖
+
+1. 第一级缓存：单例缓存池singletonObjects，存放完全初始化完的实例(此时已经完成注入，直接可用了)。
+2. 第二级缓存：早期提前暴露的对象缓存earlySingletonObjects，用于检测循环引用，与singletonFactories互斥，如果一级缓存获取不到，则在此层获取实例，如果获取不到，且允许去三级缓存获取，则从三级缓存中获取，并remove加入二级缓存。
+3. 第三级缓存：singletonFactories单例对象工厂缓存，存放初始化不完全的实例(还有依赖没注入)，如果到了三级缓存都获取不到，就会进行初始化，并加入。
+
+当出现循环依赖的对象注入时，会利用这三级缓存来解决问题，但是Spring只能解决Setter方法的注入，无法解决构造器注入，原因是如果通过构造器注入，需要先准备好需要注入的属性
+
+假如现在有类A，持有属性B，类B，持有属性A
+
+通过构造器注入：初始化A，此时需要B，那初始化B，此时需要A，但是A因为构造器注入需要先有B，此时无法完成初始化。
+
+通过Setter方法注入：
+
+1. 初始化A，会先依次从三级缓存中获取A实例，获取不到，说明A还未初始化，初始化A产生实例，将实例A加入singletonFactories中。
+2. 对A进行依赖注入，发现需要注入B，依次从三级缓存里获取B实例，到了第三层都获取不到，说明还未初始化，初始化B产生实例，发现依赖了A，依次从三级缓存里获取A实例，在singletonFactories获取到还未初始化完全的实例A，将A进行注入，此时B完全初始化完成，将B加入到singletonObjects中
+3. 回到对A进行依赖注入部分，由于B刚刚初始化完成加入了singletonObjects，所以A获取到B，进行注入，A初始化完全，加入singletonObjects中
+
+总结：Spring在实例化一个bean的时候，是首先递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性的。
+
+## 6.IOC模拟
 
 [SpringIOC简单模拟，菜鸟篇](https://blog.csdn.net/wangaiheng/article/details/79793397)
 
 [Spring——原理解析-利用反射和注解模拟IoC的自动装配](https://www.cnblogs.com/weilu2/p/spring_ioc_analysis_principle_bsici_on_reflection_annotation.html)
 
+## 7.
+
 # AOP
+
+* 切入点：指要把切面的通知在被插入的类的方法中的位置，即表达式execution（里面写要被插入的类的方法）
+* 切面：指要插入的 类
+* 通知：指要插入的 类的方法
 
 ## 原理
 

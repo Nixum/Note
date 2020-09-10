@@ -609,7 +609,7 @@ public class NettyClientHandler extends ChannelInboundHandlerAdapter {
 3. 初始化时将BossGrop和WorkGroup注册到ServerBootstrap并进行相应的配置(如Channel、ChannelHandler)，之后通过bind()方法绑定端口和ServerSocketChannel后启动。
 4. BossGroup轮询Accept事件，获取事件后接受连接，创建一个新的NioSocketChannel，绑定ChannelPipeline，为ChannelPipeline添加ChannelHandler，注册到WorkGroup上，发送Read事件。
 5. WorkGroup中一个EventLoop轮询Read事件，调用Channel的ChannelPipeline进行处理。
-6. ChannelPipeline中每个节点是一个Context，用Context包装Handler，由Context组成双向链表，节点间通过AbstractChannelHandlerContext 类内部的 fire 系列方法 进行传递，入站方法叫inbound，从head节点开始，出战方法叫outbound，由tail节点开始。
+6. ChannelPipeline中每个节点是一个Context，用Context包装Handler，由Context组成双向链表，节点间通过AbstractChannelHandlerContext 类内部的 fire 系列方法 进行传递，入站方法叫inbound，从head节点开始，出站方法叫outbound，由tail节点开始。
 7. 对于耗时的方法，一般丢给线程池处理，如上面Demo中的例子
 
 
