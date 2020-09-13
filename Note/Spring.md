@@ -192,7 +192,7 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 # AOP
 
 * 切面Aspect：指代理类，声明切点和通知
-* 切点PointCut：指要把切面的通知在被代理类的方法的位置，即表达式execution（值的格式为 方法的访问修饰符 被代理类的全限定名称和其方法名(方法参数)），切点可以有多个，配合通知使用
+* 切点PointCut：指要把切面的通知在被代理类的方法的位置，即表达式execution（值的格式为 [方法的访问修饰符] [被代理类的全限定名称]和其方法名(方法参数)]），切点可以有多个，配合通知使用
 * 通知Advice：代理类的增强方法，通知分为前置通知、环绕通知、后置通知、后置返回通知、后置异常通知
 * 连接点JoinPoint：被代理类的方法
 
@@ -246,6 +246,7 @@ public static void main(String[] args) {
 动态代理是为了解决上述问题，通过反射 + 多态的方式，动态为一个一个类设置代理，只有知道那个类的接口才可以。利用 JDK java.lang.reflect包里的InvocationHandler接口，代理方法具体逻辑写在invoke方法里
 
 ```java
+代理对象的执行方法！
 public interface InvocationHandler {
     // proxy：动态产生的代理对象，method：被代理类要执行的方法，args：方法所需参数
     public Object invoke(Object proxy, Method method, Object[] args)
@@ -256,6 +257,7 @@ public interface InvocationHandler {
 还有java.lang.reflect包中的Proxy类的newProxyInstance方法,，他是静态的，作用是为被代理类构建代理类，并返回，在这个动态生成的代理类中已经织入了InvocationHandler，而它又持有被代理类，对代理对象的所有接口方法调用都会转发到InvocationHandler.invoke()方法
 
 ```java
+该方法将会为被代理类生成代理类，代理类执行与被代理类的接口时，会执行invocationHandler的方法！
 public static Object newProxyInstance(ClassLoader loader,	// 被代理类的类加载器，如上面B类的类加载器
                                       Class<?>[] interfaces,// 被代理类的接口数组
                                       InvocationHandler h)	// 上面实现了InvocationHandler接口的实例
@@ -307,7 +309,7 @@ public static void main(String[] args) {
 
 CGLIB代理就可以直接代理普通类，不需要接口了
 
-原理：直接读取被代理类的字节码，通过继承的方式实现，在内存中构建被代理类的子类对象从而实现对目标对象的功能扩展
+原理：直接读取被代理类的字节码，通过继承的方式实现，在内存中**构建被代理类的子类对象**从而实现对目标对象的功能扩展
 
 具体例子：
 
@@ -348,10 +350,17 @@ public static void main(String[] args) {
 }
 ```
 
-## Spring中的实现
+## SpringBoot中的实现
+
+* SpringBoot中提供@EnableAspectJAutoProxy开启对AOP的支持，其中属性proxyTargetClass=true时使用cglib，为false使用JDK的动态代理，默认为false
+* @EnableAspectJAutoProxy注解主要是使用AspectJAutoProxyRegistrar类将AOP处理工具注册到Spring容器中。
+* 在这个AOP处理工具中有一个AnnotationAwareAspectJAutoProxyCreator类，该类
+  * 实现了一系列Aware接口，使用BeanFactory：使得Spring容器可以管理
+  * 实现了order接口：用于设置切面的优先级
+  * 继承了ProxyConfig：该类封装了代理的通用逻辑，cglib或JDK动态代理开关配置等
+* Spring容器加载完AnnotationAwareAspectJAutoProxyCreator类后，会解析开发者定义的切面类、切点、通知，在BeanFactory中找到被代理类，结合通知进行封装，创建出代理类。由于被代理类可被设置多重代理，在创建代理类时，会根据切面的优先级，不断套在被代理类上，形成拦截器链。
+* 执行代理类的方法时，就会调用方法拦截器链，进行方法增强。
+
+[SpringAOP详细介绍](https://blog.csdn.net/JinXYan/article/details/89302126)
 
 [Spring 源码分析Aop](https://blog.csdn.net/fighterandknight/article/details/51209822 "")
-
-[Spring AOP原理分析](https://blog.csdn.net/yuexianchang/article/details/77018603 "")
-
-[常见的Spring面试题](http://www.codeceo.com/article/spring-top-25-interview.html#xml_based_configuration)
