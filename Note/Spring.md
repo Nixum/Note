@@ -109,7 +109,19 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 * session：每次请求创建新bean，仅在当前HTTP session内有效
 * globalSession：基于 portlet 的 web 应用，现在很少用了
 
-## 加载流程
+## 注入方式
+
+- setter注入
+
+- 构造器注入，无法解决循环依赖问题
+
+- 自动装配：xml下使用“autowire”属性，有no、byName、byType、constructor、autodetect方式可选
+
+  注解注入：@Resource默认是使用byName进行装配，@Autowired默认使用byType。
+
+  byName和byType指的是依赖注入时寻找bean的方式。@Resource和@Autowired都可以修饰属性、setter方法、构造器，此时表示的是以哪种方式进行注入
+
+## Bean加载流程
 
 初始化IOC容器（工厂入货）
 
@@ -127,41 +139,6 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 详细源码分析，参考[Spring: 源码解读Spring IOC](https://www.cnblogs.com/ITtangtang/p/3978349.html "")
 
 具体例子，参考[Spring IOC核心源码学习](https://yikun.github.io/2015/05/29/Spring-IOC%E6%A0%B8%E5%BF%83%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/ "")
-
-## Bean的生命周期
-
-- Spring 容器可以管理 singleton 作用域下 bean 的生命周期，在此作用域下，Spring 能够精确地知道bean何时被创建，何时初始化完成，以及何时被销毁；prototype 作用域的bean，Spring只负责创建，之后就不再管理，只能由开发人员通过代码控制
-- 生命周期执行过程
-  - Bean容器找到配置文件中Spring Bean的定义。
-  - Bean容器利用反射创建一个Bean的实例（对scope为singleton且非懒加载的bean实例化）
-  - 如果涉及到一些属性值 利用set方法设置一些属性值。
-  - 如果Bean实现了BeanNameAware接口，调用setBeanName()方法，传入Bean的名字。
-  - 如果Bean实现了BeanClassLoaderAware接口，调用setBeanClassLoader()方法，传入ClassLoader对象的实例。
-  - 如果Bean实现了BeanFactoryAware接口，调用setBeanClassLoader()方法，传入ClassLoader对象的实例。
-  - 与上面的类似，如果实现了其他*Aware接口，就调用相应的方法。
-  - 如果有和加载这个Bean的IOC容器相关的BeanPostProcessor对象，执行postProcessBeforeInitialization()方法(需手动注册该方法)
-  - 如果Bean实现了InitializingBean接口，执行afterPropertiesSet()方法。
-  - 如果Bean在配置文件中的定义包含init-method属性，执行指定的方法。
-  - 如果有和加载这个Bean的IOC容器相关的BeanPostProcessor对象，执行postProcessAfterInitialization()方法(需手动注册该方法)
-  - 此时bean已经准备就绪，可以被应用程序使用了，他们将一直驻留在应用上下文中，直到该应用上下文被销毁
-  - 当要销毁Bean的时候，如果Bean实现了DisposableBean接口，执行destroy()方法。
-  - 当要销毁Bean的时候，如果Bean在配置文件中的定义包含destroy-method属性，执行指定的方法。
-
-参考：[Spring Bean生命周期](https://www.jianshu.com/p/3944792a5fff)
-
-[【Spring】Bean的生命周期](https://yemengying.com/2016/07/14/spring-bean-life-cycle/ "")
-
-## 注入方式
-
-* setter注入
-
-* 构造器注入，无法解决循环依赖问题
-
-* 自动装配：xml下使用“autowire”属性，有no、byName、byType、constructor、autodetect方式可选
-
-  注解注入：@Resource默认是使用byName进行装配，@Autowired默认使用byType。
-  
-  byName和byType指的是依赖注入时寻找bean的方式。@Resource和@Autowired都可以修饰属性、setter方法、构造器，此时表示的是以哪种方式进行注入
 
 ## 三级缓存解决循环依赖
 
@@ -183,9 +160,52 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 总结：Spring在实例化一个bean的时候，是首先递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性的。
 
-## IOC模拟
+## Bean的生命周期
 
-[SpringIOC简单模拟，菜鸟篇](https://blog.csdn.net/wangaiheng/article/details/79793397)
+- Spring 容器可以管理 singleton 作用域下 bean 的生命周期，在此作用域下，Spring 能够精确地知道bean何时被创建，何时初始化完成，以及何时被销毁；prototype 作用域的bean，Spring只负责创建，之后就不再管理，只能由开发人员通过代码控制
+
+- 关于xxxAware类型的接口，Aware之前的名字表示IOC容器可以获得什么资源，Aware方法都是在初始化阶段前被调用。
+
+- 生命周期执行过程，总结为：实例化 -> 属性赋值 -> 初始化 -> 销毁
+
+  **实例化**
+
+  - Bean容器找到配置文件中Spring Bean的定义。
+  - Bean容器利用反射创建一个Bean的实例（对scope为singleton且非懒加载的bean实例化）
+
+  **属性赋值** - 依赖注入
+
+  - 如果涉及到一些属性值 利用set方法设置一些属性值。
+  - 如果Bean实现了BeanNameAware接口，调用setBeanName()方法，传入Bean的名字，相当于xml中<bean>中的id或name。
+  - 如果Bean实现了BeanClassLoaderAware接口，调用setBeanClassLoader()方法，传入ClassLoader对象的实例。
+  - 如果Bean实现了BeanFactoryAware接口，调用setBeanFactory()方法，传入beanFactory对象的实例，可以通过beanFactory获取其他Bean。
+  - 与上面的类似，如果实现了其他*Aware接口，就调用相应的方法，比如实现了ApplicationContextAware接口，就可以获取上下文，作用同BeanFactory，只是能获取到其他数据。
+  - 如果Bean实现了BeanPostProcessor接口，执行postProcessBeforeInitialization()方法（需手动实现该方法，**利用该方法实现AOP**）
+
+  **初始化**
+
+  - 如果Bean实现了InitializingBean接口，执行afterPropertiesSet()方法。作用同xml配置中的init-method配置一样，用于指定初始化方法，但是先于init-method方法执行。
+  - 如果Bean在xml配置文件中<bean>的init-method属性，执行指定的方法进行初始化。
+  - 如果Bean实现了BeanPostProcessor接口，执行postProcessAfterInitialization()方法（需手动实现该方法，**利用该方法实现AOP**）
+  - 此时bean已经准备就绪，可以被应用程序使用了，他们将一直驻留在应用上下文中，直到该应用上下文被销毁
+
+  **销毁**
+
+  - 当要销毁Bean的时候，如果Bean实现了DisposableBean接口，执行destroy()方法。
+  - 当要销毁Bean的时候，如果Bean在xml配置文件中的<bean>的destroy-method属性，执行指定的方法进行销毁。
+
+参考：[Spring Bean生命周期](https://www.jianshu.com/p/3944792a5fff)
+
+[Spring Bean声明周期](https://www.jianshu.com/p/1dec08d290c1)：这篇写得不错
+
+[SpringBoot启动流程](https://www.cnblogs.com/lay2017/p/11478237.html)
+
+## ApplicationContext与BeanFactory的区别
+
+* ApplicationContext与BeanFactory类似，BeanFactory只提供最基本的Bean对象创建与获取，ApplicationContext指的是上下文，包含BeanFactory的功能，同时也提供了其他额外的功能，比如事件机制、监听、拦截器、资源访问等
+* BeanFactory采用延迟加载来注入Bean，只有在使用到某个Bean的时候才会实例化，ApplicationContext则在容器启动时，就实例化Bean，常驻在容器内
+
+## IOC模拟
 
 [Spring——原理解析-利用反射和注解模拟IoC的自动装配](https://www.cnblogs.com/weilu2/p/spring_ioc_analysis_principle_bsici_on_reflection_annotation.html)
 
