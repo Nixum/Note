@@ -1,10 +1,28 @@
 [TOC]
 
-# Spring 和 Spring Boot区别
+# SpringBoot
+
+## Spring 和 Spring Boot区别
 
 Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要是为了解决使用Spring框架需要进行大量的配置太麻烦的问题，所以它并不是用来替代Spring的解决方案，而是和Spring框架紧密结合用于提升Spring开发者体验的工具。同时它集成了大量常用的第三方库配置(例如Jackson, JDBC, Mongo, Redis, Mail等等)，做到零配置即用。内置Tomcat作为Web服务器，不像之前还要把服务部署到Tomcat在进行启动。
 
+## SpringBoot整个启动流程
+
+1. 构建SpringApplication对象，执行其run方法
+2. 加载properties/yaml等配置文件
+3. 创建ApplicationContext（也可以称为Spring容器、IOC容器）
+4. 将扫描到的Bean或者xml中的bean，先解析成BeanDefinition，注册到ApplicationContext中的BeanFactory中（即自动配置过程，也是IOC容器的refresh方法执行过程）
+5. 实例化Bean，进行依赖注入，（AOP也是在此处实现，创建代理实例加入IOC容器）
+
+![SpringBoot启动流程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/SpringBoot启动流程.png)
+
+参考[SpringBoot启动流程解析](https://www.cnblogs.com/trgl/p/7353782.html)
+
+[SpringBoot启动流程](https://www.cnblogs.com/lay2017/p/11478237.html)
+
 ## SpringBoot自动配置流程
+
+**自动配置流程只是SpringBoot启动中的一个环节，该环节只是在告诉Spring要在哪里找到Bean的声明。**
 
 * 启动类main方法为入口，main方法所在的类会被**@SpringBootApplication**修饰， 通过main方法里执行**SpringApplication.run(Application.class, args)**进行启动，Spring启动时会解析出@SpringBootApplication注解，进行Bean的加载和注入。
 
@@ -19,10 +37,6 @@ Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要
 * **EnableAutoConfigurationImportSelector**类里有个SpringFactoriesLoader工厂加载器，通过里面的loadFactoryNames方法，传入**工厂类名称**和**对应的类加载器**，加载该类加器搜索路径下的指定文件**spring.factories文件**，传入的工厂类为接口，而文件中对应的类则是接口的实现类，或最终作为实现类，得到这些类名集合后，通过**反射**获取这些类的类对象、构造方法，最终生成实例。
 
   因此只要在maven中加入了所需依赖，根据**spring.factories**文件里的key-value，能够在类路径下找到对应的class文件，就会触发自动配置
-
-![SpringBoot启动流程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/SpringBoot启动流程.png)
-
-参考[SpringBoot启动流程解析](https://www.cnblogs.com/trgl/p/7353782.html)
 
 ## 自定义starter
 
@@ -171,7 +185,7 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
   **实例化**
 
   - Bean容器找到配置文件中Spring Bean的定义。
-  - Bean容器利用反射创建一个Bean的实例（对scope为singleton且非懒加载的bean实例化）
+  - Bean容器利用反射创建一个Bean的实例（对scope为singleton且非懒加载的bean实例化，此处会**触发AOPCreator解析@Aspect类**）
 
   **属性赋值** - 依赖注入
 
@@ -180,13 +194,13 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
   - 如果Bean实现了BeanClassLoaderAware接口，调用setBeanClassLoader()方法，传入ClassLoader对象的实例。
   - 如果Bean实现了BeanFactoryAware接口，调用setBeanFactory()方法，传入beanFactory对象的实例，可以通过beanFactory获取其他Bean。
   - 与上面的类似，如果实现了其他*Aware接口，就调用相应的方法，比如实现了ApplicationContextAware接口，就可以获取上下文，作用同BeanFactory，只是能获取到其他数据。
-  - 如果Bean实现了BeanPostProcessor接口，执行postProcessBeforeInitialization()方法（需手动实现该方法，**利用该方法实现AOP**）
+  - 如果Bean实现了BeanPostProcessor接口，执行postProcessBeforeInitialization()方法（需手动实现该方法，**利用该方法实现AOP，在此处创建代理类**）
 
   **初始化**
 
   - 如果Bean实现了InitializingBean接口，执行afterPropertiesSet()方法。作用同xml配置中的init-method配置一样，用于指定初始化方法，但是先于init-method方法执行。
   - 如果Bean在xml配置文件中<bean>的init-method属性，执行指定的方法进行初始化。
-  - 如果Bean实现了BeanPostProcessor接口，执行postProcessAfterInitialization()方法（需手动实现该方法，**利用该方法实现AOP**）
+  - 如果Bean实现了BeanPostProcessor接口，执行postProcessAfterInitialization()方法（需手动实现该方法，**利用该方法实现AOP，在此处创建代理类**）
   - 此时bean已经准备就绪，可以被应用程序使用了，他们将一直驻留在应用上下文中，直到该应用上下文被销毁
 
   **销毁**
@@ -197,8 +211,6 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 参考：[Spring Bean生命周期](https://www.jianshu.com/p/3944792a5fff)
 
 [Spring Bean声明周期](https://www.jianshu.com/p/1dec08d290c1)：这篇写得不错
-
-[SpringBoot启动流程](https://www.cnblogs.com/lay2017/p/11478237.html)
 
 ## ApplicationContext与BeanFactory的区别
 
@@ -373,13 +385,19 @@ public static void main(String[] args) {
 ## SpringBoot中的实现
 
 * SpringBoot中提供@EnableAspectJAutoProxy开启对AOP的支持，其中属性proxyTargetClass=true时使用cglib，为false使用JDK的动态代理，默认为false
+
 * @EnableAspectJAutoProxy注解主要是使用AspectJAutoProxyRegistrar类将AOP处理工具注册到Spring容器中。
+
 * 在这个AOP处理工具中有一个AnnotationAwareAspectJAutoProxyCreator类，该类
   * 实现了一系列Aware接口，使用BeanFactory：使得Spring容器可以管理
   * 实现了order接口：用于设置切面的优先级
   * 继承了ProxyConfig：该类封装了代理的通用逻辑，cglib或JDK动态代理开关配置等
+  
 * Spring容器加载完AnnotationAwareAspectJAutoProxyCreator类后，会解析开发者定义的切面类、切点、通知，在BeanFactory中找到被代理类，结合通知进行封装，创建出代理类。由于被代理类可被设置多重代理，在创建代理类时，会根据切面的优先级，不断套在被代理类上，形成拦截器链。
+
 * 执行代理类的方法时，就会调用方法拦截器链，进行方法增强。
+
+AOP的实现会在创建Bean实例对象前触发@Aspect切面对象，获得Advisor。生成Bean实例对象之后，才会再次触发对该Bean实例对象做代理增强，增强的Advisor来自之前的解析结果。
 
 [SpringAOP详细介绍](https://blog.csdn.net/JinXYan/article/details/89302126)
 
