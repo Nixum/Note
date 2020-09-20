@@ -513,7 +513,7 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 2. set autocommit=0，关掉自动提交，任何语句执行都需要显式的提交(主动commit或rollback)才算执行完成
 3. set autocommit=1，执行任意一条语句都会默认开启单次事务执行完成后隐式提交，事务也可以显式开启，直到显示使用commit、rollback或断开连接。一般是使用set autocommit=1，开启事务，再commit提交事务，执行commit work and chain则提交事务并开启下一次事务
 
-# 5.锁
+# 锁
 
 根据范围，可以分为全局锁、表级锁、行锁，当多种锁同时出现时，必须得所有锁不互斥，才能并行，否则就得等。
 
@@ -814,16 +814,6 @@ MySQL的高可用（通过主库发生故障时切到从库），是依赖主备
 
 * 系统保存全局变量thread_id_counter，每新键一个连接，thread_id_counter + 1后赋给thread_id，作为线程id
 * 上限是2^32-1，达到上限后重置为0
-
-## Spring事务传播行为
-
-- PROPERGATION_MANDATORY：方法必须运行在事务中，如果当前事务不存在，抛异常
-- PROPAGATION_NESTED：当前事务存在，则该方法运行在嵌套事务中
-- PROPAGATION_NEVER：方法不能运行事务中，否则抛异常
-- PROPAGATION_REQUIRED：当前方法必须运行在事务中，如果当前存在事务，该方法运行其中，否则创建新事务
-- PROPAGATION_REQUIRES_NEW：当前方法必须运行在事务中，如果当前存在事务，则该事务在方法运行期间被挂起
-- PROPAGATION_SUPPORTS：当前方法不需要运行在事务中，但如果存在事务，也可运行在事务中
-- PROPAGATION_NOT_SUPPORTED：当前方法不能运行在事务中，如果存在事务，则挂起该方法
 
 # JDBC
 

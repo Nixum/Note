@@ -10,7 +10,7 @@ Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要
 
 1. 构建SpringApplication对象，执行其run方法
 2. 加载properties/yaml等配置文件
-3. 创建ApplicationContext（也可以称为Spring容器、IOC容器）
+3. 创建ApplicationContext（也可以称为Bean、IOC容器）
 4. 将扫描到的Bean或者xml中的bean，先解析成BeanDefinition，注册到ApplicationContext中的BeanFactory中（即自动配置过程，也是IOC容器的refresh方法执行过程）
 5. 实例化Bean，进行依赖注入，（AOP也是在此处实现，创建代理实例加入IOC容器）
 
@@ -24,7 +24,7 @@ Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要
 
 **自动配置流程只是SpringBoot启动中的一个环节，该环节只是在告诉Spring要在哪里找到Bean的声明。**
 
-* 启动类main方法为入口，main方法所在的类会被**@SpringBootApplication**修饰， 通过main方法里执行**SpringApplication.run(Application.class, args)**进行启动，Spring启动时会解析出@SpringBootApplication注解，进行Bean的加载和注入。
+启动类main方法为入口，main方法所在的类会被**@SpringBootApplication**修饰， 通过main方法里执行**SpringApplication.run(Application.class, args)**进行启动，Spring启动时会解析出@SpringBootApplication注解，进行Bean的加载和注入。
 
 * @SpringBootApplication里包含了
 
@@ -34,7 +34,7 @@ Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要
 
   * **@EnableAutoConfiguration**：自动配置的核心注解，主要用于找出所有自动配置类。该注解会使用**@Import(EnableAutoConfigurationImportSelector.class**)帮助SpringBoot应用将所有符合条件的@Configuration配置都加载到当前SpringBoot创建并使用的IoC容器。
 
-* **EnableAutoConfigurationImportSelector**类里有个SpringFactoriesLoader工厂加载器，通过里面的loadFactoryNames方法，传入**工厂类名称**和**对应的类加载器**，加载该类加器搜索路径下的指定文件**spring.factories文件**，传入的工厂类为接口，而文件中对应的类则是接口的实现类，或最终作为实现类，得到这些类名集合后，通过**反射**获取这些类的类对象、构造方法，最终生成实例。
+* **EnableAutoConfigurationImportSelector**类里有个SpringFactoriesLoader工厂加载器，通过里面的loadFactoryNames方法，传入**工厂类名称**和**对应的类加载器**，加载该类加载器搜索路径下的指定文件**spring.factories文件**，传入的工厂类为接口，而文件中对应的类则是接口的实现类，或最终作为实现类，得到这些类名集合后，通过**反射**获取这些类的类对象、构造方法，最终生成实例。
 
   因此只要在maven中加入了所需依赖，根据**spring.factories**文件里的key-value，能够在类路径下找到对应的class文件，就会触发自动配置
 
@@ -156,9 +156,9 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 ## 三级缓存解决循环依赖
 
-1. 第一级缓存：单例缓存池singletonObjects，存放完全初始化完的实例(此时已经完成注入，直接可用了)。
-2. 第二级缓存：早期提前暴露的对象缓存earlySingletonObjects，用于检测循环引用，与singletonFactories互斥，如果一级缓存获取不到，则在此层获取实例，如果获取不到，且允许去三级缓存获取，则从三级缓存中获取，并remove加入二级缓存。
-3. 第三级缓存：singletonFactories单例对象工厂缓存，存放初始化不完全的实例(还有依赖没注入)，如果到了三级缓存都获取不到，就会进行初始化，并加入。
+1. 第一级缓存：单例缓存池singletonObjects，存放完全初始化完的实例或者AOP实例对象，此时已经完成注入，直接可用了。
+2. 第二级缓存：早期提前暴露的对象缓存earlySingletonObjects，用于检测循环引用，与singletonFactories互斥，如果一级缓存获取不到，则在此层获取实例，如果获取不到，且允许去三级缓存获取，则从三级缓存中获取，并remove加入二级缓存。一般用于存放完成了部分依赖注入的Bean。
+3. 第三级缓存：singletonFactories单例对象工厂缓存，存放初始化不完全的实例（还有依赖没注入），如果到了三级缓存都获取不到，就会进行初始化，并加入。
 
 当出现循环依赖的对象注入时，会利用这三级缓存来解决问题，但是Spring只能解决Setter方法的注入，无法解决构造器注入，原因是如果通过构造器注入，需要先准备好需要注入的属性
 
@@ -169,10 +169,10 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 通过Setter方法注入：
 
 1. 初始化A，会先依次从三级缓存中获取A实例，获取不到，说明A还未初始化，初始化A产生实例，将实例A加入singletonFactories中。
-2. 对A进行依赖注入，发现需要注入B，依次从三级缓存里获取B实例，到了第三层都获取不到，说明还未初始化，初始化B产生实例，发现依赖了A，依次从三级缓存里获取A实例，在singletonFactories获取到还未初始化完全的实例A，将A进行注入，此时B完全初始化完成，将B加入到singletonObjects中
+2. 对A进行依赖注入，发现需要注入B，依次从三级缓存里获取B实例，到了第三层都获取不到，说明还未初始化，初始化B产生实例，加入singletonFactories，对B进行依赖注入，发现需要注入A，依次从三级缓存里获取A实例，在singletonFactories获取到还未初始化完全的实例A，注入到B中，从singletonFactories中remove，加入到earlySingletonObjects，此时B完全初始化完成，从earlySingletonObjects中remove，将B加入到singletonObjects中
 3. 回到对A进行依赖注入部分，由于B刚刚初始化完成加入了singletonObjects，所以A获取到B，进行注入，A初始化完全，加入singletonObjects中
 
-总结：Spring在实例化一个bean的时候，是首先递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性的。
+**总结**：Spring在实例化一个bean的时候，先实例化该bean，然后递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性中。
 
 ## Bean的生命周期
 
@@ -180,7 +180,7 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 - 关于xxxAware类型的接口，Aware之前的名字表示IOC容器可以获得什么资源，Aware方法都是在初始化阶段前被调用。
 
-- 生命周期执行过程，总结为：实例化 -> 属性赋值 -> 初始化 -> 销毁
+- 生命周期执行过程，**总结为：实例化 -> 属性赋值 -> 初始化 -> 销毁**
 
   **实例化**
 
@@ -210,16 +210,18 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 参考：[Spring Bean生命周期](https://www.jianshu.com/p/3944792a5fff)
 
-[Spring Bean声明周期](https://www.jianshu.com/p/1dec08d290c1)：这篇写得不错
+[Spring Bean生命周期](https://www.jianshu.com/p/1dec08d290c1)：这篇写得不错
 
 ## ApplicationContext与BeanFactory的区别
 
-* ApplicationContext与BeanFactory类似，BeanFactory只提供最基本的Bean对象创建与获取，ApplicationContext指的是上下文，包含BeanFactory的功能，同时也提供了其他额外的功能，比如事件机制、监听、拦截器、资源访问等
-* BeanFactory采用延迟加载来注入Bean，只有在使用到某个Bean的时候才会实例化，ApplicationContext则在容器启动时，就实例化Bean，常驻在容器内
+* ApplicationContext与BeanFactory类似，BeanFactory只提供最基本的Bean对象创建与获取，ApplicationContext指的是上下文，包含BeanFactory的功能（实现了BeanFactory接口），同时也提供了其他额外的功能，比如事件机制、监听、拦截器、资源访问等。
+* BeanFactory采用延迟加载来注入Bean，只有在使用到某个Bean的时候才会实例化，ApplicationContext则在容器启动时，就实例化Bean，常驻在容器内，也可以为Bean配置Lazy-init=true来让Bean延迟实例化。
 
 ## IOC模拟
 
 [Spring——原理解析-利用反射和注解模拟IoC的自动装配](https://www.cnblogs.com/weilu2/p/spring_ioc_analysis_principle_bsici_on_reflection_annotation.html)
+
+[根据 Spring 源码写一个带有三级缓存的 IOC](https://zhuanlan.zhihu.com/p/144627581)
 
 # AOP
 
@@ -386,14 +388,14 @@ public static void main(String[] args) {
 
 * SpringBoot中提供@EnableAspectJAutoProxy开启对AOP的支持，其中属性proxyTargetClass=true时使用cglib，为false使用JDK的动态代理，默认为false
 
-* @EnableAspectJAutoProxy注解主要是使用AspectJAutoProxyRegistrar类将AOP处理工具注册到Spring容器中。
+* @EnableAspectJAutoProxy注解主要是使用AspectJAutoProxyRegistrar类将AOP处理工具注册到Bean中。
 
 * 在这个AOP处理工具中有一个AnnotationAwareAspectJAutoProxyCreator类，该类
-  * 实现了一系列Aware接口，使用BeanFactory：使得Spring容器可以管理
+  * 实现了一系列Aware接口，使用BeanFactory：使得Bean可以管理
   * 实现了order接口：用于设置切面的优先级
   * 继承了ProxyConfig：该类封装了代理的通用逻辑，cglib或JDK动态代理开关配置等
   
-* Spring容器加载完AnnotationAwareAspectJAutoProxyCreator类后，会解析开发者定义的切面类、切点、通知，在BeanFactory中找到被代理类，结合通知进行封装，创建出代理类。由于被代理类可被设置多重代理，在创建代理类时，会根据切面的优先级，不断套在被代理类上，形成拦截器链。
+* Bean加载完AnnotationAwareAspectJAutoProxyCreator类后，会解析开发者定义的切面类、切点、通知，在BeanFactory中找到被代理类，结合通知进行封装，创建出代理类。由于被代理类可被设置多重代理，在创建代理类时，会根据切面的优先级，不断套在被代理类上，形成拦截器链。
 
 * 执行代理类的方法时，就会调用方法拦截器链，进行方法增强。
 
@@ -402,3 +404,15 @@ AOP的实现会在创建Bean实例对象前触发@Aspect切面对象，获得Adv
 [SpringAOP详细介绍](https://blog.csdn.net/JinXYan/article/details/89302126)
 
 [Spring 源码分析Aop](https://blog.csdn.net/fighterandknight/article/details/51209822 "")
+
+# 事务
+
+## Spring事务传播行为
+
+- PROPERGATION_MANDATORY：方法必须运行在事务中，如果当前事务不存在，抛异常
+- PROPAGATION_NESTED：当前事务存在，则该方法运行在嵌套事务中
+- PROPAGATION_NEVER：方法不能运行事务中，否则抛异常
+- PROPAGATION_REQUIRED：当前方法必须运行在事务中，如果当前存在事务，该方法运行其中，否则创建新事务
+- PROPAGATION_REQUIRES_NEW：当前方法必须运行在事务中，如果当前存在事务，则该事务在方法运行期间被挂起
+- PROPAGATION_SUPPORTS：当前方法不需要运行在事务中，但如果存在事务，也可运行在事务中
+- PROPAGATION_NOT_SUPPORTED：当前方法不能运行在事务中，如果存在事务，则挂起该方法

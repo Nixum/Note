@@ -200,9 +200,9 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 
 ![Map类图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Map类图.png)
 
-### HashMap
+## HashMap
 
-#### 1.基本
+### 1.基本
 
 * 底层：一个Node类型的数组，而1.7的是Entry 类型的，不过基本也差不多
 
@@ -257,7 +257,7 @@ ArrayList的底层Object数组被 transient 修饰，该关键字声明数组默
 
 ![1.8HashMap](https://github.com/Nixum/Java-Note/raw/master/Note/picture/1.8HashMap.jpg)
 
-#### 2.创建过程
+### 2.创建过程
 
 * 构造方法：除留余数法
 
@@ -298,7 +298,7 @@ map.put("key111", "value111");
 
 对put方法的解析具体请看[集合框架源码学习之HashMap(JDK1.8)](https://juejin.im/post/5ab0568b5188255580020e56 "")
 
-#### 3.确定键值对所在的桶的下标
+### 3.确定键值对所在的桶的下标
 
 当向map中put进 key-value 时，对key采用哈希 + 除留余数法，确定该键值对所在的桶的下标
 
@@ -346,7 +346,7 @@ static final int hash(Object key) {
 
 在JDK1.8中，使用尾插法加入链表，当然还有一系列判断是否需要将链表转换为红黑树，具体条件看上面已说明
 
-#### 4.扩容
+### 4.扩容
 
 当加入到HashMap中的元素越来越多时，碰撞的概率也越来越高，链表的长度变长，查找效率降低，此时就需要对数组进行扩容。HashMap根据键值对的数量，来调整数组长度，保证查找效率
 
@@ -376,21 +376,21 @@ new capacity : 00100000
 - 它的哈希值如果在第 5 位上为 0，那么取模得到的结果和之前一样；
 - 如果为 1，那么得到的结果为原来的结果 +16。
 
-#### 5.与HashTable的区别
+### 5.与HashTable的区别
 
 * HashMap不是线程安全的，HashTable是线程安全的(因为其方法使用了synchronized修饰来保证同步，效率较差)
 * HashMap允许插入key为null的键值对，而HashTable不允许
 * 如果不指定容量，HashMap默认容量是16，每次扩容为原来的 2 倍；HashTable默认容量是11，每次扩容为原来的 2n+1 倍
 * jdk1.8后对HashMap链表的改变，HashTable没有
 
-### ConcurrentHashMap
+## ConcurrentHashMap
 
-#### 1.基本
+### 1.基本
 
 * 线程安全的HashMap，使用方法同HashMap
 * 不允许存入key为null的键值对
 
-#### 2.线程安全的底层原理，JDK1.7和JDK1.8的实现不一样
+### 2.线程安全的底层原理，JDK1.7和JDK1.8的实现不一样
 
 - JDK1.7
 
