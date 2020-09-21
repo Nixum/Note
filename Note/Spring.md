@@ -152,6 +152,8 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 
 详细源码分析，参考[Spring: 源码解读Spring IOC](https://www.cnblogs.com/ITtangtang/p/3978349.html "")
 
+[Spring  IOC源码分析](https://segmentfault.com/a/1190000015221968 "")
+
 具体例子，参考[Spring IOC核心源码学习](https://yikun.github.io/2015/05/29/Spring-IOC%E6%A0%B8%E5%BF%83%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/ "")
 
 ## 三级缓存解决循环依赖
@@ -169,10 +171,12 @@ Spring中的bean默认都是单例的，对于一些公共属性，在多线程�
 通过Setter方法注入：
 
 1. 初始化A，会先依次从三级缓存中获取A实例，获取不到，说明A还未初始化，初始化A产生实例，将实例A加入singletonFactories中。
-2. 对A进行依赖注入，发现需要注入B，依次从三级缓存里获取B实例，到了第三层都获取不到，说明还未初始化，初始化B产生实例，加入singletonFactories，对B进行依赖注入，发现需要注入A，依次从三级缓存里获取A实例，在singletonFactories获取到还未初始化完全的实例A，注入到B中，从singletonFactories中remove，加入到earlySingletonObjects，此时B完全初始化完成，从earlySingletonObjects中remove，将B加入到singletonObjects中
+2. 对A进行依赖注入，发现需要注入B，依次从三级缓存里获取B实例，到了第三层都获取不到，说明还未初始化，初始化B产生实例，加入singletonFactories，对B进行依赖注入，发现需要注入A，依次从三级缓存里获取A实例，在singletonFactories获取到还未初始化完全的实例A，从singletonFactories中remove，加入到earlySingletonObjects，注入到B中，此时B完全初始化完成，从earlySingletonObjects中remove，将B加入到singletonObjects中。
 3. 回到对A进行依赖注入部分，由于B刚刚初始化完成加入了singletonObjects，所以A获取到B，进行注入，A初始化完全，加入singletonObjects中
 
 **总结**：Spring在实例化一个bean的时候，先实例化该bean，然后递归的实例化其所依赖的所有bean，直到某个bean没有依赖其他bean，此时就会将该实例返回，然后反递归的将获取到的bean设置为各个上层bean的属性中。
+
+实际上，看起来earlySingletonObjects会有点多余，这一层的缓存主要是扩展时使用。
 
 ## Bean的生命周期
 
