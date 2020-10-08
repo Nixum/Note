@@ -127,6 +127,8 @@ d = a + c; // 会出错，a在运算时为自动提升为int
 
 * String类的 “+"  本质是使用StringBuilder的append方法，最终返回new的string
 
+* JDK9之前底层使用char数组，JDK9底层改为使用byte数组+coder标识符，主要是因为有些字符集并不需要使用到2个字节的char，不需要用到2个字节的char
+
 ## 2.不可变的好处
 
 * 可以缓存 hash 值
@@ -144,6 +146,10 @@ d = a + c; // 会出错，a在运算时为自动提升为int
   * 不可变得特性使得它天生是线程安全的
 
 ## 3.字符串常量池（String Pool）
+
+* 一般用于缓存字符串字面量和符号引用
+
+String的intern方法可以把相应的字符串缓存起来，保存在永久代中，但是一般永久代空间有限，且只有FullGC才会进行垃圾回收（JDK8后移永久代移到了元空间中，默认大小也增加了），所以需要谨慎使用该方法
 
 ## 4.StringBuffer和StringBuilder
 

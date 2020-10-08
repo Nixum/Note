@@ -105,6 +105,7 @@ GoLang中的协程
 * 避免多个线程操作多个共享资源，注意锁的申请顺序，比如给资源设置序号，顺序取放
 * 获取锁时设置超时时间
 * 减少共享资源的使用，使用ThreadLocal，消息队列，共享资源在方法内复制(set回去的时候cas)，或者设计一种模式对共享资源的访问
+* jstack检查线程与状态
 
 ## 死锁检测工具
 
@@ -376,7 +377,7 @@ TERMINATED：terminated()方法执行过后变成这个
 | LinkedBlockingQueue   | 底层是链表，有界，默认容量是Integer.MAX_VALUE，使用读锁和写锁，因此吞吐量比ArrayBlockingQueue大 |
 | PriorityBlockingQueue | 底层是数组 + 堆排实现排序，无界，默认容量是11，最大是Integer.MAX_VALUE - 8，默认对元素使用自然顺序排序，也可指定比较器 |
 | DelayQueue            | 无界，支持延时获取，不允许take或poll移除未过期元素，size=过期元素 + 非过期元素 |
-| SynchronousQueue      | 有界，一个线程的插入必须等待另一个线程的删除后才能完成，反之亦然，不能被迭代，容量只有1，支持公平和非公平模式 |
+| SynchronousQueue      | 有界，一个线程的插入必须等待另一个线程的删除后才能完成，反之亦然，不能被迭代，容量可理解为只有1，支持公平和非公平模式 |
 | LinkedTransferQueue   | 底层是链表，无界，生产者会一直阻塞直到所添加到队列的元素被某一个消费者所消费，主要用于线程间消息的传递 |
 | LinkedBlockingDeque   | 底层是链表，双向队列，无界                                   |
 
