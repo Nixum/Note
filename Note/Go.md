@@ -7,7 +7,8 @@
 * 当数组类型是整形时，所有元素都会被自动初始化为0，即声明完数组，数组会被设置类型的默认值
 * 可以使用new()来创建，如`var arr3 = new([5]int)`，arr3的类型是`*[5]int`，arr1、arr2的类型是`[5]int`
 * 如果函数的参数可以是[5]int, 表明入参是数组，如果是[]int，表明入参是slice。类型[3]int和[5]int是两种不同的类型。
-* **数组是值类型**，赋值和传参会进行拷贝，函数内部的修改不会影响原始数组
+* **数组是值类型**，赋值和传参会进行拷贝，函数内部的修改不会影响原始数组。
+* 如果数组中的元素个数小于或等于4个，所有变量会直接在栈上初始化；当数组元素大于4个，变量就会在静态存储区初始化然后拷贝到栈上。
 
 ## 切片Slice
 
@@ -102,6 +103,64 @@ fmt.Printf("len=%d, cap=%d\n",len(s),cap(s))  // len=5, cap=8
 
 # Map
 
+## 数据结构
+
+```go
+type hmap struct {
+	count     int    // 哈希表中元素的数量
+	flags     uint8  // 记录map的状态
+    B         uint8  // buckets的数量，len(buckets) = 2^B
+	noverflow uint16 // 溢出的bucket的个数
+	hash0     uint32 // 哈希种子，为哈希函数的结果引入随机性。该值在创建哈希表时确定，在构造方法中传入
+
+	buckets    unsafe.Pointer // 桶的地址
+	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半
+	nevacuate  uintptr // 迁移进度，小于nevacuate的表示已迁移
+
+	extra *mapextra // 用于扩容的指针，单个桶装满时用于存储溢出数据，溢出桶和正常桶在内存上是连续的
+}
+
+type mapextra struct {
+	overflow    *[]*bmap
+	oldoverflow *[]*bmap
+	nextOverflow *bmap
+}
+
+type bmap struct {
+    tophash [bucketCnt]uint8 // len为8的数组，即每个桶只能存8个键值对
+}
+// 但由于go没有泛型，哈希表中又可能存储不同类型的键值对，所以键值对所占的内存空间大小只能在编译时推导，无法先设置在结构体中，这些字段是在运行时通过计算内存地址的方式直接访问，这些额外的字段都是编译时动态创建
+type bmap struct {
+    topbits  [8]uint8
+    keys     [8]keytype
+    values   [8]valuetype
+    pad      uintptr
+    overflow uintptr // 每个桶只能存8个元素，超过8个时会存入溢出桶，溢出桶只是临时方案，溢出过多时会进行扩容
+}
+```
+
+![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_map_struct.jpg)
+
+## 基本
+
+* 创建：`m := map[string]int{"1": 11, "2": 22}`或者 `m := make(map[string]int, 10)`
+* 当使用字面量的方式创建哈希表时，如果{}中元素少于或等于25时，编译器会转成make的方式创建，再进行赋值；如果超过了25个，编译时会转成make的方式创建，同时为key和value分别创建两个数组，最后进行循环赋值
+* 装载因子为6.5
+* key不允许为slice、map、func，允许bool、numeric、string、指针、channel、interface、struct
+* map的容量为 6.5 * 2^B 个元素，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
+
+## 创建初始化
+
+1. 
+
+## 查找
+
+## 插入
+
+## 扩容
+
+## 删除
+
 
 
 # Channel
@@ -123,3 +182,7 @@ fmt.Printf("len=%d, cap=%d\n",len(s),cap(s))  // len=5, cap=8
 [深入理解Slice底层实现](https://zhuanlan.zhihu.com/p/61121325)
 
 [Go 语言设计与实现](https://draveness.me/golang/docs/part2-foundation/ch03-datastructure/golang-array-and-slice)
+
+[Golang源码-Map实现原理分析](https://studygolang.com/articles/27421)
+
+[Go map原理剖析](https://segmentfault.com/a/1190000020616487)
