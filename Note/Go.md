@@ -139,19 +139,62 @@ type bmap struct {
 }
 ```
 
-![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_map_struct.jpg)
+![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_map_struct.png)
 
 ## 基本
 
 * 创建：`m := map[string]int{"1": 11, "2": 22}`或者 `m := make(map[string]int, 10)`
 * 当使用字面量的方式创建哈希表时，如果{}中元素少于或等于25时，编译器会转成make的方式创建，再进行赋值；如果超过了25个，编译时会转成make的方式创建，同时为key和value分别创建两个数组，最后进行循环赋值
-* 装载因子为6.5
 * key不允许为slice、map、func，允许bool、numeric、string、指针、channel、interface、struct
+* 装载因子为6.5
 * map的容量为 6.5 * 2^B 个元素，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
 
 ## 创建初始化
 
-1. 
+最终会在运行时调用makemap函数进行创建和初始化，
+1. 计算哈希表占用的内存是否溢出或者超出能分配的最大值
+2. 调用fastrand()获取随机哈希种子，计算B的值，用于初始化桶的数量 = 2^B
+3. 调用makeBucketArray()分配连续的空间，创建用于保存桶的数组
+   
+   当桶的数量小于2^4时，由于数据较少，哈希冲突的可能性较小，此时不会创建溢出桶。
+   当桶的数量大于2^4时，就会额外创建2^(B-4)个溢出桶，溢出桶与普通桶在内存空间上是连续的。
+
+```go
+makemap函数内，计算桶的数量
+  B := uint8(0)
+  //计算得到合适的B
+  for overLoadFactor(hint, B) {
+    B++
+  }
+  h.B = B
+  
+func overLoadFactor(count int, B uint8) bool {
+	// 常量loadFactorNum=13 ，loadFactorDen=2，bucketCnt=8，bucketShift()函数返回2^b
+	return count > bucketCnt && uintptr(count) > loadFactorNum*(bucketShift(B)/loadFactorDen)
+}
+
+func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets unsafe.Pointer, nextOverflow *bmap) {
+	base := bucketShift(b)
+	nbuckets := base
+	if b >= 4 {
+		nbuckets += bucketShift(b - 4)
+		sz := t.bucket.size * nbuckets
+		up := roundupsize(sz)
+		if up != sz {
+			nbuckets = up / t.bucket.size
+		}
+	}
+	buckets = newarray(t.bucket, int(nbuckets))
+	// 如果多申请了桶，将多申请的桶放在nextOverflow里备用
+	if base != nbuckets {
+		nextOverflow = (*bmap)(add(buckets, base*uintptr(t.bucketsize)))
+		last := (*bmap)(add(buckets, (nbuckets-1)*uintptr(t.bucketsize)))
+		last.setoverflow(t, (*bmap)(buckets))
+	}
+	return buckets, nextOverflow
+}
+```
+
 
 ## 查找
 
