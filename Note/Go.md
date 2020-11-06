@@ -144,15 +144,24 @@ type bmap struct {
 ## 基本
 
 * 创建：`m := map[string]int{"1": 11, "2": 22}`或者 `m := make(map[string]int, 10)`
+
 * 当使用字面量的方式创建哈希表时，如果{}中元素少于或等于25时，编译器会转成make的方式创建，再进行赋值；如果超过了25个，编译时会转成make的方式创建，同时为key和value分别创建两个数组，最后进行循环赋值
+
 * key不允许为slice、map、func，允许bool、numeric、string、指针、channel、interface、struct
-* 装载因子为6.5
-* map的容量为 6.5 * 2^B 个元素，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
+
+* map的容量为 装载因子6.5 * 2^B 个元素，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
+
 * 拉链法解决哈希冲突，除留余数法得到桶的位置。
+
 * key的哈希值的低B位计算获得桶的位置，高8位计算得到tophash的位置，进而找到key的位置。
+
 * 溢出桶也是一个bmap，bmap的overflow会指向下一个溢出桶，所以**溢出桶的结构是链表，但是它们跟正常桶是在一片连续内存上，即buckets数组**。
-* 每个桶可以存8个tophash + 8对键值对
+
+* 每个桶存了8个tophash + 8对键值对。
+
 * map是非线程安全的，扩容不是一个原子操作。
+
+* map的遍历是无序的，每次遍历出来的结果的顺序都不一样。
 
 ## 创建初始化
 
@@ -315,19 +324,31 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 迁移时是渐进式迁移，一次最多迁移两个bucket桶。
 
-1. 在插入和修改函数mapassign中，如果发现oldbuckets数组不为空，即此时正在扩容中，需要进行扩容迁移，调用growWork函数。
-2. 
+1. 在插入、修改或删除中，如果发现oldbuckets数组不为空，表示此时正在扩容中，需要进行扩容迁移，调用growWork函数，growWork函数调用一次evacuate函数，如果调用完成后，hmap的oldbuckets还是非空，则再调用一次evacuate函数，加快迁移进程。
 
+2. 进入evacuate函数，如果是等量扩容，B值不变，老bucket桶上的键值计算出来的桶的序号不变，tophash不变，此时会将老桶上的键值对依次地一个个转移到新桶上，使这些键值对在新桶上排列更加紧凑；
 
+   如果是增量扩容，容量变为原来的两倍，B值+1，老bucket桶上的键值计算出来的桶的序号改变，这些键值对计算后的bucket桶的序号可能跟之前一样，也可能是相比原来加上2^B，取决于key哈希值后 老B+1 位的值是0还是1，tophash不变，原来老bucket桶上的键值对会分流到两个新的bucket桶上。将老bucket桶上的键值对和其指向的溢出桶上的键值对进行迁移，依次转移到新桶上，每迁移完一个，hmap的nevacuate计数+1，直到老bucket桶上的键值对迁移完成，最后情况oldbuckets和oldoverflow字段
 
 [evacuate函数](https://github.com/Nixum/Java-Note/raw/master/Note/source_with_note/go_map_evacuate.go)
 
-
-
 ## 删除
+
+调用delete函数，无论要删除的key是否存在，delete都不会返回任何结果。删除实际上也是一个key的定位 + 删除的操作，定位到key后，将其键值对置空，hmap的count - 1，tophash置为empty。
 
 ## 遍历
 
+对go中的map是无序的，每次遍历出来的顺序都是不一样的，go在每次遍历map时，并不是固定地从0号bucket桶开始遍历，每次都是从一个随机值序号的bucket桶开始遍历，并且是从这个bucket桶的一个随机序号的 正常位开始遍历。
+
+> 1. 首先从buckets数组中，随机确定一个索引，作为startBucket，然后确定offset偏移量，得到桶中的正常位的位置，作为起始key的地址。
+> 2. 遍历当前bucket及bucket.overflow，判断当前bucket是否正在扩容中，如果是则跳转到3，否则跳转到4。
+> 3. 如果是在扩容中，遍历时会先到当前bucket扩容前的老的bucket桶中遍历那些能迁移到当前桶的key。
+>
+> 假如原先的buckets为0，1，那么扩容后的新的buckets为0，1，2，3，此时我们遍历到了buckets[0]， 发现这个bucket正在扩容，那么找到bucket[0]所对应的oldbuckets[0]，遍历里面的key，这时候仅仅遍历那些key经过hash后，可以散列到bucket[0]里面的部分key；同理，当遍历到bucket[2]的时候，发现bucket正在扩容，找到oldbuckets[0]，然后遍历里面可以散列到bucket[2]的那些key。
+>
+> 4. 遍历当前这个bucket即可。
+> 5. 继续遍历bucket下面的overflow链表。
+> 6. 如果遍历到了startBucket，说明遍历完了，结束遍历。
 
 
 # Channel
