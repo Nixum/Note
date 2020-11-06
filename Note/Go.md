@@ -216,9 +216,10 @@ mapaccess2也会调用mapaccess1，只是返回的时候会返回多一个用于
 ### key的定位
 
 1. 找buckets数组中的bucket的位置：key经过哈希计算得到哈希值，取出hmap的B值，取哈希值的后B位，计算后面的B位的值得到桶的位置（实际上这一步就是除留余数法的取余操作）。
-2. 在桶中找到tophash的位置：用key哈希计算得到的哈希值，取高8位，计算得到此bucket桶中的tophash。
-3. 每个桶是一整片连续的内存空间，先遍历bucket桶中的正常位，与桶中的tophash进行比较，当找到对应的tophash时，根据tophash进行计算得到key，根据key的大小计算得到value的地址，找到value。
-4. 如果bucket桶中的正常位没找到tophash，且overflow不为空，则继续遍历溢出桶overflow bucket，直到找到对应的tophash，再根据key的大小计算得到value的地址，找到value。
+2. 确定使用buckets数组还是oldbuckets数组：判断oldbuckets数组中是否为空，不为空说明正处于扩容中，还没完成迁移，则重新计算桶的位置，并在oldbuckets数组找到对应的桶；如果为空，则在buckets数组中找到对应的桶。
+3. 在桶中找tophash的位置：用key哈希计算得到的哈希值，取高8位，计算得到此bucket桶中的tophash，之后在桶中的正常位遍历比较。
+4. 每个桶是一整片连续的内存空间，先遍历bucket桶中的正常位，与桶中的tophash进行比较，当找到对应的tophash时，根据tophash进行计算得到key，根据key的大小计算得到value的地址，找到value。
+5. 如果bucket桶中的正常位没找到tophash，且overflow不为空，则继续遍历溢出桶overflow bucket，直到找到对应的tophash，再根据key的大小计算得到value的地址，找到value。
 
 ```go
 // 计算得到bucket桶在buckets数组中的位置
@@ -310,7 +311,12 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 ### 扩容迁移
 
-在mapassign 和 mapdelete 函数中，即进行插入、修改、删除时，才会调用growWrok函数，完成真正的迁移工作。迁移时是渐进式迁移，一次最多迁移两个bucket桶。
+扩容迁移发生在 mapassign 和 mapdelete 函数中，即进行插入、修改、删除时，才会调用growWrok函数和evacuate函数，完成真正的迁移工作后，才会进行插入、修改或删除。
+
+迁移时是渐进式迁移，一次最多迁移两个bucket桶。
+
+1. 在插入和修改函数mapassign中，如果发现oldbuckets数组不为空，即此时正在扩容中，需要进行扩容迁移，调用growWork函数。
+2. 
 
 
 
