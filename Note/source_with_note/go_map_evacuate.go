@@ -13,6 +13,13 @@ func (h *hmap) growing() bool {
   return h.oldbuckets != nil
 }
 
+type evacDst struct {
+  b *bmap          // 表示bucket 移动的目标地址
+  i int            // 指向 x,y 中 key/val 的 index
+  k unsafe.Pointer // 指向 x，y 中的 key
+  v unsafe.Pointer // 指向 x，y 中的 value
+}
+
 func evacuated(b *bmap) bool {
     h := b.tophash[0]
     return h > empty && h < minTopHash
