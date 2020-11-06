@@ -10,7 +10,7 @@
 * **数组是值类型**，赋值和传参会进行拷贝，函数内部的修改不会影响原始数组。
 * 如果数组中的元素个数小于或等于4个，所有变量会直接在栈上初始化；当数组元素大于4个，变量就会在静态存储区初始化然后拷贝到栈上。
 
-## 切片Slice
+# 切片Slice
 
 ## 数据结构
 
@@ -372,6 +372,44 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 
 # Channel
+
+## 数据结构
+
+```go
+type hchan struct {
+	qcount   uint   // channel中的元素个数
+	dataqsiz uint   // channel中的循环队列的长度
+	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组
+	elemsize uint16 // 当前channel能够收发的元素大小
+	closed   uint32
+	elemtype *_type // 当前channel能够手发的元素类型
+	sendx    uint   // channel的发送操作处理到的位置，当sendx=dataqsiz时，会回到buf数组的起点
+	recvx    uint   // channel的接收操作处理到的位置
+	recvq    waitq  // 存储当前channel由于缓冲区空间不足而接收阻塞的goroutine列表，双向链表
+	sendq    waitq  // 存储当前channel由于缓冲区空间不足而发送阻塞的goroutine列表，双向链表
+
+	lock mutex
+}
+
+type waitq struct {
+	first *sudog
+	last  *sudog
+}
+```
+
+## 基本
+
+* 使用make关键字创建，如`ch := make(chan, string, 10), 创建一个能处理string的缓冲区大小为10的channel`，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；如果是`ch := make(chan, string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列
+* channel作为中介，负责在多个goroutine间传递数据
+
+## 发送数据
+
+使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据。
+
+1. 如果是阻塞的，chansend在发送数据前会为当前channel加锁。
+2. 当存在等待的接收者时，通过send函数，从接收队列recvq中取出最先进入等待的goroutine，直接发送数据。
+3. 当缓冲区存在空余空间时，会使用chanbuf计算出下一个可以存储数据的位置，将要发送的数据拷贝到缓冲区并增加sendx索引和qcount计数器，将发送的数据写入channel缓冲区。
+4. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送数据的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址），将该sudog对象加入recvq队列，并设置到当前goroutine的waiting上，表示此goroutine正在等待，调用goparkunlock函数让该goroutine进入等待，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
 
 
 
