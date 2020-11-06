@@ -43,6 +43,26 @@ type Slice struct {
 > new (T) 为每个新的类型 T 分配一片内存，初始化为 0 并且返回类型为 * T 的内存地址：这种函数 返回一个指向类型为 T，值为 0 的地址的指针，它**适用于值类型如数组和结构体**；它相当于 &T{}。
 > make(T) 返回一个类型为 T 的初始值，它只**适用于 3 种内建的引用类型：切片、map 和 channel**。
 
+* range遍历的注意点：使用range遍历时，底层使用range遍历时，slice会发生一次拷贝，即range指向的slice是原始slice的拷贝；将slice的每个元素赋值给v时，也发生了一次拷贝。
+
+demo
+```
+	arr := []int{1, 2, 3}
+	for _, v := range arr {
+		arr = append(arr, v)
+	}
+	fmt.Println(arr)  // 打印：1 2 3 1 2 3
+
+	arr2 := []int{1, 2, 3}
+	newArr := []*int{}
+	for _, v := range arr2 {
+		newArr = append(newArr, &v)
+	}
+	for _, v := range newArr {
+		fmt.Printf("%v ", *v) // 打印3 3 3，因为是v指向了同一个指针
+	}
+```
+
 ## 扩容
 
 ### 原理
