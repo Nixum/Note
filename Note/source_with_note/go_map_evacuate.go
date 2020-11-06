@@ -9,6 +9,10 @@ func growWork(t *maptype, h *hmap, bucket uintptr) {
     }
 }
 
+func (h *hmap) growing() bool {
+  return h.oldbuckets != nil
+}
+
 func evacuated(b *bmap) bool {
     h := b.tophash[0]
     return h > empty && h < minTopHash
