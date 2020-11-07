@@ -128,8 +128,9 @@ fmt.Printf("len=%d, cap=%d\n",len(s),cap(s))  // len=5, cap=8
 ```go
 type hmap struct {
 	count     int    // 哈希表中元素的数量
-	flags     uint8  // 记录map的状态，1：可能有迭代器使用buckets，2：可能有迭代器使用oldbuckets，4：有协程正在向map中写入key，8：等量扩容
-    B         uint8  // buckets的数量，len(buckets) = 2^B
+	// 1：可能有迭代器使用buckets，2：可能有迭代器使用oldbuckets，4：有协程正在向map中写入key，8：等量扩容
+	flags     uint8  // 记录map的状态
+    	B         uint8  // buckets的数量，len(buckets) = 2^B
 	noverflow uint16 // 溢出的bucket的个数
 	hash0     uint32 // 哈希种子，为哈希函数的结果引入随机性。该值在创建哈希表时确定，在构造方法中传入
 
@@ -149,7 +150,8 @@ type mapextra struct {
 type bmap struct {
     tophash [bucketCnt]uint8 // len为8的数组，即每个桶只能存8个键值对
 }
-// 但由于go没有泛型，哈希表中又可能存储不同类型的键值对，所以键值对所占的内存空间大小只能在编译时推导，无法先设置在结构体中，这些字段是在运行时通过计算内存地址的方式直接访问，这些额外的字段都是编译时动态创建
+// 但由于go没有泛型，哈希表中又可能存储不同类型的键值对，所以键值对所占的内存空间大小只能在编译时推导，
+// 无法先设置在结构体中，这些字段是在运行时通过计算内存地址的方式直接访问，这些额外的字段都是编译时动态创建
 type bmap struct {
     topbits  [8]uint8    // 通过tophash找到对应键值对在keys和values数组中的下标
     keys     [8]keytype
@@ -378,17 +380,17 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 ```go
 type hchan struct {
 	qcount   uint   // channel中的元素个数
-	dataqsiz uint   // channel中的循环队列的长度
+	dataqsiz uint   // channel中的循环数组的长度
 	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组
 	elemsize uint16 // 当前channel能够收发的元素大小
 	closed   uint32
 	elemtype *_type // 当前channel能够收发的元素类型
-	sendx    uint   // channel的发送操作处理到的位置，当sendx=dataqsiz时，会回到buf数组的起点
-	recvx    uint   // channel的接收操作处理到的位置
+	sendx    uint   // 指向底层循环数组buf，表示当前可发送的元素位置的索引值，当sendx=dataqsiz时，会回到buf数组的起点
+	recvx    uint   // 指向底层循环数组buf，表示当前可接收的元素位置的索引值
 	recvq    waitq  // 存储当前channel由于缓冲区空间不足而接收阻塞的goroutine列表，双向链表
 	sendq    waitq  // 存储当前channel由于缓冲区空间不足而发送阻塞的goroutine列表，双向链表
 
-	lock mutex
+	lock mutex  // 保证每个读channel或写channel的操作都是原子的
 }
 
 type waitq struct {
@@ -399,8 +401,13 @@ type waitq struct {
 
 ## 基本
 
-* 使用make关键字创建，如`ch := make(chan, string, 10), 创建一个能处理string的缓冲区大小为10的channel`，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；如果是`ch := make(chan, string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列
-* channel作为通道，负责在多个goroutine间传递数据
+* chan是引用类型，使用make关键字创建，如
+
+  `ch := make(chan, string, 10)`，创建一个能处理string的缓冲区大小为10的channel，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；
+  
+  `ch := make(chan, string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，即如果连续发送两次数据，第一次如果没有被接收的话，第二次就会被阻塞。
+  
+* channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
 ## 发送数据
 
