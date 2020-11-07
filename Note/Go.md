@@ -382,7 +382,7 @@ type hchan struct {
 	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组
 	elemsize uint16 // 当前channel能够收发的元素大小
 	closed   uint32
-	elemtype *_type // 当前channel能够手发的元素类型
+	elemtype *_type // 当前channel能够收发的元素类型
 	sendx    uint   // channel的发送操作处理到的位置，当sendx=dataqsiz时，会回到buf数组的起点
 	recvx    uint   // channel的接收操作处理到的位置
 	recvq    waitq  // 存储当前channel由于缓冲区空间不足而接收阻塞的goroutine列表，双向链表
@@ -400,7 +400,7 @@ type waitq struct {
 ## 基本
 
 * 使用make关键字创建，如`ch := make(chan, string, 10), 创建一个能处理string的缓冲区大小为10的channel`，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；如果是`ch := make(chan, string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列
-* channel作为中介，负责在多个goroutine间传递数据
+* channel作为通道，负责在多个goroutine间传递数据
 
 ## 发送数据
 
@@ -409,7 +409,17 @@ type waitq struct {
 1. 如果是阻塞的，chansend在发送数据前会为当前channel加锁。
 2. 当存在等待的接收者时，通过send函数，从接收队列recvq中取出最先进入等待的goroutine，直接发送数据。
 3. 当缓冲区存在空余空间时，会使用chanbuf计算出下一个可以存储数据的位置，将要发送的数据拷贝到缓冲区并增加sendx索引和qcount计数器，将发送的数据写入channel缓冲区。
-4. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送数据的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址），将该sudog对象加入recvq队列，并设置到当前goroutine的waiting上，表示此goroutine正在等待，调用goparkunlock函数让该goroutine进入等待，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
+4. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送数据的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
+
+## 接收数据
+
+使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分配str接收到的零值是发送者发的还是ch关闭`接收数据，最终会调研chanrecv函数接收数据。
+
+1. 当从一个空channel中接收数据时会调研gopark函数，此时当前goroutine进入等待。
+2. 如果当前channel已经被关闭且缓冲区不存在任何数据，此时会清除ep指针中的数据并立即返回。
+3. 当channel的sendq队列存在等待状态的goroutine时，使用recv函数直接从阻塞的发送者或缓冲区中获取数据。
+4. 当缓冲区存在数据时，从channel的缓冲区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除队列中的数据，递增recvx，递减qcount，完成数据接收。当发送recvx超过channel的buf时，会将其归零。
+5. 当缓冲区不存在数据且channel的sendq不存在等待的goroutine时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
 
 
 
@@ -432,3 +442,7 @@ type waitq struct {
 [Golang源码-Map实现原理分析](https://studygolang.com/articles/27421)
 
 [Go map原理剖析](https://segmentfault.com/a/1190000020616487)
+
+[深度解密Go语言之channel](https://zhuanlan.zhihu.com/p/74613114)
+
+[GC](https://qcrao91.gitbook.io/go/gc/gc)
