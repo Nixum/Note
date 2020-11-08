@@ -428,11 +428,123 @@ type waitq struct {
 4. 当缓冲区存在数据时，从channel的缓冲区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除队列中的数据，递增recvx，递减qcount，完成数据接收。当发送recvx超过channel的buf时，会将其归零。
 5. 当缓冲区不存在数据且channel的sendq不存在等待的goroutine时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
 
+# Runtime
 
+* 不同于Java，Go没有虚拟机，很多东西比如自动GC、对操作系统和CPU相关操作都变成了函数，写在runtime包里。
+* Runtime提供了go代码运行时所需要的基础设施，如协程调度、内存管理、GC、map、channel、string等内置类型的实现、对操作系统和CPU相关操作进行封装。
+* 诸如go、new、make、->、<-等关键字都被编译器编译成runtime包里的函数
+* build成可执行文件时，Runtime会和用户代码一起进行打包。
 
 # Goroutine
 
+## 基本
 
+* 一般线程会占有1Mb以上的内存空间，每次对线程进行切换时会消耗较多内存，恢复寄存器中的内容还需要向操作系统申请或销毁对应的资源，每一次上下文切换都需要消耗~1us左右的时间，而Go调度器对goroutine的上下文切换为~0.2us，减少了80%的额外开销。
+
+* 协程本质是一个数据结构，封装了要运行的函数和运行的进度，交由go调度器进行调度，不断切换的过程。由调度器决定协程是运行，还是切换出调度队列(阻塞)，去执行其他满足条件的协程。
+
+  go的调度器在用户态实现调度，调度的是一种名叫协程的执行流结构体，也有需要保存和恢复上下文的函数，运行队列。
+
+  协程同步造成的阻塞，只是调度器切换到别的协程去执行了，线程本身并不阻塞。
+
+* Go的调度器通过**使用与CPU数量相等的线程**减少线程频繁切换的内存开销，同时**在每一个线程上执行额外开销更低的Goroutine**来降低操作系统和软件的负载。
+
+* GPM模型 - M：N调度模型
+
+* 1.2~1.3版本使用**基于协作的抢占式调度器**（通过编译器在函数调用时插入抢占式检查指令，在函数调用时检查当前goroutine是否发起抢占式请求），但gouroutine可能会因为垃圾回收和循环长时间占用资源导致程序暂停。
+
+  从1.14版本开始使用**基于信号的抢占式调度**，垃圾回收在扫描栈时会触发抢占式调度，但抢占时间点不够多，还不能覆盖全部边缘情况。
+
+  之所以要使用抢占式的，是因为不使用抢占式时，只有当goroutine主动让出CPU资源才能触发调度，可能会导致某个goroutine长时间占用线程，造成其他goroutine饿死；另外，垃圾回收需要暂停整个程序，在STW时，整个程序无法工作。
+
+## 调度器的GPM模型
+
+goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模型管理goroutine。
+
+* G：即goroutine，代码中的`go func{}`，代表一个待执行的任务
+* M：即machine，操作系统的线程，由操作系统的调度器调度和管理。
+* P：即processor，处理器，运行在线程上的本地调度器，用来管理和执行goroutine，使得goroutine在一个线程上跑，提供了线程需要的上下文（用于在同一线程写多个goroutine的切换），负责调度线程上的LRQ，是实现从N：1到N：M映射的关键。
+
+## GPM三者的关系与特点
+
+* p的个数取决于GOMAXPROCS，默认使用CPU的个数，这些P会绑定到不同内核线程，尽量提升性能，让每个核都有代码在跑。
+
+* M的数量不一定和P匹配，课堂设置多个M，M和P绑定后才可运行，多余的M会处于休眠状态。
+
+  调度器最多可创建10000个M，但最多只有GOMAXPROCS个活跃线程能够正常运行。
+
+  所以一般情况下，会设置与P一样数量的M，让所有的调度都发生在用户态，减少额外的调度和上下文切换开销。
+
+* P包含一个LRQ(Local Run Queue本地运行队列)，保存P需要执行的goroutine的队列。LRQ是一个环形链表，最多存储256个待执行goroutine，当LRQ不够用时，新创建的goroutine会保存在GRQ中。
+
+* 调度器本身包含一个GRQ(Global Run Queue全局运行队列)，保存所有未分配的goroutine。
+
+## 调度的时机
+
+* go调度器，本质是为需要执行的G寻找M以及P，不是一个实体，调度是需要发生调度时由M执行runtime.schedule方法进行
+* channel、mytex等sync操作发生协程阻塞
+* time.sleep
+* IO
+* GC
+* 主动yield
+* 运行过久或系统调度过久
+
+## 调度Demo
+
+单核机器，只有一个处理器P，系统初始化两个线程M0和M1，处理器P优先绑定线程M0，线程M1进入休眠状态。目前P正在处理G0，LRQ里的G1、G2、G3等待处理，GRQ里的G4、G5等到分配。
+
+如果G0短时间处理完，P就会从LRQ取出G1进行处理，LRQ从GRQ取出G4进行分配；
+
+![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_runtime_1.png)
+
+如果G0处理得很慢，系统就会让M0休眠，挂起G0，唤醒线程M1，将LRQ转移给M1进行处理；
+
+如果此时G1也处理得很慢，此时会阻塞，或者休眠M1，唤醒M0，回去继续处理G0；**切换M和G的操作由sysmon协程进行处理，即抢占式由sysmon函数实现**。
+
+如果G1处理得很快，则继续获取LRQ里的下一个G；待LRQ里的G都执行完了，切回M0，继续处理G0。
+
+![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_runtime_2.png)
+
+如果是多核的，有多个P，多个M，当有一个P处理完所有的G后，会先从GRQ中获取G，如果获取不到，就会从另一个P的LRQ里取走一半G，继续处理。
+
+## sysmon协程
+
+由sysmon协程进行协作式抢占，对goroutine进行标记，执行goroutine时如果有标记就会让出CPU，对于syscall过久的P，会进行M和P的分配，防止P被占用过久影响调度。
+
+![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_sysmon.png)
+
+## M：Machine
+
+M本质时一个循环调度，不断的执行schedule函数，查找可运行的G。会在自旋与休眠的状态间转换
+
+## G：Goroutine的状态
+
+![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_state.png)
+
+goroutine的状态不止以下几种，只是这几种比较常用
+
+| G状态       | 值     | 说明                                                         |
+| ----------- | ------ | ------------------------------------------------------------ |
+| _Gidle      | 0      | 刚刚被分配，还没被初始化                                     |
+| _Grunnable  | 1      | 表示在runqueue上，即LRQ，还没有被执行，此时的G才能被M执行，进入Grunning状态 |
+| _Grunning   | 2      | 执行中，不在runqueue上，与M、P绑定                           |
+| _Gsyscall   | 3      | 在执行系统调用，没有执行go代码，没在runqueue上，只与M绑定    |
+| _Gwaiting   | 4      | 被阻塞（如IO、GC、chan阻塞、锁）不在runqueue，但一定在某个地方，比如channel中，锁排队中等 |
+| _Gdead      | 6      | 限制没有在使用，也许执行完，或者在free list中，或者正在被初始化，可能有stack |
+| _Gcopystack | 8      | 栈正在复制，此时没有go代码，也不在runqueue上                 |
+| _Gscan      | 0x1000 | 与runnable、running、syscall、waiting等状态结合，表示GC正在扫描这个G的栈 |
+
+## P：Processor的状态
+
+![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_processor_state.png)
+
+| 状态      | 描述                                                         |
+| --------- | ------------------------------------------------------------ |
+| _Pidle    | 处理器没有运行用户代码或者调度器，被空闲队列或者改变其状态的结构持有，运行队列为空 |
+| _Prunning | 被线程 M 持有，并且正在执行用户代码或者调度器                |
+| _Psyscall | 没有执行用户代码，当前线程陷入系统调用                       |
+| _Pgcstop  | 被线程 M 持有，当前处理器由于垃圾回收被停止                  |
+| _Pdead    | 当前处理器已经不被使用                                       |
 
 # GC
 
@@ -453,3 +565,9 @@ type waitq struct {
 [深度解密Go语言之channel](https://zhuanlan.zhihu.com/p/74613114)
 
 [GC](https://qcrao91.gitbook.io/go/gc/gc)
+
+[图解Go协程调度原理，小白都能理解 ](https://www.cnblogs.com/secondtonone1/p/11803961.html)
+
+[深入golang runtime的调度](https://zboya.github.io/post/go_scheduler)
+
+[gopher meetup-深入浅出Golang Runtime-yifhao](https://www.lanzous.com/i7lj0he)
