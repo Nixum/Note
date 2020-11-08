@@ -495,7 +495,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 如果G0短时间处理完，P就会从LRQ取出G1进行处理，LRQ从GRQ取出G4进行分配；
 
-![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_runtime_1.png)
+![goroutine runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_runtime1.png)
 
 如果G0处理得很慢，系统就会让M0休眠，挂起G0，唤醒线程M1，将LRQ转移给M1进行处理；
 
@@ -503,7 +503,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 如果G1处理得很快，则继续获取LRQ里的下一个G；待LRQ里的G都执行完了，切回M0，继续处理G0。
 
-![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_runtime_2.png)
+![goroutine runtime_2](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_runtime2.png)
 
 如果是多核的，有多个P，多个M，当有一个P处理完所有的G后，会先从GRQ中获取G，如果获取不到，就会从另一个P的LRQ里取走一半G，继续处理。
 
@@ -511,7 +511,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 由sysmon协程进行协作式抢占，对goroutine进行标记，执行goroutine时如果有标记就会让出CPU，对于syscall过久的P，会进行M和P的分配，防止P被占用过久影响调度。
 
-![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_sysmon.png)
+![go sysmon goroutine](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_sysmon_goroutine.png)
 
 ## M：Machine
 
@@ -519,7 +519,7 @@ M本质时一个循环调度，不断的执行schedule函数，查找可运行�
 
 ## G：Goroutine的状态
 
-![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_state.png)
+![go goroutine state](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_state.png)
 
 goroutine的状态不止以下几种，只是这几种比较常用
 
@@ -536,7 +536,7 @@ goroutine的状态不止以下几种，只是这几种比较常用
 
 ## P：Processor的状态
 
-![go runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_processor_state.png)
+![go processor state](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_processor_state.png)
 
 | 状态      | 描述                                                         |
 | --------- | ------------------------------------------------------------ |
