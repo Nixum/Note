@@ -133,12 +133,12 @@ type hmap struct {
 	count     int    // 哈希表中元素的数量
 	// 1：可能有迭代器使用buckets，2：可能有迭代器使用oldbuckets，4：有协程正在向map中写入key，8：等量扩容
 	flags     uint8  // 记录map的状态
-    	B         uint8  // buckets的数量，len(buckets) = 2^B
+    B         uint8  // buckets的数量，len(buckets) = 2^B
 	noverflow uint16 // 溢出的bucket的个数
 	hash0     uint32 // 哈希种子，为哈希函数的结果引入随机性。该值在创建哈希表时确定，在构造方法中传入
 
 	buckets    unsafe.Pointer // 桶的地址
-	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半
+	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半或0.75
 	nevacuate  uintptr // 迁移进度，小于nevacuate的表示已迁移
 
 	extra *mapextra // 用于扩容的指针，单个桶装满时用于存储溢出数据，溢出桶和正常桶在内存上是连续的
@@ -172,19 +172,23 @@ type bmap struct {
 
 * 当使用字面量的方式创建哈希表时，如果{}中元素少于或等于25时，编译器会转成make的方式创建，再进行赋值；如果超过了25个，编译时会转成make的方式创建，同时为key和value分别创建两个数组，最后进行循环赋值
 
+* 直接声明 `var m map[string]int`此时创建了一个nil的map，此时不能被赋值
+
 * key不允许为slice、map、func，允许bool、numeric、string、指针、channel、interface、struct
+
+  即key必须支持 == 或 != 运算的类型
 
 * map的容量为 装载因子6.5 * 2^B 个元素，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
 
-* 拉链法解决哈希冲突，除留余数法得到桶的位置。
+* 拉链法解决哈希冲突（指8个正常位和溢出桶），除留余数法得到桶的位置（哈希值的低B位）。
 
 * key的哈希值的低B位计算获得桶的位置，高8位计算得到tophash的位置，进而找到key的位置。
 
-* 溢出桶也是一个bmap，bmap的overflow会指向下一个溢出桶，所以**溢出桶的结构是链表，但是它们跟正常桶是在一片连续内存上，即buckets数组**。
+* 溢出桶也是一个bmap，bmap的overflow会指向下一个溢出桶，所以**溢出桶的结构是链表，但是它们跟正常桶是在一片连续内存上，都在buckets数组里**。
 
 * 每个桶存了8个tophash + 8对键值对。
 
-* map是非线程安全的，扩容不是一个原子操作。
+* map是非线程安全的，扩容不是一个原子操作，通过hmap里的flag字段在并发修改时进行fast-fail。
 
 * map的遍历是无序的，每次遍历出来的结果的顺序都不一样。
 
@@ -193,12 +197,16 @@ type bmap struct {
 最终会在运行时调用makemap函数进行创建和初始化，
 1. 计算哈希表占用的内存是否溢出或者超出能分配的最大值
 
-2. 调用fastrand()获取随机哈希种子，计算B的值，用于初始化桶的数量 = 2^B
+2. 调用fastrand()获取随机哈希种子
 
-3. 调用makeBucketArray()分配连续的空间，创建用于保存桶的数组
-   
+3. 根据hint来计算需要的桶的数量，即计算B的值，用于初始化桶的数量 = 2^B；hint是一个预置的长度。
+
+   这个值不知道怎么来的，本人的机器debug时发现默认创建map时，hint=137，B=5
+
+4. 调用makeBucketArray()分配连续的空间，创建用于保存桶的数组
+
    当桶的数量小于2^4时，由于数据较少，哈希冲突的可能性较小，此时不会创建溢出桶。
-   
+
    当桶的数量大于2^4时，就会额外创建2^(B-4)个溢出桶，溢出桶与普通桶在内存空间上是连续的。
 
 ```go
