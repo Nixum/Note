@@ -292,7 +292,7 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 4. 根据key的哈希值的高8位，计算出tophash，先遍历正常位，从第一个tophash开始，比较桶上的每个tophash是否等于计算得到的tophash，如果不等，再判断该tophash是否为空，如果为空，计算key和value的内存地址，进行插入。如果不为空，则遍历下一个tophash。
 5. 如果桶上的tophash与计算的tophash相等，说明发生了哈希冲突，先计算key的地址，找到key，判断key是否相等，如果相等，计算key对应的value地址，将value的值进行更新。
 6. 如果key不相等，遍历下一个tophash，直到正常位遍历完成，如果此时还不能插入，继续遍历溢出桶，如果溢出桶为空，退出循环
-7. 判断是否扩容，如果需要扩容，则扩容后继续从步骤5上继续，如果不用扩容则走步骤8
+7. 判断是否扩容，如果需要扩容，则扩容后（扩容迁移）继续从步骤5上继续，如果不用扩容则走步骤8
 8. 如果还没进行插入，说明正常位已经满了，且还不需要扩容，此时会调用newoverflow函数，先使用hmap预先在noverflow中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
 
 [mapassign函数](https://github.com/Nixum/Java-Note/raw/master/Note/source_with_note/go_map_mapassign.go)
