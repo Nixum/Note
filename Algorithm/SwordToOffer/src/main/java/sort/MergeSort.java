@@ -41,7 +41,7 @@ public class MergeSort {
     private void sort(int[] array, int start, int end, int[] temp) {
         if (start >= end)
             return ;
-        int mid = (start + end) / 2;
+        int mid = start + (end - start) / 2; // 防溢出
         sort(array, start, mid, temp);
         sort(array, mid + 1, end, temp);
         merge(array, start, mid, end, temp);
