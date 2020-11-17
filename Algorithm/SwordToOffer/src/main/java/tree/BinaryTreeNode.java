@@ -190,6 +190,37 @@ public class BinaryTreeNode {
         }
     }
 
+    /**
+     * 二叉树的深度
+     */
+    public static int getTreeDepth(BinaryTreeNode root) {
+        // 比较当前节点的左节点高度和右节点高度
+        return root == null ? 0 : 1 + Math.max(getTreeDepth(root.leftNode), getTreeDepth(root.rightNode));
+    }
+
+    /**
+     * 判断是否是平衡二叉树：左右子树高度差不超过1
+     */
+    private static boolean isBalance = true;
+    public static boolean isBalancedTree(BinaryTreeNode root) {
+        height(root);
+        boolean balance = isBalance;
+        isBalance = true;
+        return balance;
+    }
+
+    private static int height(BinaryTreeNode root) {
+        if (root == null || !isBalance) {
+            return 0;
+        }
+        int left = height(root.leftNode);
+        int right = height(root.rightNode);
+        if (Math.abs(left - right) > 1) {
+            isBalance = false;
+        }
+        return 1 + Math.max(left, right);
+    }
+
     public static void main(String[] args) {
         BinaryTreeNode root = BinaryTreeNode.create(new Integer[]{1,2,3,4,5,6,7});
 
@@ -213,5 +244,7 @@ public class BinaryTreeNode {
         System.out.println();
         System.out.print("后序非递归："); postOrderTraverseNoRecursion(root);
         System.out.println();
+
+        System.out.println("深度：" + getTreeDepth(root));
     }
 }
