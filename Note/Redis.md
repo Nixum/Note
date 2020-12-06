@@ -413,6 +413,10 @@ Redis没有使用什么一致性算法，仅依据**Gossip协议**在有效时�
 
 * 如果客户端请求发生在Redis迁移槽的过程中，则会先收到`ASK 新槽编号 新槽所在的host`的错误消息，让客户端进行重试，直到Redis完成槽的迁移，重试成功。
 
+* HashTag，如果key的格式是 user:order:{3214}，由{}括起来的部分为HashTag，CRC算法在计算key在哪个槽时只会计算{}里的值，HashTag主要是让多个类型的key可以映射到同一个槽，方便范围查询。
+
+  但使用HashTag可能会导致数据倾斜，使得请求无法平均分到各个分片。
+
 一般的分配规模是几十个以内，不适合构建超大规模的集群，原因是去中心化设计，选举算法使用Gossip，规模越大时，插播速度越慢。如果要构建超大规模的集群，则需要增加一层代理，进行集群间的转发，例如twemproxy或者Codis这类基于代理的集群架构。
 
 # 事务
@@ -593,6 +597,15 @@ redis-cli --eval visit_restrict.script keys , args
 3. 推荐先更新数据库再删除缓存，访问时再进行加载（也称为cache aside模式），虽然也可能出现3中的情况，导致数据不一致，但带来的影响会相对小一些，如果删除缓存失败了，可以延迟任务进行删除重试，因为删除操作一般是幂等的，所以即使重复删除也没关系，另外，相比Read/Write Through模式（更新数据库后更新缓存操作），不会因为并发读写产生脏数据。还有由于会删除缓存，所以要注意缓存穿透问题。
 
 ![Redis缓存方案操作 - 极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Redis缓存方案操作.png)
+
+# 使用规范
+
+* String类型的数据不要超过10KB，避免BigKey
+* Key的长度尽量短
+* key的过期时间加上随机值，避免key的集中过期
+* 集合类型的元素个数不超过一万个
+* Redis实例容量控制在10GB内
+* 禁用Keys、FlushAll、FlushDB命令，慎用全量操作命令、Monitor命令、复杂度过高的命令（如Sort、Sinter、SinterStore、ZUnionStore、ZInterStore）
 
 # 参考
 

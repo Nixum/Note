@@ -1,8 +1,8 @@
 [TOC]
 
-## docker
+# docker
 
-### 底层原理:
+## 底层原理:
 
 容器技术的核心功能，就是通过约束和修改进程的动态表现，从而为其创造出一个“边界
 
@@ -26,15 +26,17 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 > 上面的读写层通常也称为容器层，下面的只读层称为镜像层，所有的增删查改操作都只会作用在容器层，相同的文件上层会覆盖掉下层。知道这一点，就不难理解镜像文件的修改，比如修改一个文件的时候，首先会从上到下查找有没有这个文件，找到，就复制到容器层中，修改，修改的结果就会作用到下层的文件，这种方式也被称为copy-on-write。
 
-### 注意点：
+## 注意点
 
 容器是“单进程模型”，单进程模型并不是指容器只能运行一个进程，而是指容器没有管理多个进程的能力，它只能管理一个进程，即如果在容器里启动了一个Web 应用和一个nginx，如果nginx挂了，你是不知道的。
 
 另外，直到JDK 8u131以后，java应用才能很好的运用在docker中，在此之前可能因为docker隔离出的配置和环境，导致JVM初始化默认数值出错，因此如果使用以前的版本，需要显示设置默认配置，比如直接规定堆的最大值和最小值、线程数之类的
 
-### 容器网络
+## 容器网络
 
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/容器网络.png)
+
+### 同一节点下容器间的通信
 
 在 Linux 中，能够起到虚拟交换机作用的网络设备，是网桥（Bridge）。它是一个工作在数据链路层（Data Link）的设备，主要功能是根据 MAC 地址来将数据包转发到网桥的不同端口（Port）上，因此Docker 项目会默认在宿主机上创建一个名叫 docker0 的网桥，凡是连接在 docker0 网桥上的容器，就可以通过它来进行通信。
 
@@ -50,25 +52,13 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 一个节点内的容器访问另一个节点一般流程：其实跟同一节点内，宿主机与容器通信类似，最终会转化为节点间的通信
 
+### 不同节点下容器间的通信
+
 对于在不同节点的容器通信，Docker 默认配置下，一台宿主机上的 docker0 网桥，和其他宿主机上的 docker0 网桥，没有任何关联，它们互相之间也没办法连通，因此需要创建一个整个集群的公用网桥，然后把集群里的所有容器都连接到这个网桥上，即每台宿主机上有一个特殊网桥来构成这个公用网桥，这个技术被称为overlay network（覆盖网络）
 
-解决方案有flannel、calico，其中，flannel有VXLAN、host-gw、UDP三种实现
 
-**flannel UDP模式下的跨主机通信**
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
 
-在由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
-
-> UDP模式下，在发送IP包的过程，经过三次用户态与内核态的数据拷贝
-> 1. 用户态的容器进程发出IP包经过docker0网桥进入内核态
-> 2. IP包根据路由表进入flannel0设备，从而回到用户态的flanneld进程
-> 3. flanneld进行UDP封包后重新进入内核态，将UDP包通过宿主机的eth0发送出去
-
-**calico的跨主机通信**
-
-简单来说，calico会在宿主机上创建一个路由表，维护集群内各个物理机，容器的路由规则，通过这张路由表实现跨主机通信
-
-### dockerfile
+## dockerfile
 
 [指令详解](https://www.cnblogs.com/panwenbin-logs/p/8007348.html)
 
@@ -84,7 +74,7 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 要注意CMD只允许有一条，如果有多条只有最后一条会生效
 
-## Kubernetes
+# Kubernetes
 
 容器相当于进程，Kubernetes相当于操作系统
 
@@ -98,7 +88,7 @@ kubelet 的另一个重要功能，则是调用网络插件和存储插件为容
 
 Master节点作用：编排、管理、调度用户提交的作业
 
-### Pod
+## Pod
 
 不同容器间需要共同协作，如war包和tomcat，就需要把它们包装成一个pod，概念类似于进程与进程组，pod并不是真实存在的，只是逻辑划分，同一个pod里的容器，本质上只是共享某些资源
 
@@ -108,7 +98,7 @@ Master节点作用：编排、管理、调度用户提交的作业
 
 Pod可以理解为一个机器，容器是里面的进程，凡是调度、网络、储存、安全相关、跟namespace相关的属性，都是Pod级别的
 
-#### Pod在K8s中的生命周期
+### Pod在K8s中的生命周期
 
 * Pending：Pod的yaml文件已经提交给k8s了，API对象已经被创建保存在etcd中，但是这个Pod里有容器因为某些原因导致不能被顺利创建
 * Running：Pod已经调度成功，跟一个具体的节点绑定，内部容器创建成功，并且至少有一个正在运行
@@ -118,7 +108,7 @@ Pod可以理解为一个机器，容器是里面的进程，凡是调度、网�
 
 除此之外，Pod的status字段还能细分一组Conditions，主要是描述造成当前status的具体原因
 
-#### Pod中的Projected Volume(投射数据卷)
+### Pod中的Projected Volume(投射数据卷)
 
 k8s将预先定义好的数据投射进容器，支持的种类：secret、ConfigMap、Downward API、ServiceAccountToken
 
@@ -202,7 +192,7 @@ spec:
 
 * serviceAccountToken：在Pod中安装一个k8s的Client，使得可以从容器里直接访问并操作这个k8s的API，但是需要解决API Server授权问题，因此需serviceAccountToken，Pod默认挂载一个default service account
 
-#### Pod中的健康检查
+### Pod中的健康检查
 
 对于Web应用，最简单的就是由Web应用提供健康检查的接口，我们在定义的API对象的时候设置定时请求来检查运行在容器中的web应用是否健康
 
@@ -219,7 +209,7 @@ livenessProbe:
        periodSeconds: 3
 ```
 
-#### Pod的恢复机制
+### Pod的恢复机制
 
 API对象中spec.restartPolicy字段用来描述Pod的恢复策略，默认是always，即容器不在运行状态则重启，OnFailure是只有容器异常时才自动重启，Never是从来不重启容器
 
@@ -227,7 +217,46 @@ Pod的恢复过程，永远发生在当前节点，即跟着API对象定义的sp
 
 当Pod的restartPolicy是always时，Pod就会保持Running状态，无论里面挂掉多少个，因为Pod总会重启这些容器；当restartPolicy是never时，Pod里的所有容器都挂了，才会变成Failed，只有一个容器挂了也是Running
 
-#### Job
+### Pod的通信
+
+#### Pod内的容器间通信
+
+Pod内部容器是共享一个网络命名空间的。
+
+在Pod内部有一个默认的叫Pause的容器，作为独立共享的网络命名空间，其他容器启动时使用 -net=container就可用让当前容器加入的Pause容器，以此拥有同一个网络命名空间，所以Pod中的容器可以通过localhost来互相通信。
+
+对容器来说，hostname就是Pod的名称。因为Pod中的所有容器共享同一个IP地址和端口空间，所以需要为每个需要接收连接的容器分配不同的端口，也就是说，Pod内的容器应用需要自己协调端口的使用。
+
+另外，也可以使用PV和PVC来实现通信。
+
+#### 同一节点下Pod间的通信
+
+通过节点上的网桥和Pod上的 Veth Pair 实现，整体跟同一节点上容器间的通信 很像，只不过 Veth Pair 是挂在Pod的共享网络空间上的。Veth Pair将节点上的网桥和Pod上的共享网络空间进行连接，再通过网桥，连接不同的Pod的共享网络空间，实现不同Pod间网络通信。
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/同一节点下Pod间通信.png)
+
+#### 不同节点下Pod间的通信
+
+不同的节点下Pod间的通信，通过一套接口规范（CNI, Container Network Interface）来实现，常见的有Flannel、Calico以及AWS VPC CNI。
+
+其中，flannel有VXLAN、host-gw、UDP三种实现。
+
+**flannel UDP模式下的跨主机通信**
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
+
+在由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
+
+> UDP模式下，在发送IP包的过程，经过三次用户态与内核态的数据拷贝
+>
+> 1. 用户态的容器进程发出IP包经过docker0网桥进入内核态
+> 2. IP包根据路由表进入flannel0设备，从而回到用户态的flanneld进程
+> 3. flanneld进行UDP封包后重新进入内核态，将UDP包通过宿主机的eth0发送出去
+
+**calico的跨主机通信**
+
+简单来说，calico会在宿主机上创建一个路由表，维护集群内各个物理机，容器的路由规则，通过这张路由表实现跨主机通信
+
+### Job
 
 Job是一种特殊的Pod，即那些计算完成之后就退出的Pod，指状态变为complated
 
@@ -251,9 +280,9 @@ completions表示 Job 至少要完成的 Pod 数目，即 Job 的最小完成数
 
 Job Controller 在控制循环中进行的调谐（Reconcile）操作，是根据实际在 Running 状态 Pod 的数目、已经成功退出的 Pod 的数目，以及 parallelism、completions 参数的值共同计算出在这个周期里，应该创建或者删除的 Pod 数目，然后调用 Kubernetes API 来执行这个操作，当Job执行完处于complate状态时，并不会退出
 
-### Controller
+## Controller
 
-#### Deployment
+### Deployment
 
 最基本的控制器对象，管理Pod的工具，比如管理多个相同Pod的实例，滚动更新
 
@@ -290,7 +319,7 @@ ReplicaSet表示版本，比如上面那份配置，replicas:2是一个版本，
 
 deployment只适合控制无状态的Pod，如果是Pod与Pod之间有依赖关系，或者有状态时，deployment就不能随便杀掉任意的Pod再起新的Pod，比如多个数据库实例，因为数据库数据是存在磁盘，如果杀掉后重建，会出现实例与数据关系丢失，因此就需要StatefulSet
 
-#### StatefulSet
+### StatefulSet
 
 statefulSet通过headless service，使用这个DNS记录维持Pod的拓扑状态，因为在为Pod起名字的时候是按顺序编号的，因此可以通过编号来进行顺序启动
 
@@ -310,7 +339,7 @@ statefulSet通过PVC + PV + 编号的方式，就能实现 数据存储与Pod的
 >
 > 完成这两步，PV对应的“持久化 Volume”就准备好了，Pod可以正常启动，将“持久化 Volume”挂载在容器内指定的路径。  
 
-#### DaemonSet
+### DaemonSet
 
 DaemonSet 的主要作用，是让你在 Kubernetes 集群里，运行一个 Daemon Pod，这个Pod运行在k8s集群的每一个节点上，每个节点只允许一个，当有新的节点加入集群后，该Pod会在新节点上被创建出来，节点被删除，该Pod也被删除。
 
@@ -320,7 +349,7 @@ DaemonSet 的主要作用，是让你在 Kubernetes 集群里，运行一个 Dae
 
 它通过 控制循环，判断节点上是否已经运行了标签为xxx的Pod，来保证每个节点上有一个这样的Pod，在DaemonSet的API对象中通过在template Pod的API对象，使用nodeAffinity保证哪些节点需要创建这样的Pod，使用tolerations来容忍Pod在被打上污点标签的节点也可以部署，因为一般有污点的节点是不允许将Pod部署在上面的
 
-#### CronJob
+### CronJob
 
 如果仍然使用Deployment管理，因为它会对退出的Pod进行滚动更新，所以并不合适，因此需要使用CronJob
 
@@ -330,36 +359,61 @@ CronJob使用 spec.schedule来控制，使用jobTemplate来定义job模板，spe
 
 spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）、Forbid（新Job不会被创建）、Replace（新的Job会替换旧的，没有执行完的Job）
 
-#### Operator
+### Operator
 
 
 
-### Service
+## Service
 
-Pod的IP是不固定的，为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以负载均衡的方式进行访问
+每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
 
-一般是pod指定一个访问端口和label，service selector指明绑定的pod，配置端口映射，这个被selector选中的pod就称为service的endpoints，通过service的VIP就能访问它代理的pod了。
+虽然Service每次重启IP也会发生变化，但是相比Pod
 
-service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中。
+一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
 
-#### 如何被集群外部访问
+Service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中，所以请求经过Service会进行kube-proxy的转发。
+
+创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的ip和端口作为环境变量，该环境变量会随着Pod或Service的ip和端口的改变而改变，可以实现基于环境变量的服务发现，但是只有在同一namespace下的Pod内才可以使用此环境变量进行访问。
+
+### 如何被集群外部访问
 
 * service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod
 * service设置type=LoadBalancer，设置一个外部均衡服务，这个一般由公有云提供，比如aws，阿里云的k8s服务
-* service设置type=ExternalName，并设置externalName的值，这样就可以通过externalName访问，service会暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；
+* service设置type=ExternalName，并设置externalName的值，这样就可以通过externalName访问，service会暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；此时也不会产生EndPoints、clusterIP。
 * service设置externalIPs的值，这样也能通过该ip进行访问
+* 可以直接通过port forward的方式，将Pod端口与节点上的端口一一对应暴露，提供访问，而不需要service
 
 关于headless service
 
 * headless service是指spec:clusterIP: None的service。一般用在statefulSet
-* 一个service对应多个pod，通过dns访问service时，会根据dns查询出service的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡
-* 当service是headless service时，通过dns访问service，会根据dns查出该service关联的所有pod的ip和dns名字，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡
 
-### Ingress
+* 一个service对应多个pod，通过dns访问service时，会根据dns查询出service的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡。
 
-作用与service类似，主要是用于对多个service的包装，作为service的service，设置一个统一的负载均衡，设置ingress rule，进行反向代理
+  当service是headless service时，通过dns访问service，会根据dns查出该service关联的所有pod的ip和dns名字，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡。
 
-### 声明式API
+## Ingress
+
+作用与Service类似，主要是用于对**多个service**的包装，作为service的service，设置**一个**统一的负载均衡（这样就不用每个Service都设置一个LB了），设置Ingress **rule**，进行反向代理，实现的是**Http**负责均衡。
+
+Ingress是反向代理的规则，Ingress Controller是负责解析Ingress的规则后进行转发。可以理解为Nginx，本质是将请求通过不同的规则进行路由转发。常见的实现有Nginx Ingress Controller。
+
+Ingress Controller可基于Ingress资源定义的规则将客户端请求流量直接转发到Service对应的后端Pod资源上，其会绕过Service资源，省去了kube-proxy实现的端口代理开销。
+
+### 和Istio Ingressgateway的区别
+
+Istio Ingressgateway是Kubernate Ingress Controller的一种实现，能够支持更多方式的流量管理。
+
+|                             | Nginx Ingress Controller              | Istio Ingressgateway                          |
+| --------------------------- | ------------------------------------- | --------------------------------------------- |
+| 根据HTTP Header选择路由规则 | 不支持                                | 支持                                          |
+| Header规则支持正则表达式    | 不支持                                | 支持                                          |
+| 服务之间设置权重拆分流量    | 不支持                                | 支持                                          |
+| Header和权重规则组合使用    | 不支持                                | 支持                                          |
+| 路由规则检查                | 不支持                                | 支持                                          |
+| 路由规则粒度                | Service                               | Service下的不同Pod                            |
+| 支持的协议                  | HTTP1.1/HTTP2/gRpc<br/>TCP/Websockets | HTTP1.1/HTTP2/gRpc<br/>TCP/Websockets/MongoDB |
+
+## 声明式API
 
 通过编排对象，在为它们定义服务的这种方法，就称为声明式API，
 
@@ -369,7 +423,7 @@ Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示
 
 声明式配置文件操作：编写yaml配置和更新yaml配置均使用kubectl apply -f config.yaml，kube-apiserver一次处理多个命令，并且具备merge能力
 
-#### 工作原理
+### 工作原理
 
 k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在etcd里的完整资源路径是由Group（API 组）、Version（API 版本）和 Resource（API 资源类型）三个部分组成的
 
@@ -443,9 +497,9 @@ Reflector 和 Informer 之间，用到了一个“增量先进先出队列”进
 
 实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行
 
-### 配置相关
+## 配置相关
 
-#### Pod级别下的一些配置，即当kind: Pod
+### Pod级别下的一些配置，即当kind: Pod
 
 **NodeSelector**：将Pod和Node进行绑定的字段
 
@@ -512,7 +566,7 @@ spec:
 
 在lifecycle里的postStart，指的是容器启动后，要执行的操作，但是它不是串行的，即在docker的ENTRYPOINT命令执行后就开始执行了，此时ENTRYPOINT命令执行的动作可能还没完成；preStart，指的是在容器被杀死之前，要执行的操作，只有这个动作执行完成，才允许容器被杀死
 
-### 常用命令
+## 常用命令
 
 ```
 
@@ -548,6 +602,6 @@ kubectl get pod [pod名称] -n [命名空间] -o yaml
 
 ```
 
-## 参考
+# 参考
 
 极客时间-深入剖析k8s-张磊
