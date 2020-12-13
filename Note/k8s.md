@@ -2,9 +2,9 @@
 
 # docker
 
-## 底层原理:
+## 底层原理
 
-容器技术的核心功能，就是通过约束和修改进程的动态表现，从而为其创造出一个“边界
+容器技术的核心功能，就是通过约束和修改进程的动态表现，从而为其创造出一个边界。
 
 **Namespace 技术**：进程只能看到被规定的视图，即 隔离，比如通过docker启动一个/bin/sh，再在容器里通过ps命令查看该/bin/sh进程的pid，会发现它的pid是1，但是实际上它在外部的宿主机里的pid是10，使得让在容器里运行的进程以为自己就在一个独立的空间里，实际上只是进行了逻辑的划分，本质还是依赖宿主机
 
@@ -20,9 +20,9 @@
 docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 ```
 
-**Mount namespace与rootfs(根文件系统)**：挂载在容器根目录上、用来为容器进程提供隔离后执行环境的文件系统，即容器镜像
+**Mount namespace与rootfs(根文件系统)**：挂载在容器根目录上、用来为容器进程提供隔离后执行环境的文件系统，即容器镜像。
 
-镜像可以理解为是容器的文件系统（一个操作系统的所有文件和目录），它是只读的，挂载在宿主机的一个目录上
+镜像可以理解为是容器的文件系统（一个操作系统的所有文件和目录），它是只读的，挂载在宿主机的一个目录上。同一台机器上的所有容器，都共享宿主机操作系统的内核，如果容器内应用修改了内核参数，会影响到所有依赖的应用。而虚拟机则都是独立的内核和文件系统，共享宿主机的硬件资源。
 
 > 上面的读写层通常也称为容器层，下面的只读层称为镜像层，所有的增删查改操作都只会作用在容器层，相同的文件上层会覆盖掉下层。知道这一点，就不难理解镜像文件的修改，比如修改一个文件的时候，首先会从上到下查找有没有这个文件，找到，就复制到容器层中，修改，修改的结果就会作用到下层的文件，这种方式也被称为copy-on-write。
 
@@ -76,23 +76,37 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 # Kubernetes
 
-容器相当于进程，Kubernetes相当于操作系统
-
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/k8s项目架构.jpg)
 
-kubelet 负责管理运行时的容器，这个交互的依赖是CRI的远程调用接口（接口定义了容器运行时的各项核心操作），OCI则是容器运行时对底层操作系统的规范，CRI就是将请求翻译成对底层系统的操作
+**容器的本质是进程，Kubernetes相当于操作系统**，管理这些进程组。
 
-kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件
-
-kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI
-
-Master节点作用：编排、管理、调度用户提交的作业
+* CNI：Container Network Interface，容器网络接口规范，如 Flannel、Calico、AWS VPC CNI
+* kubelet：负责管理运行时的容器，这个交互依赖CRI的远程调用接口
+  kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件
+  kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI
+* CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范
+* CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
+* OCI：Open Container Initiative，容器运行时对底层操作系统的规范，CRI就是将请求翻译成对底层系统的操作
+* CRD：Custom Resource Definition，自定义的控制器对象，如Operator
+* Master节点作用：编排、管理、调度用户提交的作业
+  * Scheduler：编排和调度Pod
+  * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等
 
 ## Pod
 
-不同容器间需要共同协作，如war包和tomcat，就需要把它们包装成一个pod，概念类似于进程与进程组，pod并不是真实存在的，只是逻辑划分，同一个pod里的容器，本质上只是共享某些资源
+Pod是最小的API对象。
 
-原理：由于不同容器间可能存在依赖关系（如启动顺序的依赖），因此k8s会起一个中间容器infra，来关联其他容器，infra容器一定是最先起的，一个 Pod 只有一个 IP 地址，由Pod内容器共享，Pod 的生命周期只跟 Infra 容器一致，Infra管理共享资源
+由于不同容器间需要共同协作，如war包和tomcat，就需要把它们包装成一个pod，概念类似于进程与进程组，pod并不是真实存在的，只是逻辑划分。
+
+同一个pod里的所有容器，共享同一个Network Namespace，也可以共享同一个Volume。
+
+这种把多个容器组合打包在一起管理的模式也称为容器设计模式。
+
+### 原理
+
+由于不同容器间可能存在依赖关系（如启动顺序的依赖），因此k8s会起一个中间容器Infra容器，来关联其他容器，infra容器一定是最先起的，其他容器通过Join Network Namespace的方式与Infa容器进行关联。
+
+一个 Pod 只有一个 IP 地址，由Pod内容器共享，Pod 的生命周期只跟 Infra 容器一致，Infra管理共享资源。
 
 对于initContainer命令的作用是按配置顺序最先执行，执行完之后才会执行container命令，例如，对war包所在容器使用initContainer命令，将war包复制到挂载的卷下后，再执行tomcat的container命令启动tomcat以此来启动web应用，这种先启动一个辅助容器来完成一些独立于主进程（主容器）之外的工作，称为sidecar，边车
 
@@ -100,19 +114,29 @@ Pod可以理解为一个机器，容器是里面的进程，凡是调度、网�
 
 ### Pod在K8s中的生命周期
 
-* Pending：Pod的yaml文件已经提交给k8s了，API对象已经被创建保存在etcd中，但是这个Pod里有容器因为某些原因导致不能被顺利创建
-* Running：Pod已经调度成功，跟一个具体的节点绑定，内部容器创建成功，并且至少有一个正在运行
-* Succeeded：Pod里所有容器都正常运行完毕，并且已经退出，在运行一次性任务时比较常见
-* Failed：Pod里至少有一个容器以不正常的状态退出，需要查看Events和日志查看原因
-* Unknown：异常状态，Pod的状态不能持续通过kubelet汇报给kube-apiserver，可能是主从节点间通信出现问题
+* Pending：Pod的yaml文件已经提交给k8s了，API对象已经被创建保存在etcd中，但是这个Pod里有容器因为某些原因导致不能被顺利创建。
+* Running：Pod已经调度成功，跟一个具体的节点绑定，内部容器创建成功，并且至少有一个正在运行。
+* Succeeded：Pod里所有容器都正常运行完毕，并且已经退出，在运行一次性任务时比较常见。
+* Failed：Pod里至少有一个容器以不正常的状态退出，需要查看Events和日志查看原因。
+* Unknown：异常状态，Pod的状态不能持续通过kubelet汇报给kube-apiserver，可能是主从节点间通信出现问题。
 
-除此之外，Pod的status字段还能细分一组Conditions，主要是描述造成当前status的具体原因
+除此之外，Pod的status字段还能细分一组Conditions，主要是描述造成当前status的具体原因，比如PodScheduled、Ready、Initialized以及Unschedulable。
+
+在Pod的containers定义中，有个lifecycle字段，用于定义容器的状态发生变化时产生的hook。
+
+### Side Car
+
+在声明容器时，使用initContainers声明，用法同containers，initContainers作为辅助容器，必定比containers先启动，如果声明了多个initContainers，则会按顺序先启动，之后再启动containers。
+
+因为Pod内所有容器共享同一个Network Namespace的特性i，nitContainers辅助容器常用于与Pod网络相关的配置和管理，比如常见的实现是Istio。
 
 ### Pod中的Projected Volume(投射数据卷)
 
-k8s将预先定义好的数据投射进容器，支持的种类：secret、ConfigMap、Downward API、ServiceAccountToken
+k8s将预先定义好的数据投射进容器，支持的种类：secret、ConfigMap、Downward API，这三种PV一般存放不经常更新的数据，ServiceAccountToken则是在访问Kubernetes API Server时会使用到。
 
-* Secret：将Pod想要访问的加密数据，存放到etcd中，通过在Pod中的容器里挂载Volume的方式访问这些数据
+#### Secret
+
+将Pod想要访问的加密数据，存放到etcd中，通过在Pod中的容器里挂载Volume的方式访问这些数据。如果etcd里的这些数据发生了改变，挂载到容器里的数据会在一定的延时后进行更新。
 
 ```yaml
 apiVersion: v1
@@ -159,10 +183,19 @@ data:
   pass: MWYyZDFlMmU2N2Rm
 ```
 
-通过这种方式进行定义并运行后，会先将信息保存到ectd中，然后在以文件的形式挂载在容器的Volume目录里，文件名是${name}或者${data.key}
+通过这种方式进行定义并运行后，会先将信息保存到ectd中，然后在以文件的形式挂载在容器的Volume目录里，文件名是${name}或者${data.key}。
 
-* configMap：configMap的作用、用法同secret，只是其内容不需要经过加密
-* downward API：让Pod里的容器能够直接获取到这个Pod API对象本身的信息，只能获取Pod启动之前就能确定的信息，Pod运行之后的信息只能通过sidecar容器获取
+#### configMap
+
+configMap的作用、用法同secret，只是其内容不需要经过加密
+
+#### downward API
+
+让Pod里的容器能够直接获取到这个Pod API对象本身的信息，只能获取Pod启动之前就能确定的信息，Pod运行之后的信息只能通过sidecar容器获取。
+
+比如下面这份配置，volume的类型是projected，数据来源是downwardAPI，声明要暴露的信息是当前yaml文件定义的metadata.labels信息，K8S会自动挂载为容器里的/podInfo/labels文件。
+
+Downward API支持的字段是固定的，使用fieldRef字段可以查看宿主机名称、IP、Pod的标签等信息；resourceFieldRef字段可以查看容器CPU、内存等信息。
 
 ```yaml
 apiVersion: v1
@@ -177,6 +210,9 @@ spec:
   containers:
     - name: client-container
       ...
+      volumeMounts:
+      - name: podinfo
+        mountPath: "/podInfo"
   volumes:
     - name: podinfo
       projected:
@@ -188,9 +224,43 @@ spec:
                   fieldPath: metadata.labels
 ```
 
-这个volume的类型是projected，数据来源是downwardAPI，声明要暴露的信息是当前yaml文件定义的metadata.labels信息
+#### serviceAccountToken
 
-* serviceAccountToken：在Pod中安装一个k8s的Client，使得可以从容器里直接访问并操作这个k8s的API，但是需要解决API Server授权问题，因此需serviceAccountToken，Pod默认挂载一个default service account
+serviceAccountToken是一种特殊的Secret，一般用于访问Kubernetes API Server时提供token作为验证的凭证。Kubernets提供了一个默认的default Service Account，任何运行在Kubernets中的Pod都可以使用，无需显示声明挂载了它。
+
+默认挂载路径：/var/run/secrets/kubernetes.io/serviceaccount，里面包含了ca.crt，namespace，token三个文件，用于授权当前Pod访问API Server。
+
+如果要让Pod拥有不同访问API Server的权限，就需要不同的service account，也就需要不同的token了。
+
+#### 挂载宿主机上的目录
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: two-containers
+spec:
+  restartPolicy: Never
+  volumes:
+  - name: shared-data
+    hostPath:
+      path: /data
+  containers:
+  - name: nginx-container
+    image: nginx
+    volumeMounts:
+    - name: shared-data
+      mountPath: /usr/share/nginx/html
+  - name: debian-container
+    image: debian
+    volumeMounts:
+    - name: shared-data
+      mountPath: /pod-data
+      command: ["/bin/sh"]
+      args: ["-c", "echo Hello from the debian container > /pod-data/ index.html"]
+```
+
+声明了两个容器，都挂载了shared-data这个Volume，且该Volume是hostPath，对应宿主机上的/data目录，所以么，nginx-container 可 以 从 它 的/usr/share/ nginx/html 目 录 中， 读取到debian-container生 成 的 index.html文件。
 
 ### Pod中的健康检查
 
@@ -213,9 +283,39 @@ livenessProbe:
 
 API对象中spec.restartPolicy字段用来描述Pod的恢复策略，默认是always，即容器不在运行状态则重启，OnFailure是只有容器异常时才自动重启，Never是从来不重启容器
 
-Pod的恢复过程，永远发生在当前节点，即跟着API对象定义的spec.node的对应的节点，如果要发生在其他节点，则需要deployment的帮助
+Pod的恢复过程，永远发生在当前节点，即跟着API对象定义的spec.node的对应的节点，如果要发生在其他节点，则需要deployment的帮助。
 
-当Pod的restartPolicy是always时，Pod就会保持Running状态，无论里面挂掉多少个，因为Pod总会重启这些容器；当restartPolicy是never时，Pod里的所有容器都挂了，才会变成Failed，只有一个容器挂了也是Running
+当Pod的restartPolicy是always时，Pod就会保持Running状态，无论里面挂掉多少个，因为Pod总会重启这些容器；当restartPolicy是never时，Pod里的所有容器都挂了，才会变成Failed，只有一个容器挂了也是Running。
+
+不能简单的依赖Pod的status字段，而是要通过livenessProbe或者readnessProbe来的健康检查来判断是否需要恢复。
+
+### PodPreset
+
+预置类型的Pod，是Pod配置文件上追加字段的预置模板，PodPreset里定义的内容，只会在Pod对象被创建之前追加在这个对象本身，不会影响任何Pod控制器的定义。
+
+一个Pod可以对应多个PodPreset，多个PodPreset间会进行合并，如果有冲突字段，则后面执行的PodPreset不会修改前面的字段。
+
+```yaml
+apiVersion: settings.k8s.io/v1alpha1
+kind: PodPreset
+metadata:
+  name: allow-database
+spec: 
+  selector: 
+    matchLabels: 
+      role: frontend 
+  env: 
+    - name: DB_PORT 
+      value: "6379" 
+  volumeMounts: 
+    - mountPath: /cache 
+      name: cache-volume 
+  volumes: 
+    - name: cache-volume 
+      emptyDir: {}
+```
+
+在先创建完这个API对象后，在创建对应Pod，这个PodPreset会根据selector，选择lables中有role: frontend的Pod，为其添加env、volumeMounts、volumes等声明。
 
 ### Pod的通信
 
@@ -256,37 +356,91 @@ Pod内部容器是共享一个网络命名空间的。
 
 简单来说，calico会在宿主机上创建一个路由表，维护集群内各个物理机，容器的路由规则，通过这张路由表实现跨主机通信
 
-### Job
+## PV、PVC、StoageClass
 
-Job是一种特殊的Pod，即那些计算完成之后就退出的Pod，指状态变为complated
+* PVC（Persistent Volume Claim）：定义持久化卷的声明，作用类似于接口，开发人员直接使用而不用知道其具体实现，比如定义了数据库的用户名和密码之类的属性。
 
-Job 会使用这种携带了 UID 的 Label，为了避免不同 Job 对象所管理的 Pod 发生重合，Job是直接控制Pod的
+  PVC的命名方式：<PVC名字>-<StatefulSet名字>-<编号>，StatefulSet创建出来的所有Pod都会使用此PVC，Kubernetes通过Dynamic Provisioning的方式为该PVC匹配对应的PV。
 
+* PV（Persistent Volume）：持久化卷的具体实现，即定义了持久化数据的相关属性，如数据库类型、用户名密码。
+
+* StorageClass：创建PV的模板，只有同属于一个StorageClass的PV和PVC，才可以绑定在一起，K8s内默认有一个名字为空串的DefaultStorageClass。
+
+  StorageClass用于自动创建PV，StorageClass的定义比PV更加通用，一个StorageClass可以对应多个PV，这样就无需手动创建多个PV了。
+
+> 用户提交请求创建pod，Kubernetes发现这个pod声明使用了PVC，那就靠PersistentVolumeController帮它找一个PV配对。
+>
+> 如果没有现成的PV，就去找对应的StorageClass，帮它新创建一个PV，然后和PVC完成绑定。
+>
+> 新创建的PV，还只是一个API 对象，需要经过“两阶段处理”变成宿主机上的“持久化 Volume”才真正有用：
+> 第一阶段Attach：由运行在master上的AttachDetachController负责，为这个PV完成 Attach 操作，为宿主机挂载远程磁盘；
+> 第二阶段Mount：运行在每个节点上kubelet组件的内部，把第一步attach的远程磁盘 mount 到宿主机目录。这个控制循环叫VolumeManagerReconciler，运行在独立的Goroutine，不会阻塞kubelet主循环。
+>
+> 完成这两步，PV对应的“持久化 Volume”就准备好了，Pod可以正常启动，将“持久化 Volume”挂载在容器内指定的路径。当需要卸载时，则先Unmount再进行Dettach。
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: 
+  name: web 
+spec: 
+  serviceName: "nginx" 
+  replicas: 2 
+  selector: 
+    matchLabels: 
+      app: nginx 
+  # 声明Pod
+  template: 
+    metadata: 
+      labels: 
+        app: nginx 
+    spec: 
+      containers: 
+      - name: nginx 
+        image: nginx:1.9.1 
+        ports: 
+        - containerPort: 80 
+          name: web 
+        volumeMounts: 
+        - name: www 
+          mountPath: /usr/share/nginx/html
+  # 声明挂载的PVC
+  volumeClaimTemplates: 
+  - metadata: 
+      name: www 
+    spec: 
+      accessModes: 
+        - ReadWriteOnce 
+      resources: 
+        requests: 
+          storage: 10Gi
 ```
-spec:
- backoffLimit: 5 //默认是6
- activeDeadlineSeconds: 100 //单位：秒
- parallelism: 2
- completions: 4
+
+## 控制器模型
+
+常见的控制器有Deployment、Job、CronbJob、ReplicaSet、StatefulSet、DaemonSet等
+
+### 原理
+
+控制循环：在一个无限循环内不断的轮询集群中的对象，将其状态与期望的状态做对比后，对该对象采取相应的操作。实际状态来自集群本身，如Kubelet汇报的容器状态、节点状态，监控系统的监控数据；期望状态来自用户提交的yaml文件；对象X指的是Pod或是其他受控制器控制的对象。
+
+```go
+for { 
+    实际状态 := 获取集群中对象X的实际状态（ Actual State）
+    期望状态 := 获取集群中对象X的期望状态（ Desired State）
+    if 实际状态 == 期望状态{
+        什么都不做 
+    } else { 
+        执行编排动作，将实际状态调整为期望状态 
+    } 
+}
 ```
 
-backoffLimit表示失败后的重试次数，下一次重试的动作分别发生在10s、20s、40s
-
-activeDeadlineSeconds表示最长运行的时间，如果超过该限定时间，则会立即结束
-
-parallelism表示一个 Job 在任意时间最多可以启动多少个 Pod 同时运行
-
-completions表示 Job 至少要完成的 Pod 数目，即 Job 的最小完成数
-
-Job Controller 在控制循环中进行的调谐（Reconcile）操作，是根据实际在 Running 状态 Pod 的数目、已经成功退出的 Pod 的数目，以及 parallelism、completions 参数的值共同计算出在这个周期里，应该创建或者删除的 Pod 数目，然后调用 Kubernetes API 来执行这个操作，当Job执行完处于complate状态时，并不会退出
-
-## Controller
+与事件驱动的区别：事件驱动是被动型，接收到事件就执行相应的操作，事件是一次性，因此操作失败比较难处理，控制循环是不对轮询操作值只状态与期望一致的
 
 ### Deployment
 
 最基本的控制器对象，管理Pod的工具，比如管理多个相同Pod的实例，滚动更新
-
-控制循环：在一个无限循环内不断的轮询集群中的对象，将其状态与期望的状态做对比后，对该对象采取相应的操作，与事件驱动的区别：事件驱动是被动型，接收到事件就执行相应的操作，事件是一次性，因此操作失败比较难处理，控制循环是不对轮询操作值只状态与期望一致的
 
 ```yaml
 apiVersion: apps/v1
@@ -311,43 +465,92 @@ spec:
         - containerPort: 80
 ```
 
-定义了一个deployment，它会检查标签为nginx的Pod，保证其数量=2，deployment根据template字段定义的容器的模板 来起相应的Pod的
+Deployment想要实现水平扩展/收缩，实际操控的是ReplicaSet对象，而ReplicaSet管理着定义数量的Pod，所以它是一种三层结构，Deployment -> ReplicaSet -> 多个平行的Pod，Deployment是一个两层控制器，Deployment控制的是ReplocaSet的版本，ReplicaSet控制的是Pod的数量。
 
-deployment想要实现水平扩展/收缩，实际操控的是ReplicaSet对象，而ReplicaSet管理着定义数量的Pod
+ReplicaSet表示版本，比如上面那份配置，replicas:2是一个版本，replicas:3是一个版本，这里是因为数量不同产生两个版本，每一个版本对应着一个ReplicaSet，由Deployment管理。
 
-ReplicaSet表示版本，比如上面那份配置，replicas:2是一个版本，replicas:3是一个版本，这里是因为数量不同产生两个版本，每一个版本对应着一个ReplicaSet
+当我们修改Deployment的replicas字段时，会触发水平扩展/收缩，修改template.Image或者版本号时，就会触发滚动更新。
 
-deployment只适合控制无状态的Pod，如果是Pod与Pod之间有依赖关系，或者有状态时，deployment就不能随便杀掉任意的Pod再起新的Pod，比如多个数据库实例，因为数据库数据是存在磁盘，如果杀掉后重建，会出现实例与数据关系丢失，因此就需要StatefulSet
+```yaml
+# 设置更新策略
+...
+spec:
+  ...
+  strategy: 
+    type: RollingUpdate # 滚动更新策略
+    rollingUpdate: 
+      maxSurge: 1  # 指定Desired数量，
+      maxUnavailable: 1 # 一次更新中，可以删除的旧的Pod的数量
+```
+
+滚动更新相关命令
+
+* 使用`kubectl describe deploy xxx -n yyy`或者`kubectl rollout status deploy xxx -n yyy`即可查看滚动更新的流程；
+* 当新的版本有问题时，使用`kubectl rollout undo deploy xxx [--to-revision=n]`回滚到上个版本；
+* 使用`kubectl rollout history`查看每次变更的版本，但最好在执行apply -f deployment.yaml后加上-record参数；
+* 如果不想每次修改都触发滚动更新，可以先使用`kubectl rollout pause deploy xx -n yy`暂停Ddeployment的行为，修改为yaml后使用`kubectl rollout resume deploy xx -n yy`恢复，让其只触发一次修改。
+
+Deployment只适合控制无状态的Pod，如果是Pod与Pod之间有依赖关系，或者有状态时，deployment就不能随便杀掉任意的Pod再起新的Pod，比如多个数据库实例，因为数据库数据是存在磁盘，如果杀掉后重建，会出现实例与数据关系丢失，因此就需要StatefulSet。
 
 ### StatefulSet
 
-statefulSet通过headless service，使用这个DNS记录维持Pod的拓扑状态，因为在为Pod起名字的时候是按顺序编号的，因此可以通过编号来进行顺序启动
+StatefulSet可以解决两种情况下的状态：
 
-PVC（Persistent Volume Claim）：定义持久化卷的声明，作用类似于接口，开发人员直接使用而不用知道其具体实现，比如定义了数据库的用户名和密码之类的属性
+* 拓扑状态，如果PodA和PodB有启动的先后顺序，当它们被再次创建出来时也会按照这个顺序进行启动，且新创建的Pod和原来的Pod拥有同样的网络标识（比如DNS记录），保证在使用原来的方式通信也可行。
 
-PV（Persistent Volume）：持久化卷的具体实现，即定义了持久化数据的相关属性，如数据库类型、用户名密码
+  StatefulSet通过Headless Service，使用这个DNS记录维持Pod的拓扑状态。在声明StatefulSet时，在spec.serviceName里指定Headless Service的名称，因为serviceName的值是固定的，StatefulSet在为Pod起名字的时候又会按顺序编号，为每个Pod生成一条DNS记录，通过DNS记录里的Pod编号来进行顺序启动。
 
-statefulSet通过PVC + PV + 编号的方式，就能实现 数据存储与Pod的绑定，当Pod被删除时，并不会删掉对应的PV，因此在起新的Pod的时候，会根据PVC找到原来的PV
+  StatefulSet只会保证DNS记录不变，Pod对应的IP还是会随着重启发生改变的。
 
->  用户提交请求创建pod，Kubernetes发现这个pod声明使用了PVC，那就靠PersistentVolumeController帮它找一个PV配对。
->
-> 没有现成的PV，就去找对应的StorageClass，帮它新创建一个PV，然后和PVC完成绑定。
->
-> 新创建的PV，还只是一个API 对象，需要经过“两阶段处理”变成宿主机上的“持久化 Volume”才真正有用：
-> 第一阶段由运行在master上的AttachDetachController负责，为这个PV完成 Attach 操作，为宿主机挂载远程磁盘；
-> 第二阶段是运行在每个节点上kubelet组件的内部，把第一步attach的远程磁盘 mount 到宿主机目录。这个控制循环叫VolumeManagerReconciler，运行在独立的Goroutine，不会阻塞kubelet主循环。
->
-> 完成这两步，PV对应的“持久化 Volume”就准备好了，Pod可以正常启动，将“持久化 Volume”挂载在容器内指定的路径。  
+* 存储状态，PodA第一次读取到的数据，隔了一段时间后读取到的仍然是同一份，无论其他有没有被重建过。
+
+  StatefulSet通过PVC + PV + 编号的方式，实现 数据存储与Pod的绑定。每个Pod都会根据编号与对应的PVC绑定，当Pod被删除时，并不会删掉对应的PV，因此在起新的Pod的时候，会根据PVC找到原来的PV。
+
+StatefulSet**直接管理**Pod，每个Pod不再认为只是复制集，而是会有hostname、名字、编号等的不同，并生成对应的带有相同编号的DNS记录，对应的带有相同编号的PVC，保证每个Pod都拥有独立的Volume。
+
+StatefulSet的滚动更新，会按照与Pod编号相反的顺序，逐一更新，如果发生错误，滚动更新会停止；StatefulSet支持按条件更新，通过对`spec.updateStrategy.rollingUpdate的partition字段`进行配置，也可实现金丝雀部署或灰度发布。
+
+StatefulSet可用于部署有状态的应用，比如有主从节点MySQL集群，在这个case中，虽然Pod会有相同的template，但是主从Pod里的sidecar执行的动作不一样，而主从Pod可以根据编号来实现，不同类型的Pod存储通过PVC + PV实现。
 
 ### DaemonSet
 
-DaemonSet 的主要作用，是让你在 Kubernetes 集群里，运行一个 Daemon Pod，这个Pod运行在k8s集群的每一个节点上，每个节点只允许一个，当有新的节点加入集群后，该Pod会在新节点上被创建出来，节点被删除，该Pod也被删除。
+DaemonSet 的会在Kubernetes 集群里的每个节点都运行一个 Daemon Pod，每个节点只允许一个，当有新的节点加入集群后，该Pod会在新节点上被创建出来，节点被删除，该Pod也被删除。
 
-网络插件的Agent组件、存储插件的Agent组件等都是Daemon Pod
+一般的Pod都需要节点准备好了(即node的状态是Ready)才可以调度上去，但是有些Pod需要在节点还没准备好的时候就需要部署上去，比如网络相关的Pod，因此需要使用DaemonSet。
 
-一般的Pod都需要节点准备好了，才可以调度上去，但是有些Pod需要在节点还没准备好的时候就需要部署上去，比如网络相关的Pod，因此需要DaemonSet的帮助，DaemonSet开始运行的时机，比k8s集群出现的时机要早。
+DaemonSet Controller通过 控制循环，在etcd上获取所有Node列表，判断节点上是否已经运行了标签为xxx的Pod，来保证每个节点上只有一个。可以通过在Pod上声明nodeSelector、nodeAffinity、tolerations字段告诉控制器如何选择node。
 
-它通过 控制循环，判断节点上是否已经运行了标签为xxx的Pod，来保证每个节点上有一个这样的Pod，在DaemonSet的API对象中通过在template Pod的API对象，使用nodeAffinity保证哪些节点需要创建这样的Pod，使用tolerations来容忍Pod在被打上污点标签的节点也可以部署，因为一般有污点的节点是不允许将Pod部署在上面的
+* 在node上打上标签，即可通过nodeSelector选择对应的node；
+* nodeAffinity的功能比nodeSelector强大，支持更加灵活的表达式来选择节点；
+* tolerations来容忍Pod在被打上污点标签的节点也可以部署，因为一般有污点的节点是不允许将Pod部署在上面的。
+
+DaemonSet是**直接管理**Pod的，DaemonSet所管理的Pod的调度过程，都由它自己完成，而不是通过Kube-Scheduler完成， 是因为DaemonSet在创建Pod时，会为其增加spce.nodeName字段，此时以及明确了该Pod要运行在哪个节点，就不需要kube-scheduler来调度了，但也带了问题，无论节点可不可用，DaemonSet都会将该Pod往上面调度。
+
+DaemonSet的应用一般是网络插件的Agent组件、存储插件的Agent组件、节点监控组件、节点日志收集等。
+
+### Job
+
+Job是一种特殊的Pod，即那些计算完成之后就退出的Pod，指状态变为complated
+
+Job 会使用这种携带了 UID 的 Label，为了避免不同 Job 对象所管理的 Pod 发生重合，Job是直接控制Pod的
+
+```
+spec:
+ backoffLimit: 5 //默认是6
+ activeDeadlineSeconds: 100 //单位：秒
+ parallelism: 2
+ completions: 4
+```
+
+backoffLimit表示失败后的重试次数，下一次重试的动作分别发生在10s、20s、40s
+
+activeDeadlineSeconds表示最长运行的时间，如果超过该限定时间，则会立即结束
+
+parallelism表示一个 Job 在任意时间最多可以启动多少个 Pod 同时运行
+
+completions表示 Job 至少要完成的 Pod 数目，即 Job 的最小完成数
+
+Job Controller 在控制循环中进行的调谐（Reconcile）操作，是根据实际在 Running 状态 Pod 的数目、已经成功退出的 Pod 的数目，以及 parallelism、completions 参数的值共同计算出在这个周期里，应该创建或者删除的 Pod 数目，然后调用 Kubernetes API 来执行这个操作，当Job执行完处于complate状态时，并不会退出
 
 ### CronJob
 
@@ -361,7 +564,7 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 ### Operator
 
-
+本质是一个Deployment，是一个CRD，作用跟StatefulSet类似，用来管理有状态的Pod，维持拓扑状态和存储状态。
 
 ## Service
 
@@ -375,21 +578,23 @@ Service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy�
 
 创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的ip和端口作为环境变量，该环境变量会随着Pod或Service的ip和端口的改变而改变，可以实现基于环境变量的服务发现，但是只有在同一namespace下的Pod内才可以使用此环境变量进行访问。
 
+### 关于Headless
+
+Service在集群内部被访问，有两种方式
+
+* Service的VIP，即clusterIP，访问该IP时，Service会把请求转发到其代理的某个Pod上
+
+* Service的DNS方式，比如Service有`my-svc.my-namespace.svc.cluster.local`这条DNS记录，访问这条DNS记录，根据这条DNS记录，查询出对应的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡
+
+  如果这条DNS记录没有对应的Service VIP，即Service的clusterIP是None，则称为Headless Service，此时的DNS记录格式为`<pod-name>.<svc-name>.<namespace >.svc.cluster.local`，直接映射到被代理的某个Pod的IP，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡。
+
 ### 如何被集群外部访问
 
-* service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod
-* service设置type=LoadBalancer，设置一个外部均衡服务，这个一般由公有云提供，比如aws，阿里云的k8s服务
-* service设置type=ExternalName，并设置externalName的值，这样就可以通过externalName访问，service会暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；此时也不会产生EndPoints、clusterIP。
-* service设置externalIPs的值，这样也能通过该ip进行访问
-* 可以直接通过port forward的方式，将Pod端口与节点上的端口一一对应暴露，提供访问，而不需要service
-
-关于headless service
-
-* headless service是指spec:clusterIP: None的service。一般用在statefulSet
-
-* 一个service对应多个pod，通过dns访问service时，会根据dns查询出service的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡。
-
-  当service是headless service时，通过dns访问service，会根据dns查出该service关联的所有pod的ip和dns名字，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡。
+* Service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod。
+* Service设置type=LoadBalancer，设置一个外部均衡服务，这个一般由公有云提供，比如aws，阿里云的k8s服务。
+* Service设置type=ExternalName，并设置externalName的值，这样就可以通过externalName访问，Service会暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；此时也不会产生EndPoints、clusterIP。
+* Service设置externalIPs的值，这样也能通过该ip进行访问。
+* 可以直接通过port forward的方式，将Pod端口与节点上的端口一一对应暴露，提供访问，而不需要Service。
 
 ## Ingress
 
@@ -413,15 +618,99 @@ Istio Ingressgateway是Kubernate Ingress Controller的一种实现，能够支�
 | 路由规则粒度                | Service                               | Service下的不同Pod                            |
 | 支持的协议                  | HTTP1.1/HTTP2/gRpc<br/>TCP/Websockets | HTTP1.1/HTTP2/gRpc<br/>TCP/Websockets/MongoDB |
 
+## RBAC
+
+* Role和RoleBinding：只针对某一namespace的操作授权，namespace只是逻辑上的隔离。
+
+以下配置就是给用户名为example-user绑定了一个example-role的角色，该角色只能操作namespace为mynamespace下的pod的所有读操作。
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role 
+metadata: 
+  namespace: mynamespace 
+  name: example-role 
+rules: 
+  - apiGroups: [""] 
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: 
+  name: example-rolebinding 
+  namespace: mynamespace 
+subjects: 
+  - kind: User  # 这里的User，是Kubernetes内置的用户类型，只是一个授权的逻辑概念
+    name: example-user 
+    apiGroup: rbac.authorization.k8s.io
+roleRef: 
+  kind: Role 
+  name: example-role 
+  apiGroup: rbac.authorization.k8s.io
+```
+
+* ClusterRole和ClusterRoleBinding：针对的是整个集群的操作的授权
+
+以下配置就是给用户名为example-user绑定了一个example-role的角色，该角色能对整个集群下的Pod进行读操作。
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole 
+metadata: 
+  name: example-clusterrole 
+rules: 
+  - apiGroups: [""] 
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
+--- 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: 
+  name: example-clusterrolebinding 
+subjects: 
+  - kind: User 
+    name: example-user 
+    apiGroup: rbac.authorization.k8s.io 
+roleRef: 
+  kind: ClusterRole 
+  name: example-clusterrole 
+  apiGroup: rbac.authorization.k8s.io
+```
+
+verbs操作可以有get、list、watch、create、update、patch、delete。
+
+resources指的是configmaps、pods、services、deployments、nodes。
+
+resourceNames指定是对应资源的名称。
+
+subjects的类型不止有User，也可以是ServiceAccount，创建该service后，k8s会自动为其分配一个Secret对象，该字段保存一个用来与API Server交互的token，token的内容可以是证书或者密码，以Secret对象的方式保存在etcd中。
+
+在Pod中也可以使用ServiceAccount，通过serviceAccountName字段配置使用，如果Pod没有显式使用ServiceAccount，K8s会使用默认的拥有绝大多数权限的default ServiceAccount。创建完ServiceAccount后，会在K8s中产生一个用户名和用户组，
+
+用户名：system:serviceaccount:<Namespace名字>:<ServiceAccount名字>
+
+用户组：system:serviceaccount:<Namespace名字>
+
+```yaml
+apiVersion: v1 
+kind: ServiceAccount 
+metadata: 
+  namespace: mynamespace 
+  name: example-user
+```
+
+在K8s内，已经内置了很多系统保留的ClusterRole，给Master节点内的组件使用，以system:开头；此外，还有一些权限粒度比较大的ClusterRole，如cluster-admin(拥有最高权限)、admin、edit、view
+
 ## 声明式API
 
 通过编排对象，在为它们定义服务的这种方法，就称为声明式API，
 
-Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示元数据，通过里面的labels字段（键值对）来找到这个API对象；每一个API对象都有一个Spec字段，来配置这个对象独有的配置，如为Pod添加挂载的Volume
+Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示元数据，通过里面的labels字段（键值对）来找到这个API对象；每一个API对象都有一个Spec字段，来配置这个对象独有的配置，如为Pod添加挂载的Volume。
 
-命令式配置文件操作：编写一个yaml配置，使用kubectl create -f config.yaml创建controller和Pod，然后修改yaml配置，使用kubectl replace -f config.yaml，更新controller和Pod，kube-apiserver一次只能处理一个命令
+命令式配置文件操作：编写一个yaml配置，使用kubectl create -f config.yaml创建controller和Pod，然后修改yaml配置，使用kubectl replace -f config.yaml，更新controller和Pod，kube-apiserver一次只能处理一个命令；或者直接使用命令 kubectl set image ... 或 kubectl edit ... 这些都属于命令式的
 
-声明式配置文件操作：编写yaml配置和更新yaml配置均使用kubectl apply -f config.yaml，kube-apiserver一次处理多个命令，并且具备merge能力
+声明式配置文件操作：编写yaml配置和更新yaml配置均使用kubectl apply -f config.yaml，kube-apiserver一次处理多个命令，并且具备merge能力。
 
 ### 工作原理
 
@@ -569,7 +858,6 @@ spec:
 ## 常用命令
 
 ```
-
 查看所有Pod等，也可将pod换成cm、svc，下同
 kubectl get pod -A
 
@@ -601,6 +889,16 @@ kubectl logs [pod名称] -n [名称空间] -c [pod内容器名称] -f
 kubectl get pod [pod名称] -n [命名空间] -o yaml
 
 ```
+
+# Istio
+
+Istio分为控制面板control plane或数据面板data plane，在低版本中，控制面板分为Pilot、Mixer、Citadel，数据面板则是Pod中的每个Envoy容器，即istio-proxy。Envoy会以side car的方式运行在Pod中，利用Pod中的所有容器共享同一个Network Namespace的特性，通过配置Pod里的iptables规则，管理进出Pod的流量。
+
+## 自动注入实现
+
+依赖Kubernetes中的Dynamic Admission Control的功能，也叫Initializer。
+
+Istio会将Envoy容器本身的定义，以configMap的方式进行保存，当用户提交自己的Pod时，Kubernetes就会通过类似git merge的方式将两份配置进行合并。这个合并的操作会由envoy-initializer的Pod来实现，该Pod使用 循环控制，不断获取用户新创建的Pod，进行配置合并。
 
 # 参考
 
