@@ -34,31 +34,35 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 ## 容器网络
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/容器网络.png)
-
 ### 同一节点下容器间的通信
 
-在 Linux 中，能够起到虚拟交换机作用的网络设备，是网桥（Bridge）。它是一个工作在数据链路层（Data Link）的设备，主要功能是根据 MAC 地址来将数据包转发到网桥的不同端口（Port）上，因此Docker 项目会默认在宿主机上创建一个名叫 docker0 的网桥，凡是连接在 docker0 网桥上的容器，就可以通过它来进行通信。
+在 Linux 中能够起到虚拟交换机作用的网络设备，是网桥。它是一个工作在数据链路层的设备，主要功能是根据 MAC 地址来将数据包转发到网桥的不同端口（Port）上，因此Docker 项目会默认在宿主机上创建一个名叫 docker0 的网桥，凡是连接在 docker0 网桥上的容器，就可以通过它来进行通信。
 
-容器通过名叫 **Veth Pair** 的虚拟设备，即容器内的eth0网卡，将容器连接到docker0网桥上，多个容器会将其Veth Pair注册到宿主机的eth0上，Veth Pair相当于是连接不同network namespace的网线，一端在容器，一端在宿主机
+容器里会有一个eth0网卡，作为默认的路由设备，连接到宿主机上一个叫vethxxx的虚拟网卡，而vethxxx网卡又插在了docker0网桥上，这一套虚拟设备就叫做Veth Pair。每个容器对应一套VethPair设备，多个容器会将其Veth Pair注册到宿主机的docker0网桥上，即Veth Pair相当于是连接不同network namespace的网线，一端在容器，一端在宿主机。
 
-网络请求实际上就是在这些虚拟设备上进行映射（经过路由表，IP转MAC，MAC转IP）和转发，到达目的地的。
+网络请求实际上就是在这些虚拟设备上进行映射（经过路由表，IP转MAC，MAC转IP）和转发，到达目的地。
 
-所以当容器无法访问外网时，就可以检查docker0网桥是否能ping通，查看docker0和Veth Pair设备的iptables规则是否有异常
+**同一节点内，容器间通信一般流程**：容器A往容器B的IP发出请求，请求先经过容器A的eth0网卡，发送一个ARP广播，找到容器B IP对应的MAC地址，宿主机上的docker0网桥，把广播转发到注册到其身上的其他容器的eth0，容器B收到该广播后把MAC地址发给docker0，docker0回传给容器A，容器A发送数据包给docker0，docker0接收到数据包后，根据数据包的目的MAC地址，将其转发到容器B的eth0，
 
-同一节点内的容器通信一般流程：容器A往容器B的IP发出请求，请求先经过容器A的eth0网卡，发送一个ARP广播，找到容器B IP对应的MAC地址，宿主机上的docker0网桥，把广播转发到注册到其身上的其他容器的eth0，容器B收到该广播后把MAC地址发给docker0，docker0回传给容器A，容器A发送数据包给docker0，docker0接收到数据包后，根据数据包的目的MAC地址，将其转发到容器B的eth0，
+**同一节点内，宿主机与容器通信一般流程**：宿主机往容器的IP发出请求，这个请求的数据包先根据路由规则到达docker0网桥，转发到对应的Veth Pair设备上，由Veth Pair转发给容器内的应用。
 
-同一节点内，宿主机与容器通信一般流程：宿主机往容器的IP发出请求，这个请求的数据包先根据路由规则到达docker0网桥，转发到对应的Veth Pair设备上，由Veth Pair转发给容器内的应用
+### 容器访问另一节点
 
-一个节点内的容器访问另一个节点一般流程：其实跟同一节点内，宿主机与容器通信类似，最终会转化为节点间的通信
+一个节点内的容器访问另一个节点一般流程：先经过docker0网桥，出现在宿主机上，根据路由表知道目标节点是其他机器，则将数据转发到宿主机的eth0网卡上，再发往目标节点。
+
+其实跟同一节点内，宿主机与容器通信类似，最终转化为节点间的通信。
+
+所以当容器无法访问外网时，就可以检查docker0网桥是否能ping通，查看docker0和Veth Pair设备的iptables规则是否有异常。
 
 ### 不同节点下容器间的通信
 
-对于在不同节点的容器通信，Docker 默认配置下，一台宿主机上的 docker0 网桥，和其他宿主机上的 docker0 网桥，没有任何关联，它们互相之间也没办法连通，因此需要创建一个整个集群的公用网桥，然后把集群里的所有容器都连接到这个网桥上，即每台宿主机上有一个特殊网桥来构成这个公用网桥，这个技术被称为overlay network（覆盖网络）
+默认配置下，不同节点间的容器、docker0网桥，是不知道彼此的，没有任何关联，想要跨主机容器通信，就需要在多主机间在建立一个公共网桥，所有节点的容器都往这个网桥注册，才能进行通信。通过每台宿主机上有一个特殊网桥来构成这个公用网桥，这个技术被称为overlay network（覆盖网络）。
 
+常见的解决方案是Flannel、Calico等。
 
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/容器网络.png)
 
-## dockerfile
+## Dockerfile
 
 [指令详解](https://www.cnblogs.com/panwenbin-logs/p/8007348.html)
 
@@ -342,7 +346,17 @@ Pod内部容器是共享一个网络命名空间的。
 其中，flannel有VXLAN、host-gw、UDP三种实现。
 
 **flannel UDP模式下的跨主机通信**
+
+下图container-1发送请求给container-2流程:
+
+1. container-1发送数据包，源：100.96.1.2，目标：100.96.2.3，经过docker0，发现目标IP不存在，此时会把该数据包交由宿主机处理。
+2. 通过宿主机上的路由表，发现flannel0设备可以处理该数据包，宿主机将该数据包发送给flannel0设备。
+3. flannel0设备由flanneld进程管理，数据包的处理从内核态(Linux操作系统)转向用户态(flanneld进程)，flanneld进程知道目标IP在哪个节点，就把该数据包发往node2。
+4. node2对该数据包的处理，则跟node1相反，最后container2收到数据包。
+
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
+
+flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理的IP范围，子网与宿主机的对应关系，都会保存在etcd中，flanneld将原数据包再次封装成一个UDP包，同时带上目标节点的真实IP，发往对应节点。
 
 在由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
 
@@ -351,6 +365,16 @@ Pod内部容器是共享一个网络命名空间的。
 > 1. 用户态的容器进程发出IP包经过docker0网桥进入内核态
 > 2. IP包根据路由表进入flannel0设备，从而回到用户态的flanneld进程
 > 3. flanneld进行UDP封包后重新进入内核态，将UDP包通过宿主机的eth0发送出去
+
+**flannel VXLAN模式下的跨主机通信**
+
+通过VXLAN模式（Virtual Extensible LAN）解决UDP模式下上下文切换频繁带来的性能问题。
+
+原理是通过在二层网络上再设置一个VTEP设备，该设备是Linux内核中一个模块，可以在内核态完成数据的封装和解封。flannel.1设备(VTEP)既有IP地址又有MAC地址，在数据包发往flannel.1设备时，通过二层数据帧，将原数据包加上目标节点的MVC地址，再加上VTEP标识，封装成一个二层数据帧，然后再封装成宿主机网络里的普通UDP数据包，发送给目标节点，目标节点在内核网络栈中发现了VTEP标识，就知道可以在内核态处理了。
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_vxlan跨主机通信.png)
+
+数据包的发送都要经过OSI那几层模型的，经过的每一层都需要进行包装和解封，才能得到原始数据，在这期间二层网络(数据链路层)是在内核态处理，三层网络(网络层)是在用户态处理。
 
 **calico的跨主机通信**
 
