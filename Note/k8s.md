@@ -34,6 +34,8 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 ## 容器网络
 
+容器网络一个Network Namespace网络栈包括：网卡、回环设备、路由表、iptables规则。
+
 ### 同一节点下容器间的通信
 
 在 Linux 中能够起到虚拟交换机作用的网络设备，是网桥。它是一个工作在数据链路层的设备，主要功能是根据 MAC 地址来将数据包转发到网桥的不同端口（Port）上，因此Docker 项目会默认在宿主机上创建一个名叫 docker0 的网桥，凡是连接在 docker0 网桥上的容器，就可以通过它来进行通信。
@@ -323,6 +325,15 @@ spec:
 
 ### Pod的通信
 
+Kubernetes上的CNI网桥相当于docker0网桥，容器(Pod)与宿主机通信，仍然使用VethPair设备，CNI网桥会接管所有CNI插件负责的容器(Pod)，主要是与Pod中的Infra容器的Network Namespace交互。
+
+CNI网络方案主要由两部分工作
+
+* 1：实现网络方案，比如创建和配置所需要的虚拟设备、配置路由表、ARP和FDB表；
+* 2：实现对应的CNI插件，比如通过该插件可以配置Infra容器里的网络栈，并把它连接在CNI网桥上。
+
+本质上Kubernetes的网络跟docker是类似的，在集群中，所有的容器都可以直接使用IP地址与其他容器通信，而无需IP映射；宿主机也可直接使用IP与所有容器通信，而无需IP映射；每个容器都拥有自己的IP地址，且在其他容器，宿主机看到的是一样的。
+
 #### Pod内的容器间通信
 
 Pod内部容器是共享一个网络命名空间的。
@@ -341,7 +352,7 @@ Pod内部容器是共享一个网络命名空间的。
 
 #### 不同节点下Pod间的通信
 
-不同的节点下Pod间的通信，通过一套接口规范（CNI, Container Network Interface）来实现，常见的有Flannel、Calico以及AWS VPC CNI。
+不同的节点下Pod间的通信，通过一套接口规范（CNI, Container Network Interface）来实现，常见的有CNI插件实现有Flannel、Calico以及AWS VPC CNI。
 
 其中，flannel有VXLAN、host-gw、UDP三种实现。
 
@@ -351,7 +362,7 @@ Pod内部容器是共享一个网络命名空间的。
 
 1. container-1发送数据包，源：100.96.1.2，目标：100.96.2.3，经过docker0，发现目标IP不存在，此时会把该数据包交由宿主机处理。
 2. 通过宿主机上的路由表，发现flannel0设备可以处理该数据包，宿主机将该数据包发送给flannel0设备。
-3. flannel0设备由flanneld进程管理，数据包的处理从内核态(Linux操作系统)转向用户态(flanneld进程)，flanneld进程知道目标IP在哪个节点，就把该数据包发往node2。
+3. flannel0设备（TUM）由flanneld进程管理，数据包的处理从内核态(Linux操作系统)转向用户态(flanneld进程)，flanneld进程知道目标IP在哪个节点，就把该数据包发往node2。
 4. node2对该数据包的处理，则跟node1相反，最后container2收到数据包。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
@@ -370,15 +381,70 @@ flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理
 
 通过VXLAN模式（Virtual Extensible LAN）解决UDP模式下上下文切换频繁带来的性能问题。
 
-原理是通过在二层网络上再设置一个VTEP设备，该设备是Linux内核中一个模块，可以在内核态完成数据的封装和解封。flannel.1设备(VTEP)既有IP地址又有MAC地址，在数据包发往flannel.1设备时，通过二层数据帧，将原数据包加上目标节点的MVC地址，再加上VTEP标识，封装成一个二层数据帧，然后再封装成宿主机网络里的普通UDP数据包，发送给目标节点，目标节点在内核网络栈中发现了VTEP标识，就知道可以在内核态处理了。
+原理是通过在二层网络上再设置一个VTEP设备，该设备是Linux内核中一个模块，可以在内核态完成数据的封装和解封。flannel.1设备（VTEP）既有IP地址又有MAC地址，在数据包发往flannel.1设备时，通过二层数据帧，将原数据包加上目标节点的MVC地址，再加上VTEP标识，封装成一个二层数据帧，然后再封装成宿主机网络里的普通UDP数据包，发送给目标节点，目标节点在内核网络栈中发现了VTEP标识，就知道可以在内核态处理了。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_vxlan跨主机通信.png)
 
 数据包的发送都要经过OSI那几层模型的，经过的每一层都需要进行包装和解封，才能得到原始数据，在这期间二层网络(数据链路层)是在内核态处理，三层网络(网络层)是在用户态处理。
 
+**flannel host-gw模式（三层网络方案）**
+
+二层指的是在知道下一跳的IP对应的MAC地址后，直接在数据链路层通信，如果不知道，就需要在网络层设置路由表，通过路由通信，此时就是三层网络。
+
+将每个Flannel子网的下一跳设置成该子网对应的宿主机的IP地址，用这台宿主机充当网关，Flannel子网和主机信息都保存在ETCD中，由flanneld进程WATCH这些数据的变化，实时更新路由表，这种方案的性能最好。
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_host_gw跨主机通信.png)
+
 **calico的跨主机通信**
 
-简单来说，calico会在宿主机上创建一个路由表，维护集群内各个物理机，容器的路由规则，通过这张路由表实现跨主机通信
+类似flannel host-gw模式，calico会在宿主机上创建一个路由表，维护集群内各个物理机、容器的路由规则，通过这张路由表实现跨主机通信。通过边界网关协议BGP，在集群的各个节点中实现路由信息共享。
+
+因此calico不需要在宿主机上创建任何网桥设备，通过Veth Pair设备 + 路由表的方式，即可完成节点IP寻找和转发。
+
+但这种方案会遇到路由表的规模问题，且最优情况是集群节点在同一个子网。
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/calico跨主机通信.png)
+
+### Pod中的网络隔离
+
+通过NetworkPolicy对象来实现，控制Pod的入站和出站请求，实现了NetworkPolicy的网络插件包括Calico、Weave，不包括Flannel。通过NetworkPolicy Controller监控NetworkPolicy，修改宿主机上的iptable。
+
+```yaml
+apiVersion: networking.k8s.io/v1 
+kind: NetworkPolicy 
+metadata: 
+  name: test-network-policy 
+  namespace: default 
+spec: 
+  podSelector: 
+    matchLabels: 
+      role: db # 标签为role: db的Pod拥有该NetworkPolicy，如果为空，则该namespace下所有Pod都无法通信
+  policyTypes: 
+    - Ingress 
+    - Egress 
+  ingress: 
+  - from: # from数组内元素是or关系，元素内可以包含其他Selector，他们是and关系
+    - ipBlock:
+        cidr: 172.17.0.0/16 # 只允许这个网段的节点访问，且不允许172.17.1.0/24网段的节点访问
+        except:
+          - 172.17.1.0/24
+    - namespaceSelector: 
+        matchLabels: # 只允许标签为 project: myproject 的Pod访问
+          project: myproject 
+    - podSelector: 
+        matchLabels: 
+          role: frontend 
+    ports: # 只允许访问这些pod的6379端口
+    - protocol: TCP 
+      port: 6379 
+  egress: 
+  - to:
+    - ipBlock: 
+        cidr: 10.0.0.0/24 # 只允许这些Pod对外访问这个网段的节点，且端口是5978
+    ports: 
+    - protocol: TCP 
+      port: 5978
+```
 
 ## PV、PVC、StoageClass
 
@@ -594,23 +660,37 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
 
-虽然Service每次重启IP也会发生变化，但是相比Pod
+虽然Service每次重启IP也会发生变化，但是相比Pod会更加稳定。
 
 一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
 
+创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的ip和端口作为环境变量，该环境变量会随着Pod或Service的ip和端口的改变而改变，可以实现基于环境变量的服务发现，但是只有在同一namespace下的Pod内才可以使用此环境变量进行访问。
+
 Service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中，所以请求经过Service会进行kube-proxy的转发。
 
-创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的ip和端口作为环境变量，该环境变量会随着Pod或Service的ip和端口的改变而改变，可以实现基于环境变量的服务发现，但是只有在同一namespace下的Pod内才可以使用此环境变量进行访问。
+大量的Pod会产生大量的iptables导致性能问题，kube-proxy使用IPVS模式来解决。
 
 ### 关于Headless
 
 Service在集群内部被访问，有两种方式
 
-* Service的VIP，即clusterIP，访问该IP时，Service会把请求转发到其代理的某个Pod上
+* Service的VIP，即clusterIP，访问该IP时，Service会把请求转发到其代理的某个Pod上。
 
-* Service的DNS方式，比如Service有`my-svc.my-namespace.svc.cluster.local`这条DNS记录，访问这条DNS记录，根据这条DNS记录，查询出对应的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡
+* Service的DNS方式，比如Service有`my-svc.my-namespace.svc.cluster.local`这条DNS记录，访问这条DNS记录，根据这条DNS记录，查询出对应的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡。
 
   如果这条DNS记录没有对应的Service VIP，即Service的clusterIP是None，则称为Headless Service，此时的DNS记录格式为`<pod-name>.<svc-name>.<namespace >.svc.cluster.local`，直接映射到被代理的某个Pod的IP，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡。
+
+Service和Pod都会被Kubernetes分配对应的DNS A记录。
+
+ClusterIp模式下的A记录
+
+* Service：.. svc.cluster.local，对应Cluster IP
+* Pod：.. pod.cluster.local，对应Pod的IP
+
+Headless模型下的A记录
+
+* Service：.. svc.cluster.local，对应的是所有被代理的Pod的IP地址的集合
+* Pod：.. svc.cluster.local，对应Pod的IP
 
 ### 如何被集群外部访问
 
