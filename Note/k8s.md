@@ -98,6 +98,60 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
   * Scheduler：编排和调度Pod
   * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等
 
+## 调度器
+
+主要职责就是为新创建的Pod寻找合适的节点，默认调度器会先调用一组叫Predicate的调度算法检查每个Node，再调用一组叫Priority的调度算法为上一步结果里的每个Node打分，将新创建的Pod调度到得分最高的Node上。
+
+### 原理
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/k8s默认调度原理.png)
+
+* 第一个控制循环叫Informer Path，它会启动一系列Informer，监听etcd中的Pod、Node、Service等与调度相关的API对象的变化，将新创建的Pod添加进调度队列，默认的调度队列是优先级队列；
+
+  此外，还会对调度器缓存进行更新，因为需要尽最大可能将集群信息Cache化，以提高两个调度算法组的执行效率，调度器只有在操作Cache时，才会加锁。
+
+* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用Predicate算法进行过滤，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
+
+  然后调用Priorities算法为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
+
+* 得到可调度的Node后，调度器就会将Pod对象的nodeName字段的值，修改为Node的名字，实现绑定，此时修改的是Cache里的值，只会才会创建一个goroutine异步向API Server发起更新Pod的请求，完成真正的绑定工作；这个过程称为乐观绑定。
+
+* Pod在Node上运行起来之前，还会有一个叫Admit的操作，调用一组GeneralPredicates的调度算法验证Pod是否真的能够在该节点上运行，比如资源是否可用，端口是否占用之类的问题。
+
+### 调度策略
+
+调度的本质是过滤，通过筛选所有节点组，选出符合条件的节点。
+
+Predicates阶段：
+
+* GeneralPredicates算法组，最基础的调度策略，由Admit操作执行
+  * PodFitsResources：检查节点是否有Pod的requests字段所需的资源
+  * PodFitsHost：检查节点的宿主机名称是否和Pod的spec.nodeName一致
+  * PodFitsHostPorts：检查Pod申请的宿主机端口spec.nodePort是否已经被占用
+  * PodMatchNodeSelector：检查Pod的nodeSelector或nodeAffinity指定的节点是否与待考察节点匹配
+* Volume的检查
+  * NodeDiskConflict：检查多个Pod声明的持久化Volume是否有冲突，比如一个AWS EBS不允许被多个Pod使用
+  * MaxPDVolumeCountPredicate：检查节点上某一类型的持久化Volume是否超过设定值，超过则不允许同类型Volume的Pod调度到上面去
+  * VolumeZonePredicate：检查持久化Volume的可用区(Zone)标签，是否与待考察节点的标签匹配
+  * VolumeBindingPredicate：检查Pod对应的PV的nodeAffinity是否与某个节点的标签匹配
+* 与Node相关的规则
+  * PodToleratesNodeTaints：检查Pod的Toleration字段是否与Node的Taint字段匹配
+  * NodeMeemoryPressurePredicate：检查当前节点的内存是否充足
+* 与Pod相关的规则，与GeneralPredicates类似
+  * PodAffinityPredicate：检查待调度的Pod与Node上已有的Pod的亲和(affinity)和反亲和(anti-affinity)的关系
+
+筛选出可用Node之后，为这些Node进行打分
+
+Priorities阶段(打分规则)：
+
+* LeastRequestedPriority：选出空闲资源（CPU和Memory）最多的宿主机。
+
+  `score = (cpu((capacity - sum(requested))10 / capacity) + memory((capacity-sum(requested))10 / capacity)) / 2`
+
+* BalancedResourceAllocation：调度完成后，节点各种资源分配最均衡的节点，避免出现有些节点资源被大量分配，有些节点则很空闲。
+
+  `score = 10 - variance(cpuFraction, memoryFraction, volumeFraction) * 10，Fraction=Pod请求资源 / 节点上可用资源，variance=计算每两种Faction资源差最小的节点`
+
 ## Pod
 
 Pod是最小的API对象。
@@ -267,6 +321,53 @@ spec:
 ```
 
 声明了两个容器，都挂载了shared-data这个Volume，且该Volume是hostPath，对应宿主机上的/data目录，所以么，nginx-container 可 以 从 它 的/usr/share/ nginx/html 目 录 中， 读取到debian-container生 成 的 index.html文件。
+
+### Pod的资源分配
+
+Pod的资源分配由定义的Container决定，比如
+
+```yaml
+...
+spec:
+  containers:
+  - name: app
+    resources:
+      requests:
+        memory: "64Mi" # 单位是bytes，注意1Mi=1024*1024，1M=1000*1000
+        cpu: "250m" # 单位是个数，250m表示250millicpu，使用0.25个CPU的算力，也可以直接写成0.25，默认是1，且是cpu share的
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+...
+```
+
+CPU属于可压缩资源，当CPU不足时，Pod只会"饥饿"，不会退出；
+
+内存数与不可压缩资源，当内存不足时，Pod会因为OOM而被kill掉；
+
+Matser的kube-scheduler会根据requests的值进行计算，根据limits设置cgroup的限制，不同的requests和limits设置方式，会将Pod划分为不同的QoS类型，用于对Pod进行资源回收和调度。
+
+1. Guaranteed：只设置了limits或者limits和requests的值一致；
+
+   在保证是Guaranteed类型的情况下，requests和limits的CPU设置相等，此时是cpuset设置，容器会绑到某个CPU核上，不会与其他容器共享CPU算力，减少CPU上下文切换的次数，提升性能。
+
+2. Burstable：不满足Guaranteed级别，但至少有一个Container设置了requests；
+
+3. BestEffort：requests和limits都没有设置；
+
+**kubelet默认的资源回收阈值**：
+
+memory.available < 100Mi；nodefs.available < 10%；nodefs.inodesFree < 5%；imagefs.available < 15%；
+
+达到阈值后，会对node设置状态，避免新的Pod被调度到这个node上。
+
+> 当发生资源（Eviction）回收时的策略：
+>
+> 首当其冲的，自然是BestEffort类别的Pod。
+>
+> 其次，是属于Burstable类别、并且发生“饥饿”的资源使用量已经超出了requests的Pod。 
+>
+> 最后，才是Guaranteed类别。并且，Kubernetes会保证只有当Guaranteed类别的Pod的资源使用量超过了其limits的限制，或者宿主机本身正处于Memory Pressure状态时，Guaranteed的Pod才可能被选中进行Eviction操 作。
 
 ### Pod中的健康检查
 
@@ -694,13 +795,31 @@ Headless模型下的A记录
 
 ### 如何被集群外部访问
 
+Service的本质是在宿主机上设置iptables规则、DNS映射，工作在第四层传输层。
+
 * Service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod。
-* Service设置type=LoadBalancer，设置一个外部均衡服务，这个一般由公有云提供，比如aws，阿里云的k8s服务。
+
+  在这里，请求可能会经过SNAT操作，因为当client通过node2的地址访问一个Service，node2可能会负载均衡将请求转发给node1，node1处理完，经过SNAT，将响应返回给node2，再由node2响应回client，保证了client请求node2后得到的响应也是node2的，此时Pod只知道请求的来源，并不知道真正的发起方；
+
+  如果Service设置了spec.extrnalTrafficPolicy=local，Pod接收到请求，可以知道真正的外部发起方是谁了。
+
+* Service设置type=LoadBalancer，设置一个外部均衡服务，这个一般由公有云提供，比如aws，阿里云的LB服务。
+
 * Service设置type=ExternalName，并设置externalName的值，这样就可以通过externalName访问，Service会暴露DNS记录，通过访问这个DNS，解析得到DNS对应的VIP，通过VIP再转发到对应的Pod；此时也不会产生EndPoints、clusterIP。
+
 * Service设置externalIPs的值，这样也能通过该ip进行访问。
-* 可以直接通过port forward的方式，将Pod端口与节点上的端口一一对应暴露，提供访问，而不需要Service。
+
+* 可以直接通过port forward的方式，将Pod端口转发到执行命令的那台机器上，通过端口映射提供访问，而不需要Service。
+
+检查网络是否有问题，一般先检查Master节点的Service DNS是否正常、kube-dns(coreDns)的运行状态和日志；
+
+当无法通过ClusterIP访问Service访问时，检查Service是否有Endpoints，检查Kube-proxy是否正确运行；
+
+最后检查宿主机上的iptables。
 
 ## Ingress
+
+工作在第七层，应用层。
 
 作用与Service类似，主要是用于对**多个service**的包装，作为service的service，设置**一个**统一的负载均衡（这样就不用每个Service都设置一个LB了），设置Ingress **rule**，进行反向代理，实现的是**Http**负责均衡。
 
