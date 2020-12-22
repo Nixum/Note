@@ -82,6 +82,8 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 
 # Kubernetes
 
+## 基本
+
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/k8s项目架构.jpg)
 
 **容器的本质是进程，Kubernetes相当于操作系统**，管理这些进程组。
@@ -94,9 +96,12 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 * CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
 * OCI：Open Container Initiative，容器运行时对底层操作系统的规范，CRI就是将请求翻译成对底层系统的操作
 * CRD：Custom Resource Definition，自定义的控制器对象，如Operator
+* Kubelet：负责各个节点上Pod、容器的创建和运行
 * Master节点作用：编排、管理、调度用户提交的作业
   * Scheduler：编排和调度Pod
+  * APIServer：提供集群对外访问的API接口
   * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等
+* Device Plugin：管理节点上的硬件设备，比如GPU
 
 ## 调度器
 
@@ -151,6 +156,48 @@ Priorities阶段(打分规则)：
 * BalancedResourceAllocation：调度完成后，节点各种资源分配最均衡的节点，避免出现有些节点资源被大量分配，有些节点则很空闲。
 
   `score = 10 - variance(cpuFraction, memoryFraction, volumeFraction) * 10，Fraction=Pod请求资源 / 节点上可用资源，variance=计算每两种Faction资源差最小的节点`
+
+### 优先级与抢占机制
+
+给Pod设置优先级，使得高优先级的Pod可用先调度，即使调度失败也比低优先级的Pod有优先调度的机会。
+
+需要先定义一个PriorityClass的API对象才能给Pod设置优先级。
+
+```yaml
+apiVersion: scheduling.k8s.io/v1beta1 
+kind: PriorityClass 
+metadata: 
+  name: high-priority 
+value: 1000000 
+globalDefault: false 
+description: "This priority class should be used for high priority service pods only."
+---
+Pod内
+spec:
+  containers:
+    ...
+  priorityClassName: high-priority
+```
+
+PriorityClass里的value值越高，优先级越大，优先级是一个32bit的整数，最大不超过 10亿，超过10亿的值是Kubernetes保留给系统Pod使用，保证系统Pod不会被用户Pod抢占；globalDefault为true表示该PriorityClass的值会成为系统默认值，为false表示只有使用了该PriorityClass的Pod才有优先级，没有声明则默认是0。
+
+#### 抢占过程
+
+当一个高优先级的Pod调度失败时，调度器会试图从当前集群里寻找一个节点，当该节点上的一个或多个低优先级的Pod被删除后，待调度的高优先级的Pod可用被调度到该节点上，但是抢占过程不是立即发生，而只是在待调度的高优先级的Pod上先设置spec.nominatedNodeName=Node名字，等到下一个调度周期再决定是否针对要运行在该节点上，之所以这么做是因为被删除的Pod有默认的30秒优雅退出时间，在这个过程中，可能有新的更加被适合给高优先级调度的节点加入。
+
+#### 抢占原理
+
+抢占算法的实现基于两个队列，一个是activeQ队列，存放下一个调度周期里需要调度的Pod；另一个是unschedulableQ队列，存放调度失败的Pod，当一个unschedulableQ里的Pod被更新之后，调度器就会把该Pod移动到activeQ里；
+
+1. 当调度失败时，抢占算法开始工作，首先会检查调度失败的原因，判断是否可以为调度失败的Pod寻找一个新节点；
+2. 之后调度器会把自己缓存的所有节点信息复制一份，通过这份副本模拟抢占过程，找出可以使用的节点和需要被删除的Pod列表，确定抢占是否可以发生；
+3. 执行真正的抢占工作，检查要被删除的Pod列表，把这些Pod的nominatedNodeName字段清除，为高优先级的Pod的nominatedNodeName字段设置为节点名称，之后启动一个协程，移除需要删除的Pod。
+
+第2步和第3步都执行了抢占算法Predicates，只有这两遍抢占算法都通过，才算抢占成功，之所以要两次，是因为需要满足InterPodAntiAffinity规则和下一次调度周期不一定会调度在该节点的情况。
+
+## Kubelet和CRI
+
+
 
 ## Pod
 
