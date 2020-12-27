@@ -94,7 +94,7 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
   kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI
 * CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范
 * CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
-* OCI：Open Container Initiative，容器运行时对底层操作系统的规范，CRI就是将请求翻译成对底层系统的操作
+* OCI：Open Container Initiative，容器运行时和镜像操作规范
 * CRD：Custom Resource Definition，自定义的控制器对象，如Operator
 * Kubelet：负责各个节点上Pod、容器的创建和运行
 * Master节点作用：编排、管理、调度用户提交的作业
@@ -197,7 +197,23 @@ PriorityClass里的value值越高，优先级越大，优先级是一个32bit的
 
 ## Kubelet和CRI
 
+Kubelet本质也是一个控制循环SyncLoop，在这个控制循环里又包含了很多小的控制循环，每个控制循环有自己的职责，比如Volume Manager、Image Manager、Node Status Manager、CPU Manager等，而驱动整个主的控制循环的事件有四种：
 
+1. Pod的更新事件
+2. Pod生命周期变化
+3. Kubelet本身设置的执行周期
+4. 定期的清理事件
+
+每个节点上的Kubelet里的SyncLoop主控制循环通过Watch机制，监听nodeName是自己节点的Pod，在内存里缓存这些Pod的信息和状态，当接收到新事件时，执行相应的操作。在管理Pod内的容器时，不会直接调用docker的API，而是通过CRI的grpc接口来间接执行，这样无论底层容器可以简单的从docker换成其他容器程序。
+
+每台工作节点上的docker容器会使用dockershim提供CRI接口，来与kubelet交互，如果不是使用docker容器，则需要额外部署CRI shim来处理，通过这些shim转发kubelet的请求来操作容器。
+
+CRI是对容器操作相关的接口，而不是对于Pod，分为两组类型的API，
+
+1. RuntimeService：处理容器相关操作，比如创建和启动容器，删除容器，执行命令
+2. ImageService：处理容器镜像的相关操作，比如拉取镜像、删除镜像
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/CRI_work_flow.png)
 
 ## Pod
 
