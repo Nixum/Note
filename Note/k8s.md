@@ -95,7 +95,7 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
 * CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范
 * CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
 * OCI：Open Container Initiative，容器运行时和镜像操作规范
-* CRD：Custom Resource Definition，自定义的控制器对象，如Operator
+* CRD：Custom Resource Definition，自定义的资源对象，即yaml文件中的Kind，如Operator就是实现CRD的控制器，之后直接使用Operator创建的CRD声明对象即可使用
 * Kubelet：负责各个节点上Pod、容器的创建和运行
 * Master节点作用：编排、管理、调度用户提交的作业
   * Scheduler：编排和调度Pod
@@ -818,7 +818,7 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 ### Operator
 
-本质是一个Deployment，是一个CRD，作用跟StatefulSet类似，用来管理有状态的Pod，维持拓扑状态和存储状态。
+本质是一个Deployment，会创建一个CRD，常用于简化StatefulSet的部署，用来管理有状态的Pod，维持拓扑状态和存储状态。需要编写与Kubernetes Matser交互的代码，才能实现自定义CRD的行为。
 
 ## Service
 
@@ -1090,8 +1090,6 @@ spec:
 
 表示该Pod只能运行在携带了disktype:ssd标签的节点上，否则它将调度失败
 
-
-
 **HostAliases**：定义了Pod的hosts文件（比如/etc/hosts）里的内容
 
 ```
@@ -1105,23 +1103,15 @@ spec:
 
 表示在/etc/hosts文件的内容是将 ip 10.1.2.3映射为 foo.remote和bar.remote
 
-
-
 **shareProcessNamespace**: true，Pod里面的容器共享PID namespace，即在同一个Pod里的容器可以相互看到对方
-
-
 
 **hostNetwork**: true、hostIPC: true、hostPID: true表示共享宿主机的network、IPC、namespace
 
-
-
 **ImagePullPolicy**=alaways(默认)、never、ifNotPresent，每次创建Pod都会${value}拉取镜像
-
-
 
 **Lifecycle**: 容器状态发生变化时触发的一系列钩子，属于container级别
 
-```
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1144,41 +1134,126 @@ spec:
 ## 常用命令
 
 ```
-查看所有Pod等，也可将pod换成cm、svc，下同
+查看所有Pod
 kubectl get pod -A
 
+查看所有configMap
+kubectl get configmap -A
+
 查看某个configmap的内容
-kubectl describe configmap [confing名字] -n [命名空间]
+kubectl describe configmap confing名字 -n 命名空间
 
 将更新的configmap内容更新到etcd中
-kubectl apply -f [文件名]
+kubectl apply -f 文件名
 
-删除pod
-kubectl delete pod [pod名称] -n [命名空间]
-
-删除整个命名空间, 同时会把命名空间内所有的pod、svc、deployment等删掉
-kubectl delete ns [命名空间]
+删除名字为xxx，namespace为yyy的pod
+kubectl delete pods xxx -n yyy
 
 查看所有Pod以及ip之类的信息
 kubectl get pods --all-namespaces -o wide
 
-进入pod里的指定容器, sh打开命令行
-kubectl exec [pod名称] -n [名称空间] -c [pod内容器名称] -it sh
+进入pod里，并打开sh命令行
+kubectl exec -it pod名称 -n [名称空间] sh
+进入pod里的指定容器AA
+kubectl exec -it pod名称 -c 容器名称 sh
 
 查看pod 的event
 kubectl get event -n [名称空间]
 
 查看容器日志
-kubectl logs [pod名称] -n [名称空间] -c [pod内容器名称] -f
+kubectl logs [pod名称] -n [名称空间] -c[pod内容器名称] -f
 
-查看pod的yaml内容，pod、cm、svc等，也可将yaml换成json，即以json的格式查看
-kubectl get pod [pod名称] -n [命名空间] -o yaml
+查看pod的yaml内容
+kubectl get pod [pod名称] -n osaas -o yaml
 
+以yaml格式查看configmap的内容
+kubectl get cm [configmap的名称] -n [命名空间] -o yaml
+
+
+对于处于terminating的pod或namespace的删除方法
+1. 将对应的pod或namespace转成json形式，将属性finalizers改为[]
+kubectl get [pod或namespace] [对应的名称]  -o json |jq '.spec = {"finalizers":[]}' > json文件名.json
+2.打开另一个窗口，起一个代理
+kubectl proxy --port=8081
+3.访问kubelet接口进行删除
+curl -k -H "Content-Type: application/json" -X PUT --data-binary @json文件.json 127.0.0.1:8081/api/v1/[pod或namespaces]/[对应的名称]/finalize
+或者：
+删除状态为Terminating的命名空间
+kubectl get ns [命名空间的值] -o json > xxxx.json，修改finialize为空数组[]
+kubectl replace --raw "/api/v1/namespaces/[命名空间的值]/finalize" -f xxx.json
+
+
+删除指定命名空间下所有资源例如pod、deployment、svc，包括里面所有副本
+delete all -n [命名空间] --all
+
+删除命名空间下的event
+kubectl delete events -n [命名空间] --all
+
+启动busybox调试网络
+kubectl run -it --rm --restart=Never busybox --image=busybox sh
+
+查看node标签
+kubectl get nodes --show-labels
+
+给node设置标签
+kubectl label nodes <your-node-name> disktype=ssd
+
+删除节点
+1. 先排干上面的pod
+kubectl drain node名称 --delete-local-data --force --ignore-daemonsets
+2. 删除
+kubectl delete node node名称 
+
+
+将镜像打成压缩包
+docker save -o 压缩包名字  镜像名字:标签
+还原成镜像
+docker load < 压缩包名字
+直接使用命令，不保持容器启动
+docker run --rm --name kubectl bitnami/kubectl:latest version
+
+启动时修改entrypoint
+docker run --rm -it --entrypoint env 镜像:tag /bin/bash
 ```
 
 # Istio
 
-Istio分为控制面板control plane或数据面板data plane，在低版本中，控制面板分为Pilot、Mixer、Citadel，数据面板则是Pod中的每个Envoy容器，即istio-proxy。Envoy会以side car的方式运行在Pod中，利用Pod中的所有容器共享同一个Network Namespace的特性，通过配置Pod里的iptables规则，管理进出Pod的流量。
+upstream：发出请求的流量
+
+downstream：接收请求的流量
+
+xDS：控制平面与数据平面通信的统一API标准，包括 LDS（监听器发现服务）、CDS（集群发现服务）、EDS（节点发现服务）、SDS（密钥发现服务）和 RDS（路由发现服务）
+
+## 基本
+
+Service Mesh本质上是分布式的微服务**网络控制的代理**，以side car的方式实现：通过envoy+iptable对流量进行劫持，通过对流量的控制，实现诸如注册中心、负载均衡器、路由策略、熔断降级、限流、服务追踪等功能，而不需要耦合在具体的业务服务中，而Istio是其中一种实现。
+
+Istio核心功能：
+
+* 流量控制：路由（如灰度发布、蓝绿部署、AB测试）、流量转移、弹性（如超时重试、熔断）测试（如故障注入、流量镜像，模拟生产环境的流量进行测试），
+* 安全：认证、授权
+* 可观察：指标、日志、追踪
+* 策略：限流、黑白名单
+
+Istio分为控制平面control plane和数据平面data plane，控制面主要负责资源管理、配置下发、证书管理、控制数据面的行为等，数据面则负责流量出入口。
+
+**控制平面**
+
+在低版本中分为Pilot、Mixer、Citadel；
+
+Pilot负责配置下发，将配置文件转化为Istio可识别的配置项，分发给各个sidecar代理(piloy-agent)；
+
+Citadel负责安全、授权认证，比如证书的分发和轮换，让sidecar代理两端实现双向TLS认证、访问授权；
+
+Mixer负责从数据平面收集数据指标以及流量策略，是一种插件组件，插件提供了很好的扩展性，独立部署，但每次修改需要重新部署，之后1.1版本将插件模块独立一个adaptor和Gallery，但是Mixer由于需要频繁的与sidecar进行通信，又是部署在应用进程外的，因此性能不高。
+
+Gallery负责对配置信息格式和正确性校验，将配置信息提供pilot使用。
+
+高版本1.5后中分为将Pilot、Citadel、Gallery整合为istiod，同时istiod里也包含了CA、API-Server，配合ingressgateway、egressgateway
+
+**数据平面**：Pod中的每个Envoy容器，即istio-proxy；Envoy会以side car的方式运行在Pod中，利用Pod中的所有容器共享同一个Network Namespace的特性，通过配置Pod里的iptables规则，管理进出Pod的流量。
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Istio-架构.png)
 
 ## 自动注入实现
 
@@ -1186,6 +1261,92 @@ Istio分为控制面板control plane或数据面板data plane，在低版本中�
 
 Istio会将Envoy容器本身的定义，以configMap的方式进行保存，当用户提交自己的Pod时，Kubernetes就会通过类似git merge的方式将两份配置进行合并。这个合并的操作会由envoy-initializer的Pod来实现，该Pod使用 循环控制，不断获取用户新创建的Pod，进行配置合并。
 
+## 核心CRD
+
+* **VirtualService**：路由规则，主要是把请求的流量路由到指定的目标地址，解耦请求地址与工作负载。
+
+* **DistinationRule**：定义了VirtualService里配置的具体的目标地址形成子集，设置负载均衡模式，默认是随机策略。
+
+上面两个主要是管理服务网格内部的流量。
+
+* **Gateway（ingress gateway）**：是网格的边界，管理进出网格的流量，比如为进出的流量增加负载均衡的能力，增加超时重试的能力，有ingress gateway和egress gateway分别管理。
+
+  **与k8s Ingress的区别**：
+
+  1. k8s Ingress只支持7层协议，比如http/https，不支持tcp、udp这些，没有VirtualService，直接对的Service
+  2. Gateway支持 4 - 6 层协议，只设置入口点，配合VirtualService解耦路由规则的绑定，实现路由规则复用。
+
+* **ServiceEntry**：面向服务，将外部的服务注册到服务网格中，为其转发请求，添加超时重试等策略，扩展网格，比如连接不同的集群，使用同一个istio管理。
+
+Sidecar使用Envoy，代理服务的端口和协议。
+
+## 应用场景
+
+1. VirtualService和DestinationRule：按服务版本路由、按比例切分流量、根据匹配规则进行路由(比如请求头必须包含xx)、路由策略(如负载均衡，连接池)
+
+   蓝绿部署：同时准备两套环境，控制流量流向不同环境或版本
+
+   灰度发布(金丝雀发布)：小范围测试和发布，即按比例切分流量
+
+   A/B测试：类似灰度发布，只是侧重点不同，灰度发布最终流量会流向最新版本，而A/B测试只是用于测试A、B两个环境带来的影响。
+
+   这两个可以用于ingressgateway或egressgateway
+
+2. Gateway：暴露集群内的服务给外界访问、将集群内部的服务以https的方式暴露、作为统一应用入口、API聚合
+
+3. ServiceEntry：添加外部的服务到网格，从而管理外部服务的请求，扩大网格，默认情况下，Istio允许网格内的服务访问外部服务，当全部禁止后，需要使用ServiceEntry注册外部服务，以供网格内部的服务使用
+
+4. 超时和重试：通过virtualService的route配置`timemout`设置服务接收请求处理的超时时间，`retries.attempts`和`retries.perTryTimeout`设置重试次数和重试时间间隔，`retries.retryOn`设置重试条件
+
+5. 熔断：通过DestinationRule的trafficPolicy里connectionPool和outlierDection的配置实现
+
+   ```yaml
+   apiVersion: networking.istio.io/v1alpha3
+   kind: DestinationRule
+   metadata:
+     name: httpnin
+   spec:
+     host: httpbin
+     trafficPolicy:
+       connectionPool:
+         tcp:
+           maxConnections: 1 	# tcp最大连接数
+         http:
+           http1MaxPendingRequests: 1 # 每个连接能处理的请求数
+           maxRequestsPerConnection: 1 # 最大被阻挡的请求数
+       outlierDetection:
+         consecutiveErrors: 1 # 允许出错的次数
+         interval: 1s # 失败次数计数时间
+         baseEjectionTime: 3m # 最小驱逐时间，经过此时间后将pod重新加入，默认30s，乘于触发次数后作为熔断持续时间
+         maxEjectionPercent: 100 # 熔断触发时驱逐pod的比例
+   ```
+   
+6. 故障注入：通过VirtualService的fault配置实现
+
+7. 流量镜像：通过VirtualService的`mirror`和`mirrorPercentage`配置，比如将发送给v1版本的真实流量镜像一份给v2
+
+8. 限流：1.5之前有Mixer提供，但是1.5之后移除了Mixer，只能使用Envoy + filter实现，不属于istio生态的了
+
+9. 授权认证，Istio的认证更多的是服务间的访问认证，可根据namespace、具体的服务、服务的接口、请求方法、请求头、请求来源等进行设置
+
+   对外提供HTTPS mTLS访问方式，设置域名证书和Gateway即可；设置网格内部的mTLS双向认证；设置JWT认证，使用RequestAuthentication资源进行认证配置，使用AuthorizationPolicy 资源进行授权配置；
+
+## 调试
+
+使用istioctl的dashboard工具、Envoy的admin接口、Pilot的debug接口等，查看网格的信息，比如资源使用率、日志级别、Envoy性能相关信息等
+
+* `istioctl x describe pod [pod名称]`，查看pod是否在网格内，验证其VirtualService、DestinationRule、路由等
+* `istioctl analyze [-n 命名空间名称] 或 [具体的yaml文件] 或 --use-kube=false [yaml文件]；只分析文件`进行网格配置的诊断
+
+*  `istioctl d [istiod的pod名称] -n istio-system`使用controlZ可视化自检工具，调整日志输出级别、内存使用情况、环境变量、内存信息
+* `istioctl d envoy [pod名称].[命名空间] `使用Envoy的admin接口，进行Envoy的日志级别调整、性能数据分析、配置、指标信息的查看
+* `kubectl port-forward service/istio-pilot -n istio-system 端口:端口`使用pilot的debug接口，查看xDS和配置信息、性能问题分析、配置同步情况
+* `istioctl dashboard [controlZ/envoy/Grafana/jaeger/kiali/Prometheus/zipkin]`使用istio提供的工具
+* `istioctl ps(proxy-status的缩写) [pod名称]`进行配置同步检查。
+* `istioctl pc(proxy-config的缩写) [cluster/route...] [pod名称].[命名空间]`查看配置详情。
+
 # 参考
 
 极客时间-深入剖析k8s-张磊
+
+极客时间-ServiceMesh实战-马若飞
