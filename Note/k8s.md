@@ -1196,13 +1196,15 @@ kubectl run -it --rm --restart=Never busybox --image=busybox sh
 kubectl get nodes --show-labels
 
 给node设置标签
-kubectl label nodes <your-node-name> disktype=ssd
+kubectl label nodes [node名称] disktype=ssd
 
 删除节点
 1. 先排干上面的pod
-kubectl drain node名称 --delete-local-data --force --ignore-daemonsets
+kubectl drain [node名称] --delete-local-data --force --ignore-daemonsets
 2. 删除
-kubectl delete node node名称 
+kubectl delete node [node名称]
+如果误驱逐节点，进行恢复
+kubectl uncordon [node名称]
 
 
 将镜像打成压缩包
