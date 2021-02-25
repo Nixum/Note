@@ -383,25 +383,30 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 > 5. 继续遍历bucket下面的overflow链表。
 > 6. 如果遍历到了startBucket，说明遍历完了，结束遍历。
 
-
 # Channel
+
+Channel的设计基于CSP模型。
+
+CSP模型（Communicating Sequential Process，通信顺序进程），允许使用进程组来描述系统，独立运行，并且只通过消息传递的方式通信。
+
+本质上就是，在使用协程执行函数时，不通过内存共享(会用到锁)的方式通信，而是通过Channel通信传递数据。
 
 ## 数据结构
 
 ```go
 type hchan struct {
-	qcount   uint   // channel中的元素个数
+	qcount   uint   // 已经接收但还没被取走的元素个数，即channel中的循环数组的元素个数
 	dataqsiz uint   // channel中的循环数组的长度
-	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组
+	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组，buf的总大小是elemsize的整数倍
 	elemsize uint16 // 当前channel能够收发的元素大小
 	closed   uint32
 	elemtype *_type // 当前channel能够收发的元素类型
-	sendx    uint   // 指向底层循环数组buf，表示当前可发送的元素位置的索引值，当sendx=dataqsiz时，会回到buf数组的起点
+	sendx    uint   // 指向底层循环数组buf，表示当前可发送的元素位置的索引值，当sendx=dataqsiz时，会回到buf数组的起点，一旦接收新数据，指针就会加上elemsize，移向下个位置
 	recvx    uint   // 指向底层循环数组buf，表示当前可接收的元素位置的索引值
-	recvq    waitq  // 存储当前channel由于缓冲区空间不足而接收阻塞的goroutine列表，双向链表
-	sendq    waitq  // 存储当前channel由于缓冲区空间不足而发送阻塞的goroutine列表，双向链表
+	recvq    waitq  // 等待队列，存储当前channel因缓冲区空间不足而接收阻塞的goroutine列表，双向链表
+	sendq    waitq  // 等待队列，存储当前channel因缓冲区空间不足而发送阻塞的goroutine列表，双向链表
 
-	lock mutex  // 保证每个读channel或写channel的操作都是原子的
+	lock mutex  // 互斥锁，保证每个读channel或写channel的操作都是原子的
 }
 
 type waitq struct {
@@ -412,7 +417,7 @@ type waitq struct {
 
 ## 基本
 
-* chan是引用类型，使用make关键字创建，如
+* chan是引用类型，使用make关键字创建，未初始化时的零值是nil，如
 
   `ch := make(chan, string, 10)`，创建一个能处理string的缓冲区大小为10的channel，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；
   
@@ -420,24 +425,146 @@ type waitq struct {
   
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
+* 当 chan是 nil时，对chan的发送和接收的调用者总是阻塞的
+
+* 带有 <- 的chan是有方向的，不带 <- 的chan是双向的，比如
+
+```go
+  chan string        // 双向chan，可以发送和接收string
+  chan<- struct{}    // 只能发送struct到chan中
+  <-chan int         // 只能从chan中接收int
+```
+
+* chan可以是任何类型的，比如可以是 chan<- 类型，<-总是尽量和左边的chan结合，比如
+
+```go
+chan<- chan int    // 等价于 chan<- (chan int)
+chan<- <-chan int  // 等价于 chan<- (<-chan int)
+<-chan <-chan int  // 等价于 <-chan (<-chan int)
+chan (<-chan int)  // 等价于 chan (<-chan int)
+```
+
+* 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan以及被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的。
+* 双向chan可以赋值给单向chan，但反过来不可以
+
+## 初始化
+
+```go
+func makechan(t *chantype, size int) *hchan {
+    ...
+    elem := t.elem
+        // 略去检查代码
+        mem, overflow := math.MulUintptr(elem.size, uintptr(size))
+    ...
+
+    var c *hchan
+    switch {
+    case mem == 0:
+      // chan的size或者元素的size是0，不必创建buf
+      c = (*hchan)(mallocgc(hchanSize, nil, true))
+      c.buf = c.raceaddr()
+    case elem.ptrdata == 0:
+      // 元素不是指针，分配一块连续的内存给hchan数据结构和buf
+      c = (*hchan)(mallocgc(hchanSize+mem, nil, true))
+            // hchan数据结构后面紧接着就是buf
+      c.buf = add(unsafe.Pointer(c), hchanSize)
+    default:
+      // 元素包含指针，那么单独分配buf
+      c = new(hchan)
+      c.buf = mallocgc(mem, elem, true)
+    }
+  
+    // 元素大小、类型、容量都记录下来
+    c.elemsize = uint16(elem.size)
+    c.elemtype = elem
+    c.dataqsiz = uint(size)
+    lockInit(&c.lock, lockRankHchan)
+
+    return c
+  }
+```
+
 ## 发送数据
 
-使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据。
+使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据，该函数设置了阻塞参数为true。
 
-1. 如果是阻塞的，chansend在发送数据前会为当前channel加锁。
-2. 当存在等待的接收者时，通过send函数，从接收队列recvq中取出最先进入等待的goroutine，直接发送数据。
-3. 当缓冲区存在空余空间时，会使用chanbuf计算出下一个可以存储数据的位置，将要发送的数据拷贝到缓冲区并增加sendx索引和qcount计数器，将发送的数据写入channel缓冲区。
-4. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送数据的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
+1. 如果chan是nil，则把发送者的goroutine park（阻塞休眠），此时发送者将被永久阻塞。
+2. 如果chan没有被close，但是chan满了，则直接返回false，但是由于阻塞参数为true，这部分不会被执行。
+3. 如果chan被close了，再往里发数据会触发panic。
+4. 当存在等待的接收者时，通过send函数，从接收队列recvq中取出最先进入等待的goroutine，直接发送数据，不需要先放到buf中。
+5. 当没有接收者，且缓冲区存在空余空间时，会使用chanbuf计算出下一个可以存储数据的位置，将要发送的数据拷贝到缓冲区并增加sendx索引和qcount计数器，将发送的数据写入channel缓冲区，写入后就返回成功。
+6. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送者的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前发送者的goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
 
 ## 接收数据
 
-使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分配str接收到的零值是发送者发的还是ch关闭`接收数据，最终会调研chanrecv函数接收数据。
+使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分配str接收到的零值是发送者发的还是ch关闭`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
 
-1. 当从一个空channel中接收数据时会调研gopark函数，此时当前goroutine进入等待。
+1. 如果chan是nil，则把接收者的goroutine park（阻塞休眠），接收者被永久阻塞。
+
 2. 如果当前channel已经被关闭且缓冲区不存在任何数据，此时会清除ep指针中的数据并立即返回。
-3. 当channel的sendq队列存在等待状态的goroutine时，使用recv函数直接从阻塞的发送者或缓冲区中获取数据。
-4. 当缓冲区存在数据时，从channel的缓冲区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除队列中的数据，递增recvx，递减qcount，完成数据接收。当发送recvx超过channel的buf时，会将其归零。
-5. 当缓冲区不存在数据且channel的sendq不存在等待的goroutine时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
+
+3. 如果chan已经被close，且队列中没有缓存元素，返回selected为true，received为false。
+
+4. 当channel的sendq队列存在等待状态的goroutine时，如果是unbuffer的chan，直接使用recv函数直接从阻塞的发送者中获取数据；如果是有buffer的chan，则从sendq队列的头中读取一个值，并把这个发送者的值加入队列的尾部，即优先获取发送者的数据。
+
+5. 当channel的sendq队列没有等待状态的goroutine，且缓冲区存在数据时，从channel的缓冲区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除队列中的数据，递增recvx，递减qcount，完成数据接收。当发送recvx超过channel的buf时，会将其归零。
+
+   这个和chansend共用一把锁，所以不会有并发问题。
+
+6. 当channel的sendq队列没有等待状态的goroutine，且缓冲区不存在数据时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
+
+## 关闭
+
+1. 如果 chan 为 nil，close 会 panic
+2. 如果 chan 已经 closed，再次 close 也会 panic。
+3. 否则的话，如果 chan 不为 nil，chan 也没有 closed，就把等待队列中的 sender（writer）和 receiver（reader）从队列中全部移除并唤醒。
+
+## 应用场景
+
+* 实现生产者 - 消费组模型，数据传递，比如[worker池的实现](http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang/)
+* 信号通知：利用 如果chan为空，那receiver接收数据的时候就会阻塞等待，直到chan被关闭或有新数据进来 的特点，将一个协程将信号(closing、closed、data ready等)传递给另一个或者另一组协程，比如 wait/notify的模式。
+* 任务编排：让一组协程按照一定的顺序并发或串行执行，比如实现waitGroup的功能
+* 实现互斥锁的机制，比如，容量为 1 的chan，放入chan的元素代表锁，谁先取得这个元素，就代表谁先获取了锁
+
+> 共享资源的并发访问使用传统并发原语；
+>
+> 复杂的任务编排和消息传递使用 Channel；
+>
+> 消息通知机制使用 Channel，除非只想 signal 一个 goroutine，才使用 Cond；
+>
+> 简单等待所有任务的完成用 WaitGroup，也有 Channel 的推崇者用 Channel，都可以；
+>
+> 需要和 Select 语句结合，使用 Channel；需要和超时配合时，使用 Channel 和 Context。
+
+注意点：使用chan要注意panic和goroutine泄露，另外，只要一个 chan 还有未读的数据，即使把它 close 掉，你还是可以继续把这些未读的数据消费完，之后才是读取零值数据。
+
+在使用chan和select配合时要注意会出现goroutine泄漏的情况：
+
+```go
+func process(timeout time.Duration) bool {
+    ch := make(chan bool)
+
+    go func() {
+        // 模拟处理耗时的业务
+        time.Sleep((timeout + time.Second))
+        ch <- true // block
+        fmt.Println("exit goroutine")
+    }()
+    // 如果上面的协程任务处理的时间过长，触发下面select的超时机制，此时process函数返回，之后当上面的协程任务执行完之后，由于process已经执行完，下面result接收chan的值被回收，导致没有接收者，导致上面的协程任务一直卡在 ch <- true，进而导致goroutine泄漏。解决方案就是使用容量为1的ch即可。
+    select {
+    case result := <-ch:
+        return result
+    case <-time.After(timeout):
+        return false
+    }
+}
+```
+
+|         | nil   | empty                | full                 | not full & empty     | closed                         |
+| ------- | ----- | -------------------- | -------------------- | -------------------- | ------------------------------ |
+| receive | block | block                | read value           | read value           | 返回未读的元素，读完后返回零值 |
+| send    | block | write value          | block                | writed value         | panic                          |
+| close   | panic | closed，没有未读元素 | closed，保留未读元素 | closed，保留未读元素 | panic                          |
 
 # Runtime
 
@@ -445,6 +572,66 @@ type waitq struct {
 * Runtime提供了go代码运行时所需要的基础设施，如协程调度、内存管理、GC、map、channel、string等内置类型的实现、对操作系统和CPU相关操作进行封装。
 * 诸如go、new、make、->、<-等关键字都被编译器编译成runtime包里的函数
 * build成可执行文件时，Runtime会和用户代码一起进行打包。
+
+## 内存模型
+
+由于不同的架构和不同的编译器优化，会发生指令重排，导致程序运行时不一定会按照代码的顺序执行，因此两个goroutine在处理共享变量时，能够看到其他goroutine对这个变量进行的写结果。
+
+happens-before：程序的执行顺序和代码的顺序一样，就算真的发生了重排，从行为上也能保证和代码的指定顺序一样。
+
+Go不像Java有volatile关键字实现CPU屏障来保证指令不重排，而是使用不同架构的内存屏障指令来实现同一的并发原语。
+
+Go只保证goroutine内部重排对读写顺序没有影响，如果存在共享变量的访问，则对另一个goroutine影响很大。因此当有多个goroutine对共享变量的操作时，需要保证对该共享变量操作的happens-before顺序，保证并发安全，常用的手段就是它的并发操作相关的包，比如：
+
+* init函数：同一个包下可以有多个init函数，多个签名相同的init函数；main函数一定在导入的包的init函数执行之后执行；当有多个init函数时，从main文件出发，递归找到对应的包 - 包内文件名顺序 - 一个文件内init函数顺序执行init函数。
+
+* 全局变量：包级别的变量在同一个文件中是按照声明顺序逐个初始化的；当该变量在初始化时依赖其它的变量时，则会先初始化该依赖的变量。同一个包下的多个文件，会按照文件名的排列顺序进行初始化。
+
+  init函数也是如此，当init函数引用了全局变量a，运行main函数时，肯定是先初始化a，再执行init函数。
+
+  当init函数和全局变量无引用关系时，先初始化全局变量，再执行init函数
+
+```go
+var (
+  a = c + b  // == 9
+  b = f()    // == 4
+  c = f()    // == 5
+  d = 3      // 全部初始化完成后 == 5 
+)
+
+func f() int {
+  d++
+  return d
+}
+---
+func init() {
+	a += 1
+    fmt.Println(a)
+	fmt.Println(4)
+}
+
+var a = getA()
+
+func getA() int {
+	fmt.Println(2)
+	return 2
+}
+// 运行后，输出2，3，4
+---
+func init() {
+	fmt.Println(4)
+}
+
+var a = getA()
+
+func getA() int {
+	fmt.Println(2)
+	return 2
+}
+// 运行后，输出2，4
+```
+
+
 
 # Goroutine
 
@@ -653,3 +840,5 @@ go中使用了写屏障来保证标记的正确性。写屏障是在写入指针
 [深入golang runtime的调度](https://zboya.github.io/post/go_scheduler)
 
 [gopher meetup-深入浅出Golang Runtime-yifhao](https://www.lanzous.com/i7lj0he)
+
+极客时间 - Go并发编程实战

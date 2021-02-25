@@ -102,6 +102,8 @@ docker run -it --cpu-period=100000 --cpu-quota=20000 ubuntu /bin/bash
   * APIServer：提供集群对外访问的API接口
   * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等
 * Device Plugin：管理节点上的硬件设备，比如GPU
+* Kube-Proxy：作为daemonset部署在每个节点上，主要用于为Pod创建代理服务，从API-Server获取所有service信息，创建Endpoints，转发service到Pod间的请求，默认使用iptables模式，但当service数量变多时有性能问题，1.8版本后使用IPVS模式提升性能
+* coreDNS：低版本的kubernetes使用kube-dns，1.12后默认使用coreDNS，用于实现域名查找功能
 
 ## 调度器
 
@@ -702,11 +704,12 @@ kind: Deployment
 metadata:
   name: nginx-deployment
 spec:
+# 通过spec.selector.matchLabels根据Pod的标签选择Pod
   selector:
     matchLabels:
       app: nginx
   replicas: 2
-// 上面的部分定义了控制内容，判断实际与期望，并进行相应的操作，下面是被控制的对象
+# 上面的部分定义了控制内容，判断实际与期望，并进行相应的操作，下面是被控制的对象
   template:
     metadata:
       labels:
@@ -822,6 +825,8 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 ## Service
 
+工作在第四层，传输层，一般转发TCP、UDP流量。通过spec.selector，根据Pod的标签选择对应的Pod。
+
 每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
 
 虽然Service每次重启IP也会发生变化，但是相比Pod会更加稳定。
@@ -858,9 +863,9 @@ Headless模型下的A记录
 
 ### 如何被集群外部访问
 
-Service的本质是在宿主机上设置iptables规则、DNS映射，工作在第四层传输层。
+Service的本质是通过kube-proxy在宿主机上设置iptables规则、DNS映射，工作在第四层传输层。
 
-* Service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod。
+* Service设置type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod，默认下nodePort会使用主机的端口范围：30000 - 32767。
 
   在这里，请求可能会经过SNAT操作，因为当client通过node2的地址访问一个Service，node2可能会负载均衡将请求转发给node1，node1处理完，经过SNAT，将响应返回给node2，再由node2响应回client，保证了client请求node2后得到的响应也是node2的，此时Pod只知道请求的来源，并不知道真正的发起方；
 
@@ -882,13 +887,13 @@ Service的本质是在宿主机上设置iptables规则、DNS映射，工作在�
 
 ## Ingress
 
-工作在第七层，应用层。
+工作在第七层，应用层，即一般代理Http流量。
 
-作用与Service类似，主要是用于对**多个service**的包装，作为service的service，设置**一个**统一的负载均衡（这样就不用每个Service都设置一个LB了），设置Ingress **rule**，进行反向代理，实现的是**Http**负责均衡。
+作用与Service类似，主要是用于对多个service的包装，作为service的service，设置一个统一的负载均衡（这样可以避免每个Service都设置一个LB，也可以避免因为节点扩缩容导致service的端口变化需要修改访问配置），设置Ingress rule，进行反向代理，实现的是Http负责均衡。
 
-Ingress是反向代理的规则，Ingress Controller是负责解析Ingress的规则后进行转发。可以理解为Nginx，本质是将请求通过不同的规则进行路由转发。常见的实现有Nginx Ingress Controller。
+Ingress是反向代理的规则，Ingress Controller是负责解析Ingress的规则后进行转发。可以理解为Nginx，本质是将请求通过不同的规则进行路由转发。常见的Ingress Class实现有Nginx-Ingress-Controller、AWS-LB-Ingress-Controller，使用Ingress时会在集群中创建对应的controller pod。
 
-Ingress Controller可基于Ingress资源定义的规则将客户端请求流量直接转发到Service对应的后端Pod资源上，其会绕过Service资源，省去了kube-proxy实现的端口代理开销。
+Ingress Controller可基于Ingress资源定义的规则将客户端请求流量直接转发到Service对应的后端Pod资源上（比如aws-lb-ingress-controller 的 IP mode），其会绕过Service资源，直接转发到Pod上，省去了kube-proxy实现的端口代理开销。
 
 ### 和Istio Ingressgateway的区别
 
@@ -1296,7 +1301,7 @@ Sidecar使用Envoy，代理服务的端口和协议。
 
 2. Gateway：暴露集群内的服务给外界访问、将集群内部的服务以https的方式暴露、作为统一应用入口、API聚合
 
-3. ServiceEntry：添加外部的服务到网格，从而管理外部服务的请求，扩大网格，默认情况下，Istio允许网格内的服务访问外部服务，当全部禁止后，需要使用ServiceEntry注册外部服务，以供网格内部的服务使用
+3. ServiceEntry：添加外部的服务到网格，从而管理外部服务的请求，扩大网格，默认情况下，Istio允许网格内的服务访问外部服务，当全部禁止后，需要使用ServiceEntry注册外部服务，以供网格内部的服务使用，一般配合engressgateway，控制网格内部向外部服务发出的请求。
 
 4. 超时和重试：通过virtualService的route配置`timemout`设置服务接收请求处理的超时时间，`retries.attempts`和`retries.perTryTimeout`设置重试次数和重试时间间隔，`retries.retryOn`设置重试条件
 
@@ -1322,7 +1327,7 @@ Sidecar使用Envoy，代理服务的端口和协议。
          baseEjectionTime: 3m # 最小驱逐时间，经过此时间后将pod重新加入，默认30s，乘于触发次数后作为熔断持续时间
          maxEjectionPercent: 100 # 熔断触发时驱逐pod的比例
    ```
-   
+
 6. 故障注入：通过VirtualService的fault配置实现
 
 7. 流量镜像：通过VirtualService的`mirror`和`mirrorPercentage`配置，比如将发送给v1版本的真实流量镜像一份给v2
