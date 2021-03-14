@@ -1,5 +1,7 @@
 [TOC]
 
+**以下基于go.1.14**
+
 # 数组
 
 * 声明时必须指定固定长度，因为编译时需要知道数组长度以便分配内存，如`var arr1 [5]int`，或者`var arr2 = [5]int{1,2,3}, 其余数字为0`
@@ -383,7 +385,9 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 > 5. 继续遍历bucket下面的overflow链表。
 > 6. 如果遍历到了startBucket，说明遍历完了，结束遍历。
 
-# Channel
+# 并发相关
+
+## Channel
 
 Channel的设计基于CSP模型。
 
@@ -391,7 +395,7 @@ CSP模型（Communicating Sequential Process，通信顺序进程），允许使
 
 本质上就是，在使用协程执行函数时，不通过内存共享(会用到锁)的方式通信，而是通过Channel通信传递数据。
 
-## 数据结构
+### 数据结构
 
 ```go
 type hchan struct {
@@ -415,7 +419,7 @@ type waitq struct {
 }
 ```
 
-## 基本
+### 基本
 
 * chan是引用类型，使用make关键字创建，未初始化时的零值是nil，如
 
@@ -447,7 +451,7 @@ chan (<-chan int)  // 等价于 chan (<-chan int)
 * 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan以及被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的。
 * 双向chan可以赋值给单向chan，但反过来不可以
 
-## 初始化
+### 初始化
 
 ```go
 func makechan(t *chantype, size int) *hchan {
@@ -484,7 +488,7 @@ func makechan(t *chantype, size int) *hchan {
   }
 ```
 
-## 发送数据
+### 发送数据
 
 使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据，该函数设置了阻塞参数为true。
 
@@ -495,7 +499,7 @@ func makechan(t *chantype, size int) *hchan {
 5. 当没有接收者，且缓冲区存在空余空间时，会使用chanbuf计算出下一个可以存储数据的位置，将要发送的数据拷贝到缓冲区并增加sendx索引和qcount计数器，将发送的数据写入channel缓冲区，写入后就返回成功。
 6. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送者的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前发送者的goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
 
-## 接收数据
+### 接收数据
 
 使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分配str接收到的零值是发送者发的还是ch关闭`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
 
@@ -513,13 +517,13 @@ func makechan(t *chantype, size int) *hchan {
 
 6. 当channel的sendq队列没有等待状态的goroutine，且缓冲区不存在数据时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
 
-## 关闭
+### 关闭
 
 1. 如果 chan 为 nil，close 会 panic
 2. 如果 chan 已经 closed，再次 close 也会 panic。
 3. 否则的话，如果 chan 不为 nil，chan 也没有 closed，就把等待队列中的 sender（writer）和 receiver（reader）从队列中全部移除并唤醒。
 
-## 应用场景
+### 应用场景
 
 * 实现生产者 - 消费组模型，数据传递，比如[worker池的实现](http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang/)
 * 信号通知：利用 如果chan为空，那receiver接收数据的时候就会阻塞等待，直到chan被关闭或有新数据进来 的特点，将一个协程将信号(closing、closed、data ready等)传递给另一个或者另一组协程，比如 wait/notify的模式。
@@ -566,6 +570,85 @@ func process(timeout time.Duration) bool {
 | send    | block | write value          | block                | writed value         | panic                          |
 | close   | panic | closed，没有未读元素 | closed，保留未读元素 | closed，保留未读元素 | panic                          |
 
+## Mutex - 互斥锁
+
+### 数据结构
+
+```go
+type Mutex struct {
+	state int32   // 分成三部分，最小一位表示锁是否被持有，第二位表示是否有唤醒的goroutine，第三位表示是否处于饥饿状态，剩余的位数表示等待锁的goroutine的数量，最大数量为2^(32-3)-1个，以goroutine初始空间为2k，则达到最大数量时需要消耗1TB内存
+	sema  uint32  // 信号量变量，用来控制等待goroutine的阻塞休眠和唤醒
+}
+const (
+	mutexLocked = 1 << iota // 持有锁的标记
+	mutexWoken  // 唤醒标记
+	mutexStarving // 饥饿标记
+	mutexWaiterShift = iota  // 阻塞等待的waiter数量
+    starvationThresholdNs = 1e6
+}
+```
+
+### 基本
+
+* 只有Lock和Unlock两个方法，用于锁定临界区
+
+* Mutex的零值是没有goroutine等待的未加锁状态，不会因为没有初始化而出现空指针或者无法获取到锁的情况，so无需额外的初始化，直接声明变量即可使用`var lock sync.Mutex`，或者是在结构体里的属性，均无需初始化
+
+* 如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待的队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；如果此时有新的goroutine也在获取锁，会参与到获取锁的竞争中，如果等待队列中的goroutine等待超过1ms，则会加入队头优先获取锁，新来的goroutine加入到队尾，以此解决等待的goroutine的饥饿问题。
+
+* Unlock方法可以被任意goroutine调用，释放锁，即使它本身没有持有这个锁，so写的时候要牢记，谁申请锁，就该谁释放锁，保证在一个方法内被调用
+
+* 必须先使用Lock方法才能使用Unlock方法，否则会panic，重复释放锁也会panic
+
+* 自旋的次数与自旋次数、cpu核数，p的数量有关
+
+* 注意Mutex在使用时不能被复制，比如方法传参的没有使用指针，导致执行方法的参数时被复制
+
+* Mutex是不可重入锁，获取锁的goroutine无法重复获取锁，因为Mutex本身不记录哪个goroutine拥有这把锁，因此如果要实现可重入锁，则需要对Mutex进行包装，实现Locker接口，同时记录获取锁的goroutine的id和重入次数
+
+  获取goroutine id的方法：
+
+  ​	1.使用runtime.Stack()方法获取栈帧里的goroutine id
+
+  ​	2.获取运行时的g指针，反解出g的TLS结构，获取存在TLS结构中的goroutine id
+
+  ​	3.给获取锁的goroutine设置token，进行标记
+
+### Lock
+
+1. 调用Lock的goroutine通过CAS的方式获取锁，如果获取到了直接返回，否则进入lockSlow方法
+2. 在lockSlow方法内，意味着锁已经被持有，当前调用Lock方法的goroutine正在等待，且非饥饿状态，其首先会自旋，尝试获取锁，而无需休眠，主要是在当临界区耗时很短的场景下提高性能
+3. 非饥饿状态下抢锁，先在state锁标志位+1，如果锁已经被持有或者此时是饥饿状态，state的waiter的数量+1，进入等待
+4. 如果此时是饥饿状态，并且锁还被持有，state设置为饥饿状态，清除mutexWoken标记，表示非唤醒状态
+5. 使用3中的锁位，CAS尝试加锁，如果成功，检查原来的锁是未加锁状态，并且也不是饥饿状态，则成功获取锁，返回
+6. 如果是未加锁状态，判断是否是第一次加入waiter队列（通过waitStartTime变量），如果是，则加入队尾，如果不是首次，则加入到队首(设置sema的值)，阻塞等待，直至被唤醒（因为锁被释放了）
+7. 唤醒后，如果是饥饿状态（即当前时间 - waitStartTime > 1ms），在state锁标志位+1，waiter数-1，获取锁，然后判断没有其他waiter或者此goroutine等待时间没有超过1ms，清除饥饿标记
+
+### Unlock
+
+1. 将state的锁位-1，如果state=0，即此时没有加锁，且没有正在等待获取锁的goroutine，则直接结束方法，如果state != 0，执行unlockSlow方法
+2. 如果Mutex处于饥饿状态，直接唤醒等待队列中的waiter
+3. 如果Mutex处于正常状态，如果没有waiter，或者已经有在处理的情况，则直接释放锁，state锁位-1，返回；否则，waiter数-1，设置唤醒标记，通过CAS解锁，唤醒在等待锁的goroutine（此时新老goroutine一起竞争锁）
+
+### 基于Mutex的拓展
+
+* 可重入锁
+* 增加tryLock方法，通过返回true或false来表示获取锁成功或失败，主要用于控制获取锁失败后的行为，而不用阻塞在方法调用上
+* 增加等待计数器，比如等待多少时间后还没获取到锁则放弃
+* 增加可观测性指标，比如等待锁的goroutine的数量，需要使用unsafe.Pointer方法获取Mutex中的state的值，解析出正在等待的goroutine的数量
+* 实现线程安全的队列，通过在出队和入队方法中使用Mutex保证线程安全
+
+## RWMutex - 读写锁
+
+### 数据结构
+
+### 基本
+
+## 检测工具
+
+* go race detector：编译器通过探测所有内存的访问，加入代码监视对内存地址的访问，在程序运行时，监控共享变量的非同步访问，出现race时，打印告警信息。比如在运行时加入race参数`go run -race main.go`，当执行到一些并发操作时，才会检测运行时是否有并发问题
+* 命令`go vet xxx.go`可以进行死锁检测
+
 # Runtime
 
 * 不同于Java，Go没有虚拟机，很多东西比如自动GC、对操作系统和CPU相关操作都变成了函数，写在runtime包里。
@@ -573,7 +656,9 @@ func process(timeout time.Duration) bool {
 * 诸如go、new、make、->、<-等关键字都被编译器编译成runtime包里的函数
 * build成可执行文件时，Runtime会和用户代码一起进行打包。
 
-## 内存模型
+# 内存模型
+
+这里的内存模型不是指内存分配、整理回收的规范，而是在并发环境下多goroutine读取共享变量时变量的可见性条件。
 
 由于不同的架构和不同的编译器优化，会发生指令重排，导致程序运行时不一定会按照代码的顺序执行，因此两个goroutine在处理共享变量时，能够看到其他goroutine对这个变量进行的写结果。
 
@@ -581,7 +666,9 @@ happens-before：程序的执行顺序和代码的顺序一样，就算真的发
 
 Go不像Java有volatile关键字实现CPU屏障来保证指令不重排，而是使用不同架构的内存屏障指令来实现同一的并发原语。
 
-Go只保证goroutine内部重排对读写顺序没有影响，如果存在共享变量的访问，则对另一个goroutine影响很大。因此当有多个goroutine对共享变量的操作时，需要保证对该共享变量操作的happens-before顺序，保证并发安全，常用的手段就是它的并发操作相关的包，比如：
+**Go只保证goroutine内部重排对读写顺序没有影响**，如果存在共享变量的访问，则影响另一个goroutine。因此当有多个goroutine对共享变量的操作时，需要保证对该共享变量操作的happens-before顺序。
+
+## 证heppen before的手段
 
 * init函数：同一个包下可以有多个init函数，多个签名相同的init函数；main函数一定在导入的包的init函数执行之后执行；当有多个init函数时，从main文件出发，递归找到对应的包 - 包内文件名顺序 - 一个文件内init函数顺序执行init函数。
 
@@ -631,7 +718,24 @@ func getA() int {
 // 运行后，输出2，4
 ```
 
+* goroutine：启动goroutine的go语句执行，一定happens before此goroutine内的代码
 
+```go
+var a string
+func f() {
+	print(a)
+}
+func hello() {
+	a = "hello"
+	go f()
+}
+执行hello方法，必定打印出hello
+```
+
+* channel：
+  * send操作必定heppen before于receive操作；
+  * close一个channel的操作，必定happen before从关闭的channel中读取一个零值；
+* 此外还有Mutex / RWMutex、WaitGroup、Once、atomic
 
 # Goroutine
 
