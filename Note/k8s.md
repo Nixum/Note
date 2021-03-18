@@ -624,6 +624,11 @@ spec:
 
   StorageClass用于自动创建PV，StorageClass的定义比PV更加通用，一个StorageClass可以对应多个PV，这样就无需手动创建多个PV了。
 
+PVC与PV的绑定条件：
+
+1. PV和PVC的spec字段要匹配，比如存储的大小
+2. PV和PVC的storageClassName字段必须一样
+
 > 用户提交请求创建pod，Kubernetes发现这个pod声明使用了PVC，那就靠PersistentVolumeController帮它找一个PV配对。
 >
 > 如果没有现成的PV，就去找对应的StorageClass，帮它新创建一个PV，然后和PVC完成绑定。
