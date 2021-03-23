@@ -735,6 +735,15 @@ type CyclicBarrier interface {
 * CyclicBarrier是一个接口，然后有两个初始化的方法，New方法，指定循环栅栏的参与者数量即可初始化；NewWithAction方法，除了指定参与者数量，第二个参数是一个函数，表示在最后一个参与者到达之后，但其他参与者还没放行之前，会调用该函数
 * 每个参与的goroutine都会调用Await方法进行阻塞，当调用Await方法的goroutine的个数=参与者的数量时，Await方法造成的阻塞才会解除
 
+## ErrGroup
+
+* 类似WaitGroup，只是功能更丰富，多了与Context集成，可以通过Context监控是否发生cancel；error可以向上传播，把子任务的错误传递给Wait的调用者
+* ErrGroup用于并发处理子任务，将一个大任务拆成几个小任务，通过Go方法并发执行。
+* ErrGroup有三个方法：withContext、Go、Wait，用法与WaitGroup相似，只是不需要设置计数值，且可以通过Wait方法获取子任务返回的错误，但它只会返回第一个出现的错误，如果所有子任务都执行成功，返回null；当发生错误时不会立即返回，而是等到其他任务完成了才会返回。
+
+* Go方法会创建一个goroutine来执行子任务，如果并发的量太大，会导致创建大量的goroutine，带来goroutine的调度和GC压力，占用更多资源，解决方案可以是使用worker pool或者信号量来控制goroutine的数量或保持重用
+* 子任务如果发生panic会导致程序崩溃
+
 ## 检测工具
 
 * go race detector：主要用于检测多个goroutine对共享变量的访问是否存在协程安全问题。编译器通过探测所有内存的访问，加入代码监视对内存地址的访问，在程序运行时，监控共享变量的非同步访问，出现race时，打印告警信息。比如在运行时加入race参数`go run -race main.go`，当执行到一些并发操作时，才会检测运行时是否有并发问题
