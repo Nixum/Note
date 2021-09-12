@@ -1,3 +1,5 @@
+[TOC]
+
 # 	JVM内存模型
 
 ![JVM内存模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/JVM内存模型.png)
