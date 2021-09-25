@@ -64,5 +64,173 @@ ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Fo
 
 客户端会对某个znode建立一个watcher事件，当该znode发生变化时，这些客户端会收到ZooKeeper的通知，然后客户端根据znode的变化来做出相应的改变，类似观察者模式
 
+
+
 # ETCD
 
+## 总体
+
+分为三个版本，V1、V2和V3
+
+共识算法使用Raft。将复杂的一致性问题分解成Leader选举、日志同步、安全性三个独立子问题，只有集群一半以上节点存活即可提供服务，具备良好可用性。
+
+使用场景：配置存储、服务发现、主备选举，读多写少的场景
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/ETCD架构.png)
+
+etcdctl支持负载均衡、健康检测、故障转移，3.4版本中负载均衡使用轮询算法，轮询endpoints的每个节点建立长连接，将请求发送给etcd server。client和server之间使用HTTP/2.0协议通信。
+
+etcd server在处理一个请求时会先将一系列的拦截器串联成一个执行，常见的拦截器有debug日志、metrics统计、etcd learner节点请求接口和参数限制等能力，另外还要求执行一个操作前集群必须有Leader，若请求延时超过指定阈值，会打印来源IP的慢查询日志。
+
+### V2版本
+
+数据模型参考ZooKeeper，使用基于目录的层次模式，使用Restful 风格的API，提供常用的Get/Set/Delete/Watch等API，实现对key-value数据的查询、更新、删除、监听等操作。
+
+Key—Value存储上使用简单内存树，一个节点包含节点路径、父亲节点、孩子节点、过期时间、Value的值，是典型的低容量设计，数据全放内存，无需考虑数据分片，只保存Key的最新版本。
+
+在Kubernetes中的使用场景：
+
+> 使用Kubernetes声明式API部署服务的时候，Kubernetes 的控制器通过etcd Watch 机制，会实时监听资源变化事件，对比实际状态与期望状态是否一致，并采取协调动作使其一致。Kubernetes 更新数据的时候，通过CAS 机制保证并发场景下的原子更新，并通过对key 设置TTL来存储Event事件，提升Kubernetes 集群的可观测性，基于TTL特性，Event事件key到期后可自动删除。
+
+缺点：
+
+* 功能局限：不支持范围查询、分页查询、多key事务
+* Watch机制可靠性问题：V2是内存型，不保存key历史版本的数据库，只在内存中使用滑动窗口保存最近1000条变更事件，当写请求比较多、网络波动等容易产生事件丢失问题
+* 性能问题：使用HTTP/1.x协议，当请求响应较大时无法进行压缩；Json解析消耗CPU；当watcher较多时，由于不支持多路复用，会创建大量的连接；大量的TTL一样也需要为每个key发起续期，无法批量操作
+* 内存开销问题：简单内存树保存key和value，量大时会导致较大的内存开销，保证可靠还需要全量内存树持久化到磁盘，消耗大量CPU和磁盘IO
+
+### V3版本
+
+为了解决V2版本的缺点，才诞生了V3版本
+
+> 在内存开销、Watch 事件可靠性、功能局限上，它通过引入B-tree、 boltdb 实现一个MVCC数据库，数据模型从层次型目录结构改成扁平的key-value，提供稳定可靠的事件通知，实现了事务，支持多key原子更新，同时基于boltdb的持久化存储，显著降低了etcd 的内存占用、避免了etcd v2 定期生成快照时的昂贵的资源开销。
+>
+> 性能上，首先etcd v3 使用了 gRPC API，使用protobuf 定义消息，消息编解码性能相比JSON 超过2倍以上，并通过 HTTP/ 2.0 多路复用机制，减少了大量 watcher 等场景下的连接数。
+>
+> 其次使用 Lease优化TTL机制，每个Lease具有一 个 TTL，相同的TTL 的key关联一 个Lease，Lease过期的时候自动删除相关联的所有key，不再需要为每个key单独续期。
+>
+> 最后是etcd v3支持范围、分页查询，可避免大包等 expensive request。
+
+## 读操作
+
+客户端通过etcdctl发送get请求`etcdctl get [key名称] --endpoints [多个etcd节点地址]`，etcdctl通过负载均衡算法选择一个etcd节点，发起gRpc调用，etcd server收到请求后经过一系列gRpc拦截器后，进入KV Server模块。之后根据读的行为，进行对应的操作
+
+读操作之前，如果有一个写操作：client发出一个写请求后，若Leader收到写请求，会将此请求持久化到WAL日志，并传播到各个节点，若一半以上的节点持久化成功，则该请求对应的日志条目被标识为已提交，etcd server模块异步从Raft模块获取已提交的日志，应用到状态机(boltdb等)。
+
+### 串行读
+
+直接读状态机（boltdb等）的数据返回，无需通过Raft协议与集群进行交互的模式，可能会读到旧数据。即：写请求广播到各个节点，但串行读可能读到某个还没进行写请求提交的节点(但可能其他节点已提交)，从而读到旧数据。
+
+这种读取方式低延时，高吞吐，适用于读取数据敏感度低、对数据一致性要求不高的场景。
+
+
+### 线性读（默认）
+
+一旦一个值更新成功后（指有超过半数节点更新提交成功），任何线性读的client都能及时访问到。
+
+#### ReadIndex：保证数据一致性
+
+1. 节点C收到一个线性读请求后，首先会从Leader获取集群最新的已提交的日志索引(committed index)；
+2. Leader收到ReadIndex请求后，为防止脑裂异常，会向各个Follower节点发送心跳确认，待一半以上节点确认Leader身份后，才能将已提交的索引(committed index))返回给节点C。
+3. C节点继续等待，直到状态机上已应用索引(applied index)大于等于Leader的已提交索引(committed index)时，通知读请求，数据已赶上Leader，可以从状态机中访问数据
+
+既然Follower节点都已经发送ReadIndex请求了，为啥不直接把读请求转发给Leader？原因是ReadIndex比较轻量，而读请求不轻，大量的读请求会造成Leader节点有比较大的负载。
+
+#### MVCC：支持Key多历史版本，多事务功能
+
+核心是内存树形索引模型treeIndex + 嵌入式KV持久化存储库boltdb组成。
+
+boltdb会对key的每一次修改，都生成一个新的版本号对象，以版本号为key，value为用户key-value等信息组成的结构体。版本号全局递增，通过treeIndex模块保存用户key和版本号的映射。查询时，先去treeIndex模块查询key对应的版本号，根据版本号到boltdb里查询对应的value信息。
+
+* treeIndex基于B树实现，只会保存用户的key和版本号的映射，具体的value信息则保存再boltdb里。
+
+* boltdb基于B+树实现的kv键值库，支持事务，提供Get/Put等API，etcd通过boltdb实现一个key的多历史版本。在读取boltdb前，会从一个内存读事务buffer中，二分查找要访问的key是否在buffer里，提高查询速度。
+
+  若buffer未命中，就进到boltdb中查询。boltdb通过bucket隔离集群元数据于用户数据，每个bucket对应一张表（一颗B+树），用户数据的key的值等于bucket名字，etcd MVCC元数据存放的bucket是meta。
+
+## 写操作
+
+客户端通过etcdctl发送put请求`etcdctl put [key值] [value值] --endpoints [多个ectd节点地址]`，etcdctl通过负载均衡算法选择一个etcd节点，发起gRpc调用，etcd server收到请求后经过一系列gRpc拦截器、Quota模块后，进入KV Server模块，KV Server模块向Raft模块提交一个写操作的提案。随后，Raft模块通过HTTP网络模块转发到集群的多数节点持久化，状态变成已提交，etcd server从Raft模块获取已提交的日志条目，传递给Apply模块，Apply模块通过MVCC模块执行命令内容，更新状态机。
+
+### Quota模块
+
+etcd的db文件配额只有2G，当超过时，整个集群变成只读，无法写入，这个限制主要是为了保证etcd的性能，官方建议最大不超过8G，不禁用配额。
+
+当etcd server收到写请求时，会先检测db大小 + 上请求时的key-value大小，判断是否超过配额，如果超过，会产生一个NO SPACE的告警，并通过Raft日志同步给其他节点，告知db无空间，并将告警持久化存储到db中，使得集群内其他节点也都拒绝写入，变成只读。
+
+如果达到配额后，再次去修改配额大小，还需要额外发送一个取消警告，消除NO SPACE告警带来的影响。
+
+其次是要检测etcd的压缩配置，如果没有机制去回收旧版本，会导致内存和db大小一直膨胀。
+
+回收机制有多种，常见的是保留最近一段时间的历史版本，给旧版本数据打上free标记，后续新写入的数据直接覆盖而无需申请新空间。另一种回收机制是回收空间，减少db大小，但会产生碎片，产生碎片就需要整理，旧的db文件数据会写入新的db文件，对性能影响较大。
+
+### KVServer模块
+
+写请求在通过Raft算法实现节点间的数据复制前，由KVServer进行一系列的检查。
+
+1. 限速判断，保证集群稳定，避免雪崩。如果Raft模块已提交的日志索引(committed index)比已应用到状态机的日志索引(applied index)超过了5000。
+2. 尝试获取请求中的鉴权信息，若使用了鉴权，则判断请求中的密码、token是否正确。
+3. 检查写入的包大小是否超过默认的1.5MB。
+4. 通过检查后，生成一个唯一的ID，并将该请求关联到一个对应的消息通知channel，向Raft模块发起一个提案，之后KV Server会等待写请求的返回，写入结果通过消息通知channel返回，或者超时，默认超时时间是7秒。
+
+### WAL模块
+
+1. Raft模块收到提案后，如果当前节点是Follower节点，则转发给Leader，只有Leader才能处理写请求。
+
+2. Leader收到提案后，通过Raft模块输出待转发给Follower节点的消息和待持久化的日志条目，日志条目记录了写操作的内容。
+3. Leader节点从Raft模块获取到以上消息和日志条目后，将写请求提案消息广播给集群各个节点，同时需要把集群Leader任期号、投票信息、已提交索引、提案内容持久化待一个WAL日志文件中，用于保证集群一致性、可恢复性。
+4. 当一半以上节点持久化此日志条目后，Raft模块通过channel告知etcd server模块，写请求提案已被超半数节点确认，提案状态转为已提交，从channel中取出提案内容，添加到FIFO队列中，等待Apply模块顺序、异步依次执行提案内容。
+
+**WAL持久化机制**：先将Raft日志条目内容序列化后保存到WAL记录的Data字段，计算Data的CRC值，设置Type为EntryType，组成一个完成的WAL记录，最后记录WAL记录的长度，顺序写入WAL长度，再写入记录内容，调用fsync持久化到磁盘。
+
+主要作用是为了保证etcd重启时，重放日志提案，保证命令的执行。
+
+```
+WAL日志结构
+LenField -------- 数据长度
+Type ------------ WAL记录类型，有5种，分别是文件元数据记录、日志条目记录、状态信息记录、CRC、快照
+CRC ------------- 校验码
+Data ------------ WAL记录内容
+
+Raft日志条目Data的结构
+Term ----------- uint64，Leader任期号，随Leader选举增加
+Index ---------- 日志条目的索引，单调递增，同时也用于确保幂等操作
+Type ----------- 日志类型，如 普通的命令日志还是集群配置变更日志
+Data ----------- 提案内容
+```
+
+### Apply模块
+
+从FIFO队列取出提案执行，同时会保证可靠性，包括crash重启，消费消息的幂等，防止重复提交。通过consistent index字段存储系统当前已执行过的日志条目索引 + 日志条目中的Index字段保证幂等。
+
+1. 从FIFO队列取出提案后，如果之前没被执行过，则进入到MVCC模块
+
+   etcd再进行更新时会为key生成一个版本号，版本号的生成单调递增，启动时默认是1，如果有持久化的数据，则读取boltdb中的数据的最大值，作为当前版本号，版本号格式`{[版本号],[子版本号]}`
+
+2. 写操作执行时，MVCC会递增当前版本号作为key的版本号，存储到treeIndex中。
+
+3. 将新生成的版本号做为key，写操作对应的value写入boltdb，每个key对应一个bucket，boltdb的value包括写操作的key名，key创建时的版本号，最后一次修改时的版本号，key自身修改的次数，写操作的value值，租约信息。将这些信息序列化成一个二进制数据，写入boltdb中，此时还只在boltdb的内存bucket buffer中。此时如果有读请求，会优先从bucket buffer中读取，其次才从boltdb读。
+
+   boltdb不是每个value都是直接写到磁盘的，因为key递增，会顺序写入，所以会合并多个写事务请求，异步(默认每个100ms)，批量事务一次性提交，提高吞吐量。
+
+## Raft协议
+
+## 鉴权
+
+## 租约
+
+## MVCC
+
+## Watch
+
+## 事务
+
+## boltdb
+
+## 压缩
+
+
+
+# 参考
+
+极客时间 - etcd实战课
