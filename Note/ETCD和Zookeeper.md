@@ -272,19 +272,47 @@ Raft通过给选举和日志复制增加规则，保证当Leader crash后，能�
 * 只附加原则：Leader只能追加日志条目，不能删除
 * 日志匹配：追加日志时会进行一致性检查，Leader发送追加日志的消息时，会把新的日志条目紧接之前的条目的索引位置和任期号包含在里面，Follower节点会检查相同索引位置的任期号是否与Leader一致，一致才追加。
 
-当Follower日志和Leader冲突时，Follower如何删除无效日志
+当Follower日志和Leader冲突时，会导致两者的日志不一致，此时Leader会强制Follower直接复制自己的日志来解决，因此在Follower中冲突的日志条目会被Leader的日志覆盖，Leader会记录Follower复制进度的nextIndex，如果Follower在追加日志时一致性检查失败，就会拒绝请求，此时Leader会减小nextIndex值并重试，最终在某个位置让Follower跟Leader一致。尽管WAL日志模块只能追加，对于那些想要删除的持久化日志条目，WAL模块确实没有删除，当发现一个raft log index位置上有多个日志条目时，会通过覆盖的方式，将最后写入的日志条目追加到raft log中，通过覆盖实现删除。
 
 ## 鉴权
 
+etcd鉴权体系由控制面和数据面组成。
+
+控制面：通过etcdctl和鉴权API动态调整认证、鉴权规则，AuthServer收到请求后，为了确保各个节点间鉴权元数据一致性，会通过Raft模块进行数据同步。当对应的Raft日志条目被集群半数以上节点确认后，Apply模块通过鉴权存储AuthStore模块，执行日志条目内容，将规则存储到boltdb的鉴权表里。
+
+数据面：由认证和授权组成。目前有两种认证机制：密码认证和证书认证。通过认证后，在访问MVCC模块前，还需要进行授权，检查client是否有权限操作你请求的数据路径，使用的是RBAC机制。
+
+### 认证
+
+* 密码认证：etcd鉴权模块使用bcrpt库的blowfish算法，基于明文密码、随机分配的salt、自定义的cost、迭代多次计算得到一个hash值，并将加密算法版本、salt值、cost、hash值组成一个字符串，作为加密后的密码。以用户名为key，用户名、加密后的密码作为value，存储到boltdb的authUsers bucket里。
+
+  验证密码成功后，返回一个token给client，后续请求携带此token而无需进行密码校验了。默认的token过期时间是5分钟，仅在开发或测试环境中使用。正式环境一般使用JWT。
+
+* 证书认证：类似HTTPS，证书认证在稳定性和性能上都优于密码认证。
+
+### 授权
+
+使用RBAC授权模型。
+
 ## 租约
+
+
 
 ## MVCC
 
+
+
 ## Watch
+
+
 
 ## 事务
 
+
+
 ## boltdb
+
+
 
 ## 压缩
 
