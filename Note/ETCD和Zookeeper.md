@@ -294,15 +294,109 @@ etcd鉴权体系由控制面和数据面组成。
 
 使用RBAC授权模型。
 
-## 租约
+## 租约 Lease
 
+etcd通过Lease实现活性检测，属于主动型上报，让etcd server保证在约定的有效期内，不删除client关联到此lease上的key-value，若未在有效期内续租，就会删除Lease和其关联的key-value。
 
+基于Lease的TTL特性，可以解决类似Leader选举、Kubernetes Event自动淘汰、服务发现场景中故障节点自动剔除等问题。
+
+检查Lease是否过期、维护最小堆、针对过期Lease发起revoke操作，都由Leader节点负责。
+
+创建Lease时，etcd会保存Lease信息到boltdb的lease bucket中，与该Lease关联的节点需要定期发送KeepAlive请求给etcd server续约Lease。
+
+etcd在启动时，会创建Lessor模块，通过两个异步任务管理Lease：
+
+1. 一个RevokeExpiredLease任务定时检测是否有过期的Lease，使用最小堆管理Lease，每隔500ms进行检查，发起撤销过期Lease的操作，获取到LeaseId后通知整个集群删除Lease和关联的数据；过期默认淘汰限速是每秒1000个。
+2. 另一个是CheckpointScheduledLease，定时(默认5min)触发更新Lease的剩余到期时间的操作，定期批量将Lease剩余的TTL基于Raft Log同步给Follower节点，更新其LeaseMap中剩余的TTL信息；另外，Leader节点收到KeepAlive请求后，重置TTL，并同步给Follower节点进行更新。
+
+Lease续约是一个高频率的操作，当完成Lease的创建和节点数据的关联，在正常情况下，节点存活时，需要定时发送KeepAlive请求给etcd续期健康状态的Lease。TTL时间过长会导致节点异常无法从etcd中删除，过短会导致client频繁发送续约请求。另外，Lease的数目可能会很大。为了解决这个问题，etcd在v3版本上，一个是采用grpc解决连接复用问题，减少连接数，另一个是当有不同的key的TTL相同，会复用同一个Lease，减少Lease数目。
+
+Lease最小的TTL时间是 比选举的时间长，默认是2s
 
 ## MVCC
 
+MVCC特性由treeIndex、Backend/boltdb组成，实现对key-value的增删查改功能。MVCC模块将请求划分为两个类别，分别是读事务（ReadTxn）和写事务（WriteTxn）。读事务负责处理range请求，写事务负责put/delete操作。
 
+TreeIndex中key的版本号与boltdb中的value关联。
+
+### TreeIndex模块
+
+基于内存版本的B-tree实现Key索引管理，保存用户key与版本号revision的映射关系。之所以使用B-tree，是因为etcd支持范围查询，B树每个节点可以容纳比较多的数据，树高度低，查找次数少，so不用哈希表或平衡二叉树。
+
+```go
+type keyIndex struct {
+	key         []byte     // key值
+	modified    revision   // 最后一次修改key时的etcd版本号
+	generations []generation  // 保存一个key若干代版本号信息，每代包含对key的多次修改版本号列表
+}
+
+type generation struct {
+    ver      int64         // key的修改次数 
+    created  revision      // generation结构创建时的版本号
+    revs     []revision    // 每次修改key时的revision追加到此数组
+}
+
+type revision struct {
+    main int64   // 全局递增主版本号，随put/txn/delete事务递增，一个事务内的key main版本号一致，空集群时启动时默认为1
+    sub  int64   // 事务内的子版本号，从0开始随事务内put/delete递增
+}
+```
+
+### Backend/boltdb模块
+
+负责etcd的key-value持久化存储，主要由ReadTx、BatchTx、Buffer组成，ReadTx定义了抽象的读写事务接口，BatchTx在ReadTx之上定义了抽象的写事务接口，Buffer是数据缓存区。Backend支持多种实现，当前使用boltdb，基于B+ tree实现，支持事务的key-value嵌入式数据库。
+
+value的数据结构，版本号格式`{main, sub}`
+
+```go
+key：用户的key
+value：用户的value
+create_revision：key创建时的版本号，与treeIndex中generate的created对应
+mod_revision：key最后一次修改时的版本号，put操作时的全局版本号+1作为该值
+version：key的修改次数，每次修改时，与treeIndex中generate的ver值+1
+lease：
+```
+
+一般情况下为了etcd的写性能，默认堆积的写事务数大于1万才在事务结束时同步持久化，由backend的一个goroutine完成，通过事务批量提交，定时将boltdb页缓存中的脏数据提交到持久化存储磁盘中。
+
+### 创建/更新操作
+
+1. 在treeIndex中获取key的KeyIndex信息
+2. 填充boltdb的value数据，写入新的key-value到blotdb和buffer中
+3. 创建/更新KeyIndex到treeIndex中
+4. backend异步事务提交，将boltdb中的数据持久化到磁盘中
+
+### 查询操作
+
+创建一个读事务对象(TxnRead / ConcurrentReadTx)，全量拷贝当前写事务未提交的buffer数据，读不到则从boltdb中查询
+
+### 删除操作
+
+删除操作是软删除，原理类似更新，会在被删除的key版本号追加删除标志t，对应的boltdb value也变成了只包含用户key的KeyValue结构，treeIndex模块也会给此key的KeyIndex结构追加一个空的generation对象，标识此索引对应的key被删除，当查询时发现其存在空的generation对象，并且查询的版本号大于等于被删除的版本号时，返回空。
+
+删除key时会生成events，Watch模块会根据key的删除标识，生成对应的Delete事件；或者当重启etcd，遍历boltdb中的key构建treeIndex内存树时，未这些key上次tombstone标识。
+
+真正删除treeIndex中的KeyIndex、boltdb的value是通过压缩组件异步完成，之所以要延迟删除，一个是为了watcher能够有相应的处理，另一个是减少B tree平衡影响读写性能。
 
 ## Watch
+
+客户端订阅etcd的某个key，当key发生变化时，客户端能够感知。这也是Kubernetes控制器的工作基础。
+
+### client获取事件的方式
+
+V2版本：使用轮询推送，每一个watcher对应一个TCP连接，client通过HTTP/1.1协议长连接定时轮询server，获取最新数据变化事件。但是大量的轮询会产生一定的QPS，server端会消耗大量的socket、内存等资源。
+
+V3版本：使用流式推送，因为使用的是基于HTTP/2的gRpc协议，实现了一个TCP连接支持多gRPC stream，一个gRPC stream又支持多个watcher，降低了系统资源的消耗。
+
+### 事件的存储和保留
+
+V2版本：滑动窗口，使用环形数组存储历史事件版本，当key被修改后，相关的事件就会被添加到数组中来，若超过一定容量（默认1000），则会淘汰旧事件，容易导致事件丢失，当事件丢失时，client需要获取最新的版本号才能继续监听，查询成本比较大。
+
+V3版本：MVCC，将事件保存到boltdb中，持久化到磁盘中，通过配置压缩策略控制历史版本数。
+
+版本号是etcd的逻辑时钟，当client因网络等异常连接断开后，通过版本号可以从server的boltdb获取错过的历史事件，而无需全量同步，它是etcd Watch机制数据量增量同步的核心。
+
+### 事件推送机制
 
 
 
