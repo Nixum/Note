@@ -398,19 +398,78 @@ V3版本：MVCC，将事件保存到boltdb中，持久化到磁盘中，通过�
 
 ### 事件推送机制
 
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/etcd事件推送架构.png)
 
+client对每一个key发起的watch请求，etcd的gRPCWatchServer收到watch请求后，会创建一个serverWatchStream，它负责接收client的gRPC Stream的create/cancel watcher请求（recvLoop goroutine)，并将从MVCC模块接收的watch事件转发给client（sendLoop goroutine）
+
+当serverWatchStream收到create watcher请求后，serverWatchStream会调用MVCC模块的WatchStream子模块分配一个watcher id，并将watcher注册到MVCC的WatchableKV模块。
+
+watchableStore将watcher划分为synced / unsynced / victim三类
+
+* synced watcher：如果创建的watcher未指定版本号或版本号为0或指定版本号大于etcd server当前的最新版本号，那它就会保存在 synced watcherGroup中，表示此类watcher监听的数据都已经同步完毕，等待新的变更。
+* unsynced watcher：如果创建的watcher指定的版本号小于etcd server当前最新版本号，那它就会保存在 unsynced watcherGroup中，表示此类watcher监听的数据还未同步完成，落后于当前最新数据的变更，正在等待同步。
+* victim：当接收watch事件的channel的buffer满了，该watcher会从synced watcherGroup中删除，然后保存到victim的watcherBatch中，通过异步机制重试保证事件可靠性。
+
+当etcd启动时，WatchableKV模块会运行syncWatcherLoop和syncVictimsLoop goroutine，分别负责不同场景下的事件推送。
+
+* syncWatcherLoop：遍历unsynced watcherGroup中的每个watcher，获取key的所有历史版本，转成事件，推送给接收的channel，完成后将watcher从unsynced watcherGroup转移到synced watcherGroup。
+* syncVictimsLoop：遍历victim watcherBatch，尝试将堆积的事件再次推送到watcher的接收channel中，若推送失败则再次加入等待重试；若推送成功，watcher监听的最小版本号小于当前版本号，则加入unsynced watcherGroup中，大于则加入synced watcherGroup中。
+
+### 高效的找到监听key的所有watcher
+
+由于watcher可以监听key范围、key前缀，
+
+当收到创建watcher请求时，会把watcher监听的key的范围插入到区间树中，当产生一个事件时，etcd首先会从map中找到是否有watcher监听了该key，其次还要从区间树中找到与key相交的所有区间，得到所有watcher。
 
 ## 事务
 
+etcd事务API由IF、Then、Else语句组成。
 
+etcd通过WAL日志 + consistent index + boltdb保证原子性；
+
+WAL日志+boltdb保证持久性；
+
+数据库和业务程序保证一致性；
+
+通过MVCC机制实现读写不阻塞，解决隔离性的脏读问题；MVCC快照读解决隔离性的不可重复读问题；MVCC版本号实现冲突检测机制，在串行提交事务时保证读写的数据都是最新的，未被他人修改。
 
 ## boltdb
 
+### 磁盘布局
 
+boltdb文件存放在etcd数据目录下的member/snap/db文件，etcd启动时，会通过mmap机制将db文件映射到内存，后续从内存中快速读取文件中的数据。
+
+![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/etcd boltdb文件布局.png)
+
+开头两个是固定的db元数据meta page；freeList page记录db中哪些页是空闲的，可使用的；
+
+写操作时，会先打开db文件并增加文件锁，防止其他进程以读写模式打开后操作meta和free page，导致db文件损坏；然后通过mmap机制将db文件映射到内存中，并读取两个meta page到db对象实例，校验meta page的magic version、checksum是否有效，若两个meta page都无效，说明db文件损坏，将异常退出。
+
+执行put请求前会先执行bucket请求，先根据meta page中记录root bucket的root page，按照B+树的查找算法，从root page递归搜索到对应叶子节点page面，返回key名称，leaf类型；如果leaf类型未bucketLeafFlag，且key相等，说明已经创建过，不允许bucket重复创建，否则往B+树种添加一个flag为bucketLeafFlag的key，key的名称为bucket name，value为bucket结构；
+
+执行完bucket请求，就会进行put请求，跟创建bucket类似，根据子bucket的root page，从root page递归搜索此key到leaf page，如果没有找到，则在返回的位置插入新key和value，插入位置的查找使用二分法。
+
+当执行完一个put请求时，值只是更新到boltdb的内存node数据结构里，此时还未持久化。当代码执行到tx.commit api时，才会将node内存数据结构中的数据持久化到boltdb中。一般是经过 删除节点后重平衡操作、分裂操作、持久化freelist、持久化dirty page、持久化meta page。
 
 ## 压缩
 
+由于更新和删除都会增加版本号，内存占用和db文件就会越来越大，当达到etcd OOM和db大小的最大配额时，最终不可写入，因此需要适合的压缩策略，避免db大小增长失控。
 
+压缩是使用Compact接口，可以设置自动也可通过业务服务手动调用，压缩时首先会检查请求的版本号rev是否被压缩过，然后更新当前server已压缩的版本号，并将耗时的压缩任务保存在FIFO队列种异步执行。压缩任务执行时，首先会压缩treeIndex模块中的keyIndex索引，其次会遍历boltdb中的key，删除已废弃的key，遍历boltdb时会控制删除的key数100个，每批间隔10ms，分批完成删除操作。
+
+压缩过程中，compact接口会持久化存储当前已调度的压缩版本号到boltdb，保证当发生crash后各个节点间的数据一致性。
+
+压缩时会保留keyIndex中的最大版本号(为了保证key仍存在)，移除小于等于当前压缩的版本号，通过一个map记录treeIndex中有效的版本号返回给boltdb模块使用。
+
+遍历删除boltdb中的数据后，db文件不会变小，而是通过freelist page记录哪些页是空闲的，覆盖使用
+
+使用参数`--auto-compaction-retention '[0|1]'`0表示关闭自动压缩，1表示开启自动压缩策略，使用参数`--auto-compaction-mode '[periodic|revision]'`，periodic表示周期性压缩，revision表示版本号压缩
+
+* 时间周期性压缩：只保留最近一段时间写入的历史版本，periodic compactor会根据设置的压缩时间间隔，划分为10个区间，通过etcd MVCC模块获取当前的server版本号，追加到rev数组中，通过当前时间减去上一次执行compact操作的时间，如果间隔大于设置的压缩时间，则取出rev数组首元素，发起压缩。
+
+* 版本号压缩：保留最近多少个历史版本，revision compactor会根据设置的保留版本号数，每隔5分钟定时获取当前server最大版本号，减去想保留的历史版本数，得到要压缩的历史版本，发起压缩。
+
+  
 
 # 参考
 
