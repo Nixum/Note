@@ -9,23 +9,22 @@
 **容器的本质是进程，Kubernetes相当于操作系统**，管理这些进程组。
 
 * CNI：Container Network Interface，容器网络接口规范，如 Flannel、Calico、AWS VPC CNI
-* kubelet：负责管理运行时的容器，这个交互依赖CRI的远程调用接口
+* kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口
   kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件
   kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI
 * CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范
 * CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
 * OCI：Open Container Initiative，容器运行时和镜像操作规范
 * CRD：Custom Resource Definition，自定义的资源对象，即yaml文件中的Kind，如Operator就是实现CRD的控制器，之后直接使用Operator创建的CRD声明对象即可使用
-* Kubelet：负责各个节点上Pod、容器的创建和运行
 * Master节点作用：编排、管理、调度用户提交的作业
-  * Scheduler：编排和调度Pod
-  * APIServer：提供集群对外访问的API接口
-  * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等
+  * Scheduler：编排和调度Pod，基本原理是通过监听api-server获取待调度的pod，然后基于一系列筛选和评优，为pod分配最佳的node节点。
+  * APIServer：提供集群对外访问的API接口实现对集群资源的CRUD以及watch，是集群中各个组件数据交互和通信的枢纽，当收到一个创建pod的请求时会进行认证、限速、授权、准入机制等检查后，写入etcd。
+  * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等，核心思想是监听、比较资源实际状态与期望状态是否一致，否则进行协调。
 * Device Plugin：管理节点上的硬件设备，比如GPU
 * Kube-Proxy：作为daemonset部署在每个节点上，主要用于为Pod创建代理服务，从API-Server获取所有service信息，创建Endpoints，转发service到Pod间的请求，默认使用iptables模式，但当service数量变多时有性能问题，1.8版本后使用IPVS模式提升性能
 * coreDNS：低版本的kubernetes使用kube-dns，1.12后默认使用coreDNS，用于实现域名查找功能
 
-## 调度器
+## 调度器Scheduler
 
 主要职责就是为新创建的Pod寻找合适的节点，默认调度器会先调用一组叫Predicate的调度算法检查每个Node，再调用一组叫Priority的调度算法为上一步结果里的每个Node打分，将新创建的Pod调度到得分最高的Node上。
 
@@ -136,6 +135,19 @@ CRI是对容器操作相关的接口，而不是对于Pod，分为两组类型�
 2. ImageService：处理容器镜像的相关操作，比如拉取镜像、删除镜像
 
 ![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/CRI_work_flow.png)
+
+## etcd
+
+etcd作为Kubernetes的元数据存储，kube-apiserver是唯一直接跟etcd交互的组件，kube-apiserver对外提供的监听机制底层实现就是etcd的watch。
+
+api-server在收到请求后，会进行一系列的执行链路。
+
+1. 认证：校验发起请求的用户身份是否合法，支持多种方式如x509客户端证书认证、静态token认证、webhook认证
+2. 限速：默认读 400/s，写 200/s，1.19版本以前不支持根据请求类型进行分类、按优先级限速，1.19版本以后支持将请求按重要程度分类限速，支持多租户，可有效保障Leader选举之类的高优先级请求得到及时响应，防止一个异常client导致整个集群被限速。
+3. 审计：记录用户对资源的详细操作行为
+4. 授权：检查用户是否有权限对其访问的资源进行相关操作，支持RBAC、ABAC、webhook，1.12版本后默认授权机制是RBAC
+5. 准入控制：提供在访问资源前拦截请求的静态和动态扩展能力，如镜像拉取策略。
+6. 与etcd交互
 
 ## Pod
 

@@ -463,7 +463,7 @@ boltdb文件存放在etcd数据目录下的member/snap/db文件，etcd启动时�
 
 遍历删除boltdb中的数据后，db文件不会变小，而是通过freelist page记录哪些页是空闲的，覆盖使用
 
-使用参数`--auto-compaction-retention '[0|1]'`0表示关闭自动压缩，1表示开启自动压缩策略，使用参数`--auto-compaction-mode '[periodic|revision]'`，periodic表示周期性压缩，revision表示版本号压缩
+使用参数`--auto-compaction-retention '[0|1]'`0表示关闭自动压缩，1 表示开启自动压缩策略，使用参数`--auto-compaction-mode '[periodic|revision]'`，periodic表示周期性压缩，revision表示版本号压缩
 
 * 时间周期性压缩：只保留最近一段时间写入的历史版本，periodic compactor会根据设置的压缩时间间隔，划分为10个区间，通过etcd MVCC模块获取当前的server版本号，追加到rev数组中，通过当前时间减去上一次执行compact操作的时间，如果间隔大于设置的压缩时间，则取出rev数组首元素，发起压缩。
 
