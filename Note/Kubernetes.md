@@ -149,6 +149,43 @@ api-server在收到请求后，会进行一系列的执行链路。
 5. 准入控制：提供在访问资源前拦截请求的静态和动态扩展能力，如镜像拉取策略。
 6. 与etcd交互
 
+### 资源存储格式
+
+资源以 `prefix + / + 资源类型 + / + namespace + / + 具体资源名称` 组成，作为key。基于etcd提供的范围查询能力，支持按具体资源名称查询、namespace查询。默认的prefix是 /registry。
+
+对于基于label查询，是由api-server通过范围查询遍历etcd获取原始数据，然后再通过label过滤。
+
+### 资源创建流程
+
+创建资源时，会经过 BeforeCreate 策略做etcd的初始化工作，Storgae.Create接口调用etcd进行存储，最后在经过AfterCreate和Decorator。
+
+由于put并不是并发安全的接口，并发时可能导致key覆盖，所以api-server会调用Txn接口将数据写入etcd。
+
+当资源信息写入etcd后，api-server就会返回给客户端了。资源的真正创建是基于etcd的Watch机制。
+
+controller-manager内配备多种资源控制器，当触发etcd的Watch机制时会通知api-server，api-server在调用对应的控制器进行资源的创建。比如，当我们创建一个deployment资源写入etcd，通过Watch机制，通知给api-server，api-server调用controller-manager里的deployment-controller创建ReplicaSet资源对象，写入etcd，再次触发Watch机制，经过api-server调用ReplicaSet-controller，创建一个待调度的Pod资源，写入etcd，触发Watch机制，经过api-server，scheduler监听到待调度的Pod，就会为其分配节点，通过api-server的Bind接口，将调度后的节点IP绑定到Pod资源上。kubelet通过同样的Watch机制感知到新建的Pod，发起Pod创建流程。
+
+Kubernetes中使用Resource Version实现增量监听逻辑，避免客户端因为网络等异常出现中断后，数据无法同步的问题；同时，客户端可通过它来判断资源是否发生变化。
+
+在Get请求中ResourceVersion有三种取值：
+
+* 未指定，默认为空串：api-server收到后会向etcd发起共识读/线性读，获取集群最新数据，所以在集群规模较大时，未指定查的性能会比较差。
+
+* =字符串0：api-server收到后会返回任意资源版本号的数据，优先返回最新版本；一般情况下先从api-server缓存中获取数据返回给客户端，有可能读到过期数据，适用于一致性要求不高的场景。
+
+* =非0字符串：api-server收到后，会保证Cache中的最新ResouorceVersion大于等于请求中的ResourceVersion，然后从Cache中查询返回。
+
+  Cache的原理是基于etcd的Watch机制来更新，=非0字符串且Cache中的ResourceVersion没有大于请求中的ResourceVersion时，会进行最多3秒的等待。
+
+> 若使用的Get接口，那么kube-apiserver会取资源key的ModRevision字段填充Kubernetes资源的ResourceVersion字段（ v1. meta/ ObjectMeta.ResourceVersion）。若你使用的是List接口，kube-apiserver会在查询时，使用etcd当前版本号填充ListMeta.ResourceVersion字段（ v1. meta/ ListMeta.ResourceVersion）。
+>
+
+在Watch请求中ResourceVersion的三种取值：
+
+* 未指定，默认为空串：一是为了帮助客户端建立初始状态，将当前已存在的资源通过Add事件返回给客户端；二是会从当前版本号开始监听，后续新增写请求导致数据变化时会及时推给客户端。
+* =字符串0：帮助客户端建立初始状态，但它会从任意版本号开始监听，接下来的行为和 未指定 时一致。
+* =非0字符串：从精确的版本号开始监听，只会返回大于等于精确版本号的变更事件。
+
 ## Pod
 
 Pod是最小的API对象。
