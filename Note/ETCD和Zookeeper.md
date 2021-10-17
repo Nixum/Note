@@ -45,6 +45,11 @@ ZooKeeper保证的是CP，不保证每次服务请求的可用性，在极端环
 
 ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Follower、Observer
 
+1. Leader选举：一个节点只要求获得半数以上投票，就可以当选为准Leader
+2. Discovery发现：准Leader收集其他节点的数据，并将最新的数据复制到自身
+3. Synchronization同步：准Leader将自身最新数据复制给其他落后节点，并告知其他节点自己正式当选为Leader
+4. Broadcast广播：Leader正式对外服务，处理client请求，对消息进行广播，当收到一个写请求后，会生成Proposal广播给各个Follower节点，一半以上Follower节点应答后，Leader再发送Commit命令给各个Follower，告知他们提交相关提案。
+
 默认使用FastLeaderElection算法，比如现在有5台服务器，每台服务器均没有数据，它们的编号分别是1, 2, 3, 4, 5按编号依次启动，它们的选择举过程如下：
 
 1. 服务器1启动，给自己投票，然后发投票信息，由于其它机器还没有启动所以它收不到反馈信息，服务器1的状态一直属于Looking。
@@ -70,7 +75,7 @@ ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Fo
 
 ## 总体
 
-分为三个版本，V1、V2和V3
+是一个CP系统，分为三个版本，V1、V2和V3
 
 共识算法使用Raft。将复杂的一致性问题分解成Leader选举、日志同步、安全性三个独立子问题，只有集群一半以上节点存活即可提供服务，具备良好可用性。
 
@@ -151,6 +156,8 @@ boltdb会对key的每一次修改，都生成一个新的版本号对象，以�
 ## 写操作
 
 客户端通过etcdctl发送put请求`etcdctl put [key值] [value值] --endpoints [多个ectd节点地址]`，etcdctl通过负载均衡算法选择一个etcd节点，发起gRpc调用，etcd server收到请求后经过一系列gRpc拦截器、Quota模块后，进入KV Server模块，KV Server模块向Raft模块提交一个写操作的提案。随后，Raft模块通过HTTP网络模块转发到集群的多数节点持久化，状态变成已提交，etcd server从Raft模块获取已提交的日志条目，传递给Apply模块，Apply模块通过MVCC模块执行命令内容，更新状态机。
+
+etcd写入的value大小默认不超过1.5MB
 
 ### Quota模块
 
@@ -296,7 +303,7 @@ etcd鉴权体系由控制面和数据面组成。
 
 ## 租约 Lease
 
-etcd通过Lease实现活性检测，属于主动型上报，让etcd server保证在约定的有效期内，不删除client关联到此lease上的key-value，若未在有效期内续租，就会删除Lease和其关联的key-value。
+etcd通过Lease实现活性检测，可以检测各个客户端的存活能力，业务client需要定期向etcd发送心跳请求汇报讲课状态，属于主动型上报，让etcd server保证在约定的有效期内，不删除client关联到此lease上的key-value，若未在有效期内续租，就会删除Lease和其关联的key-value。
 
 基于Lease的TTL特性，可以解决类似Leader选举、Kubernetes Event自动淘汰、服务发现场景中故障节点自动剔除等问题。
 
