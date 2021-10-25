@@ -322,7 +322,7 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 
 ### 1. 单Reactor单线程
 
-![单Reactor单线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/单Reactor单线程模型.jpg)
+![单Reactor单线程模型](https://github.com/Nixum/Java-Note/raw/master/picture/单Reactor单线程模型.jpg)
 
 * Acceptor实际上也是一个Handler，只是处理的事件不同，当Reactor收到(select)连接事件时调用
 * 当Reactor收到(select)非连接事件，比如读事件、写事件、处理其他业务的事件等，会起一个handler来处理
@@ -333,7 +333,7 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 
 ### 2. 单Reactor多线程
 
-![单Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/单Reactor多线程模型.jpg)
+![单Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/picture/单Reactor多线程模型.jpg)
 
 * 在单Reactor单线程模型的基础上，因为Handler的处理流程相对固定，就将比较耗时的业务处理包装成任务交由线程池处理，加快Handler的处理速度
 * 实际上如果只是在Handler处将业务逻辑交给线程池去做，在同步等待结果，只是一种伪异步，本质上Handler还是要等任务执行完才能执行send操作。优化的方法是先将Handler存起来，把业务处理提交给线程池后，就结束handler的执行了，这样就能把主线程释放出来，处理其他事件。当线程池里的任务执行完，只需将结果、handlerId、事件交由Reactor，Reactor根据事件和HandlerId找到对应的Handler去响应结果就可以了。
@@ -342,7 +342,7 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 
 ### 3. 主从Reactor多线程
 
-![多Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/多Reactor多线程模型.jpg)
+![多Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/picture/多Reactor多线程模型.jpg)
 
 * 在单Reactor多线程模型的基础上，将Handler下沉处理，通过子Reactor来提高并发处理能力。Acceptor处理连接事件后，将连接分配给SubReactor处理，例如一个连接对应一个SubReactor，SubReactor负责处理连接后的业务处理，可以把这层理解为单Reactor多线程模型的Reactor
 * 由于又多了一层，线程处理更加复杂，同一Reactor下才能保证线程安全，不同Reactor间要注意数据共享问题
@@ -353,7 +353,7 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 
 ## Server端线程模型
 
-![Netty线程模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/netty线程模型.jpg)
+![Netty线程模型](https://github.com/Nixum/Java-Note/raw/master/picture/netty线程模型.jpg)
 
 ## Demo
 

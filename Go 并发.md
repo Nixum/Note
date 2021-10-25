@@ -513,7 +513,7 @@ func (o *Once) doSlow(f func()) {
 
 ### 数据结构
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go syncPool数据结构.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/go syncPool数据结构.png)
 
 * 每次垃圾回收时，Pool会把victim中的对象移除，然后把local的数据给victim，local置为nil，如果此时有Get方法被调用，则会从victim中获取对象。通过这种方式，避免缓存元素被大量回收后再再次使用时新建很多对象
 * 获取重用对象时，先从local中获取，获取不到再从victim中获取

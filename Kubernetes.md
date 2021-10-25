@@ -4,7 +4,7 @@
 
 ## 基本
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/k8s项目架构.jpg)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/k8s项目架构.jpg)
 
 **容器的本质是进程，Kubernetes相当于操作系统**，管理这些进程组。
 
@@ -30,7 +30,7 @@
 
 ### 原理
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/k8s默认调度原理.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/k8s默认调度原理.png)
 
 * 第一个控制循环叫Informer Path，它会启动一系列Informer，监听etcd中的Pod、Node、Service等与调度相关的API对象的变化，将新创建的Pod添加进调度队列，默认的调度队列是优先级队列；
 
@@ -134,7 +134,7 @@ CRI是对容器操作相关的接口，而不是对于Pod，分为两组类型�
 1. RuntimeService：处理容器相关操作，比如创建和启动容器，删除容器，执行命令
 2. ImageService：处理容器镜像的相关操作，比如拉取镜像、删除镜像
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/CRI_work_flow.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/CRI_work_flow.png)
 
 ## etcd
 
@@ -483,7 +483,7 @@ Pod内部容器是共享一个网络命名空间的。
 
 通过节点上的网桥和Pod上的 Veth Pair 实现，整体跟同一节点上容器间的通信 很像，只不过 Veth Pair 是挂在Pod的共享网络空间上的。Veth Pair将节点上的网桥和Pod上的共享网络空间进行连接，再通过网桥，连接不同的Pod的共享网络空间，实现不同Pod间网络通信。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/同一节点下Pod间通信.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/同一节点下Pod间通信.png)
 
 #### 不同节点下Pod间的通信
 
@@ -500,7 +500,7 @@ Pod内部容器是共享一个网络命名空间的。
 3. flannel0设备（TUM）由flanneld进程管理，数据包的处理从内核态(Linux操作系统)转向用户态(flanneld进程)，flanneld进程知道目标IP在哪个节点，就把该数据包发往node2。
 4. node2对该数据包的处理，则跟node1相反，最后container2收到数据包。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_udp跨主机通信.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/flannel_udp跨主机通信.png)
 
 flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理的IP范围，子网与宿主机的对应关系，都会保存在etcd中，flanneld将原数据包再次封装成一个UDP包，同时带上目标节点的真实IP，发往对应节点。
 
@@ -518,7 +518,7 @@ flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理
 
 原理是通过在二层网络上再设置一个VTEP设备，该设备是Linux内核中一个模块，可以在内核态完成数据的封装和解封。flannel.1设备（VTEP）既有IP地址又有MAC地址，在数据包发往flannel.1设备时，通过二层数据帧，将原数据包加上目标节点的MVC地址，再加上VTEP标识，封装成一个二层数据帧，然后再封装成宿主机网络里的普通UDP数据包，发送给目标节点，目标节点在内核网络栈中发现了VTEP标识，就知道可以在内核态处理了。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_vxlan跨主机通信.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/flannel_vxlan跨主机通信.png)
 
 数据包的发送都要经过OSI那几层模型的，经过的每一层都需要进行包装和解封，才能得到原始数据，在这期间二层网络(数据链路层)是在内核态处理，三层网络(网络层)是在用户态处理。
 
@@ -528,7 +528,7 @@ flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理
 
 将每个Flannel子网的下一跳设置成该子网对应的宿主机的IP地址，用这台宿主机充当网关，Flannel子网和主机信息都保存在ETCD中，由flanneld进程WATCH这些数据的变化，实时更新路由表，这种方案的性能最好。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/flannel_host_gw跨主机通信.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/flannel_host_gw跨主机通信.png)
 
 **calico的跨主机通信**
 
@@ -538,7 +538,7 @@ flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理
 
 但这种方案会遇到路由表的规模问题，且最优情况是集群节点在同一个子网。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/calico跨主机通信.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/calico跨主机通信.png)
 
 ### Pod中的网络隔离
 
@@ -981,7 +981,7 @@ Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示
 
 k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在etcd里的完整资源路径是由Group（API 组）、Version（API 版本）和 Resource（API 资源类型）三个部分组成的
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/API对象树形结构.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/API对象树形结构.png)
 
 ```
 apiVersion: batch/v2alpha1
@@ -1037,7 +1037,7 @@ spec:
 
 控制器的原理：
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/控制器工作流程.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/控制器工作流程.png)
 
 控制器通过APIServer获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应
 
@@ -1234,7 +1234,7 @@ Gallery负责对配置信息格式和正确性校验，将配置信息提供pilo
 
 **数据平面**：Pod中的每个Envoy容器，即istio-proxy；Envoy会以side car的方式运行在Pod中，利用Pod中的所有容器共享同一个Network Namespace的特性，通过配置Pod里的iptables规则，管理进出Pod的流量。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Istio-架构.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/Istio-架构.png)
 
 ## 自动注入实现
 

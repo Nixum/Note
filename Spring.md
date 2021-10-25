@@ -14,7 +14,7 @@ Spring Boot实现了自动配置，降低了项目搭建的复杂度。它主要
 4. 将扫描到的Bean或者xml中的bean，先解析成BeanDefinition，注册到ApplicationContext中的BeanFactory中（即自动配置过程，也是IOC容器的refresh方法执行过程）
 5. 实例化Bean，进行依赖注入，（AOP也是在此处实现，创建代理实例加入IOC容器）
 
-![SpringBoot启动流程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/SpringBoot启动流程.png)
+![SpringBoot启动流程](https://github.com/Nixum/Java-Note/raw/master/picture/SpringBoot启动流程.png)
 
 参考[SpringBoot启动流程解析](https://www.cnblogs.com/trgl/p/7353782.html)
 

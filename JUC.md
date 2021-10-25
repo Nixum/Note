@@ -67,7 +67,7 @@ GoLang中的协程
 
 ## 1.状态转换
 
-![线程状态转换](https://github.com/Nixum/Java-Note/raw/master/Note/picture/线程状态转换.png)
+![线程状态转换](https://github.com/Nixum/Java-Note/raw/master/picture/线程状态转换.png)
 
 “阻塞”与“等待”的区别：
 “阻塞”状态是等待着获取到一个排他锁，进入“阻塞”状态都是被动的，离开“阻塞”状态是因为其它线程释放了锁，不阻塞了；
@@ -262,7 +262,7 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 # 一些锁的概念
 
-![java中的锁](https://github.com/Nixum/Java-Note/raw/master/Note/picture/java-锁.png)
+![java中的锁](https://github.com/Nixum/Java-Note/raw/master/picture/java-锁.png)
 
 参考：
 

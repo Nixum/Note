@@ -2,7 +2,7 @@
 
 # 	JVM内存模型
 
-![JVM内存模型](https://github.com/Nixum/Java-Note/raw/master/Note/picture/JVM内存模型.png)
+![JVM内存模型](https://github.com/Nixum/Java-Note/raw/master/picture/JVM内存模型.png)
 
 **方法区也叫永久代，持久代，非堆，不算在堆里面**
 

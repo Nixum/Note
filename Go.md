@@ -180,7 +180,7 @@ type bmap struct {
 }
 ```
 
-![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_map_struct.png)
+![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/picture/go_map_struct.png)
 
 ## 基本
 
@@ -296,7 +296,7 @@ k := add(unsafe.Pointer(b), dataOffset+i*uintptr(t.keysize))
 val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t.valuesize))
 ```
 
-![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_map_get.png)
+![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/picture/go_map_get.png)
 
 ### 插入
 
@@ -311,9 +311,9 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 7. 判断是否扩容，如果需要扩容，则扩容后（扩容迁移）继续从步骤5上继续，如果不用扩容则走步骤8
 8. 如果还没进行插入，说明正常位已经满了，且还不需要扩容，此时会调用newoverflow函数，先使用hmap预先在noverflow中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
 
-[mapassign函数](https://github.com/Nixum/Java-Note/raw/master/Note/source_with_note/go_map_mapassign.go)
+[mapassign函数](https://github.com/Nixum/Java-Note/raw/master/source_with_note/go_map_mapassign.go)
 
-[newoverflow函数](https://github.com/Nixum/Java-Note/raw/master/Note/source_with_note/go_map_newoverflow.go)
+[newoverflow函数](https://github.com/Nixum/Java-Note/raw/master/source_with_note/go_map_newoverflow.go)
 
 ## 扩容
 
@@ -365,7 +365,7 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 触发扩容条件，对新桶进行内存分配，只是创建了新的桶，旧数据还在旧桶上，之后还需要完成数据迁移。
 
-[hashGrow函数](https://github.com/Nixum/Java-Note/raw/master/Note/source_with_note/go_map_hashGrow.go)
+[hashGrow函数](https://github.com/Nixum/Java-Note/raw/master/source_with_note/go_map_hashGrow.go)
 
 ### 扩容迁移
 
@@ -379,7 +379,7 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
    如果是增量扩容，容量变为原来的两倍，B值+1，老bucket桶上的键值计算出来的桶的序号改变，这些键值对计算后的bucket桶的序号可能跟之前一样，也可能是相比原来加上2^B，取决于key哈希值后 老B+1 位的值是0还是1，tophash不变，原来老bucket桶上的键值对会分流到两个新的bucket桶上。将老bucket桶上的键值对和其指向的溢出桶上的键值对进行迁移，依次转移到新桶上，每迁移完一个，hmap的nevacuate计数+1，直到老bucket桶上的键值对迁移完成，最后情况oldbuckets和oldoverflow字段
 
-[evacuate函数](https://github.com/Nixum/Java-Note/raw/master/Note/source_with_note/go_map_evacuate.go)
+[evacuate函数](https://github.com/Nixum/Java-Note/raw/master/source_with_note/go_map_evacuate.go)
 
 ## 删除
 
@@ -436,7 +436,7 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 ## 早期调度模型-MG模型
 
-![goroutine early schedule](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go早期调度模型.png)
+![goroutine early schedule](https://github.com/Nixum/Java-Note/raw/master/picture/go早期调度模型.png)
 
 线程M想要处理协程G，都必须访问全局队列GRQ，当多个M访问同一资源时需要加锁保证并发安全，因此M对G的创建，销毁，调度都需要上锁，造成激烈的锁竞争，导致性能较差。
 
@@ -511,7 +511,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 ## 总的调度流程
 
-![goroutine schedule](https://github.com/Nixum/Java-Note/raw/master/Note/picture/GMP模型整体调度.png)
+![goroutine schedule](https://github.com/Nixum/Java-Note/raw/master/picture/GMP模型整体调度.png)
 
 5.1 当M执行某个G时发生syscall或其他阻塞操作，M会阻塞，如果当前有一些G在执行，runtime会把这个线程M从P中摘除，然后再创建一个新的M（操作系统线程或者复用其他空闲线程）来服务这个P，即此时的M会直接管理阻塞的G，之前跟它绑定的P转移到其他M，执行其他G。
 
@@ -523,7 +523,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 如果G0短时间处理完，P就会从LRQ取出G1进行处理，LRQ从GRQ取出G4进行分配；
 
-![goroutine runtime_1](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_runtime1.png)
+![goroutine runtime_1](https://github.com/Nixum/Java-Note/raw/master/picture/go_goroutine_runtime1.png)
 
 如果G0处理得很慢，系统就会让M0休眠，挂起G0，唤醒线程M1，将LRQ转移给M1进行处理；
 
@@ -531,7 +531,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 如果G1处理得很快，则继续获取LRQ里的下一个G；待LRQ里的G都执行完了，切回M0，继续处理G0。
 
-![goroutine runtime_2](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_runtime2.png)
+![goroutine runtime_2](https://github.com/Nixum/Java-Note/raw/master/picture/go_goroutine_runtime2.png)
 
 如果是多核的，有多个P，多个M，当有一个P处理完所有的G后，会先从GRQ中获取G，如果获取不到，就会从另一个P的LRQ里取走一半G，继续处理。
 
@@ -539,7 +539,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
 **由sysmon协程进行协作式抢占**，对goroutine进行标记，执行goroutine时如果有标记就会让出CPU，对于syscall过久的P，会进行M和P的分配，防止P被占用过久影响调度。
 
-![go sysmon goroutine](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_sysmon_goroutine.png)
+![go sysmon goroutine](https://github.com/Nixum/Java-Note/raw/master/picture/go_sysmon_goroutine.png)
 
 ## M：Machine
 
@@ -554,7 +554,7 @@ M本质是一个循环调度，不断的执行schedule函数，查找可运行�
 
 ## G：Goroutine的状态
 
-![go goroutine state](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_goroutine_state.png)
+![go goroutine state](https://github.com/Nixum/Java-Note/raw/master/picture/go_goroutine_state.png)
 
 goroutine的状态不止以下几种，只是这几种比较常用
 
@@ -571,7 +571,7 @@ goroutine的状态不止以下几种，只是这几种比较常用
 
 ## P：Processor的状态
 
-![go processor state](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_processor_state.png)
+![go processor state](https://github.com/Nixum/Java-Note/raw/master/picture/go_processor_state.png)
 
 | 状态      | 描述                                                         |
 | --------- | ------------------------------------------------------------ |
@@ -601,7 +601,7 @@ goroutine的泄露一般会导致内存的泄露，最终导致OOM，原因一�
 * 灰色：活跃对象，因为存在指向白色对象的外部指针，垃圾收集器会扫描这些对象的子对象
 * 黑色：活跃对象，包括不存在任何引用外部指针对象以及从根对象可达的对象
 
-![go gc简化过程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_gc.gif)
+![go gc简化过程](https://github.com/Nixum/Java-Note/raw/master/picture/go_gc.gif)
 
 1. 初始对象都是白色，首先把所有对象都放到白色集合中
 2. 从根节点开始遍历对象，遍历到的对象标记为灰色，放入到灰色集合
@@ -629,13 +629,13 @@ go中使用了写屏障来保证标记的正确性。写屏障是在写入指针
 
 ### Dijkstra的插入写屏障
 
-![go dijkstra插入写屏障](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_dijkstra_插入写屏障.png)
+![go dijkstra插入写屏障](https://github.com/Nixum/Java-Note/raw/master/picture/go_dijkstra_插入写屏障.png)
 
 > Dijkstra写屏障是对被写入的指针进行grey操作, 不能防止指针从heap被隐藏到黑色的栈中, 需要STW重扫描栈.
 
 ### Yuasa的删除写屏障
 
-![go yuasa删除写屏障](https://github.com/Nixum/Java-Note/raw/master/Note/picture/go_yuasa_删除写屏障.png)
+![go yuasa删除写屏障](https://github.com/Nixum/Java-Note/raw/master/picture/go_yuasa_删除写屏障.png)
 
 > Yuasa写屏障是对将被覆盖的指针进行grey操作, 不能防止指针从栈被隐藏到黑色的heap对象中, 需要在GC开始时保存栈的快照.
 

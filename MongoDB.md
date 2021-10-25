@@ -15,11 +15,11 @@
 
 客户端使用驱动时连接的执行流程
 
-![客户端执行流程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/MongoDB客户端执行流程.jpg)
+![客户端执行流程](https://github.com/Nixum/Java-Note/raw/master/picture/MongoDB客户端执行流程.jpg)
 
 数据库端执行流程
 
-![数据库端执行流程](https://github.com/Nixum/Java-Note/raw/master/Note/picture/MongoDB数据库端执行流程.jpg)
+![数据库端执行流程](https://github.com/Nixum/Java-Note/raw/master/picture/MongoDB数据库端执行流程.jpg)
 
 要获取ticket是因为MongoDB默认存储引擎wiredtiger的机制，ticket代表着系统资源的数量，ticket数量有限，读写操作都需要先获得ticket才可以进行下一步操作，机制类似信号量。
 

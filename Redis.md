@@ -36,7 +36,7 @@ Redis的String类型底层有两种保存形式，当保存的是64位有符号�
 * 当保存的是字符串时，如果字符串<=44字节，RedisObject中元数据，指针和SDS是一块连续的内存区域，避免内存碎片
 * 当保存的是字符串时，如果字符串>44字节，RedisObject会给SDS分配独立的空间，并用指针指向SDS
 
-![Redis String RedisObject: 来自极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Redis String RedisObject.png)
+![Redis String RedisObject: 来自极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/picture/Redis String RedisObject.png)
 
 当使用String类型时，且value的类型是String时，如果value的长度太小，可能会出现元数据的大小比数据本身的大小还大，造成额外的内存开销。如果能替换成Long类型，实际存储的大小会大大降低。
 
@@ -384,7 +384,7 @@ Redis没有使用什么一致性算法，仅依据**Gossip协议**在有效时�
 
 2. 每个哨兵在一次选举节点只有一次投票机会，当有哨兵节点得出客观下线结论后，该哨兵再发起投票，进行Leader选举，当收集到的票数超过一半，则该哨兵节点成为Leader节点，如果没有选举成功，则等待一般是故障转移超时时间failover_timeout的2倍时间后会从新举行选举。
 
-![Redis哨兵下线主库和Leader选举](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Redis哨兵下线主库和Leader选举.png)
+![Redis哨兵下线主库和Leader选举](https://github.com/Nixum/Java-Note/raw/master/picture/Redis哨兵下线主库和Leader选举.png)
 
 # 高可扩展集群 
 
@@ -596,7 +596,7 @@ redis-cli --eval visit_restrict.script keys , args
 3. 不推荐先删缓存再更新数据库，访问时再进行加载，原因是并发情况下，删除缓存后来不及更新数据库，但旧值已经被其他线程读到了，更新到缓存了；或者数据库操作失败了，但缓存已经没了，导致其他请求还要再读一次数据库；应对的方案是延迟双删，先删缓存 -》更新数据库 -》sleep -》再删除缓存
 3. 推荐先更新数据库再删除缓存，访问时再进行加载（也称为cache aside模式），虽然也可能出现3中的情况，导致数据不一致，但带来的影响会相对小一些，如果删除缓存失败了，可以延迟任务进行删除重试，因为删除操作一般是幂等的，所以即使重复删除也没关系，另外，相比Read/Write Through模式（更新数据库后更新缓存操作），不会因为并发读写产生脏数据。还有由于会删除缓存，所以要注意缓存穿透问题。
 
-![Redis缓存方案操作 - 极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/Note/picture/Redis缓存方案操作.png)
+![Redis缓存方案操作 - 极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/picture/Redis缓存方案操作.png)
 
 # 使用规范
 

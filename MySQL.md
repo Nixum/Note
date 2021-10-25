@@ -5,7 +5,7 @@
 
 ## MySQL逻辑架构图
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/MySQL逻辑结构图.jpg)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/MySQL逻辑结构图.jpg)
 
 * 连接器：负责跟客户端建立连接、获取权限、维持和管理连接。登录进去后修改权限，默认是将在下一次登录后生效
 * 查询缓存：MySQL接收到查询请求后会先查询缓存，key是查询语句，value是查询结果，之后经过执行器的权限判断再返回，如果查不到则往后走。不建议使用，因为若有更新操作，会删除对应表的缓存，可能导致缓存命中低，可以设置query_cache_type=demand，默认不使用缓存，需要在查询时显示指定。MySQL8.0删除此功能
@@ -218,7 +218,7 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
 注意
 
-![B+树](https://github.com/Nixum/Java-Note/raw/master/Note/picture/B+树.png)
+![B+树](https://github.com/Nixum/Java-Note/raw/master/picture/B+树.png)
 
 注：
 
@@ -231,7 +231,7 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
 **b-树**：在b树的基础上，不限制出度的个数，所有节点为表的数据，只有一条路，从根节点开始
 
-![B树](https://github.com/Nixum/Java-Note/raw/master/Note/picture/B树.png)                                                                                
+![B树](https://github.com/Nixum/Java-Note/raw/master/picture/B树.png)                                                                                
 
 ### 为什么说B+树比B树更适合MySQL数据库索引
 
@@ -707,7 +707,7 @@ bin log上会记录每台机子的server id，用于避免循环复制
 
   从库在同步Bin Log时，必须保证Bin Log的顺序，才能确保数据一致性。
 
-![MySQL主从复制](https://github.com/Nixum/Java-Note/raw/master/Note/picture/MySQL主从复制.png)
+![MySQL主从复制](https://github.com/Nixum/Java-Note/raw/master/picture/MySQL主从复制.png)
 
 默认情况下，由于是异步复制，无法保证数据第一时间复制到从库上，但如果采用同步复制，即等从库复制完主库的Bin Log后才响应给客户端，性能就太差了。
 

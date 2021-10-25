@@ -81,7 +81,7 @@ ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Fo
 
 使用场景：配置存储、服务发现、主备选举，读多写少的场景
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/ETCD架构.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/ETCD架构.png)
 
 etcdctl支持负载均衡、健康检测、故障转移，3.4版本中负载均衡使用轮询算法，轮询endpoints的每个节点建立长连接，将请求发送给etcd server。client和server之间使用HTTP/2.0协议通信。
 
@@ -405,7 +405,7 @@ V3版本：MVCC，将事件保存到boltdb中，持久化到磁盘中，通过�
 
 ### 事件推送机制
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/etcd事件推送架构.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/etcd事件推送架构.png)
 
 client对每一个key发起的watch请求，etcd的gRPCWatchServer收到watch请求后，会创建一个serverWatchStream，它负责接收client的gRPC Stream的create/cancel watcher请求（recvLoop goroutine)，并将从MVCC模块接收的watch事件转发给client（sendLoop goroutine）
 
@@ -446,7 +446,7 @@ WAL日志+boltdb保证持久性；
 
 boltdb文件存放在etcd数据目录下的member/snap/db文件，etcd启动时，会通过mmap机制将db文件映射到内存，后续从内存中快速读取文件中的数据。
 
-![](https://github.com/Nixum/Java-Note/raw/master/Note/picture/etcd boltdb文件布局.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/etcd boltdb文件布局.png)
 
 开头两个是固定的db元数据meta page；freeList page记录db中哪些页是空闲的，可使用的；
 
