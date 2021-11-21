@@ -124,6 +124,13 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
 - left join，使用left join时，左边的表不一定是驱动表，如果要使用left join语义，不能把被驱动表的字段放在where条件里做等值和不等值判断，必须放在on里，原因是MySQL会先用on作为条件进行过滤，完了才使用where进行过滤，放在on里能让过滤出来的条数少，要注意两者表达的语义还是有些不同的
 
+## drop、delete与truncate
+
+* delete和truncate只删除表数据不删除表结构
+* 速度上 drop > truncate > delete
+* drop和truncate是ddl语句，操作是立即生效，原数据不放到rollback segment中，不能回滚，而delete是dml语句，该操作会放在rollback segment中，事务提交后才生效
+* 不需要表时使用drop，删除某些行时使用delete，保留表但清空表的数据时使用truncate
+
 ## 日期类查询
 
 - curdate()函数：得到今天的日期，格式： 年-月-日
@@ -157,6 +164,16 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
   查询本季和上一季的跟 查年的差不多 ，把 YEAR函数 换成 QUARTER函数 即可
 
 # 数据类型
+
+## varchar和char
+
+char是固定长度，varchar是可变长度，varchar(50)和varchar(200)存储字符串 “hello” 所占空间一样，但后者在排序时会消耗更多内存，因为order by采用fixed_length计算字段长度
+
+## int和int(20)
+
+有符号的整型范围是-2147483648~2147483647；无符号的整型范围是0~4294967295；
+
+int(20)表示能显示的宽度是20，比如id的值是10，那MySQL就会在前面加0，自动补全到20位，仍然占4个字节存储，存储范围也不变。
 
 ## Datetime
 
@@ -310,7 +327,7 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 * group by 或order by多个字段时，需要为这多个字段建组合索引，不然也是全表扫
 
 
-## 6.分析
+## 6.分析 和 优化
 
 * Explain + SQL语句，给出该SQL语句的分析结果，看看查询的类型，有没有用到索引，是不是全表扫描
 
@@ -318,12 +335,13 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
   * **select_type**：查询类型，如 简单查询、联合查询、子查询等
   * **type**：访问类型，ALL(全表扫描)、index(索引查询)、range(索引范围查询)、ref(表间的连接匹配条件)、const(常量)，一个好的SQL起码得达到range级
-  
-  * **Key**：索引列的名称
+  * **possible_keys**：能使用哪个索引找到行，查询涉及到字段上若存在索引，则该索引将被列出，但不一定被查询使用
+  * **key**：索引列的名称，如果没有使用索引，显示位NULL
+  * **ref**：表示上述表的连接匹配条件，即哪些列或常量被用于查找索引列上的值
   * **rows**：扫描的行数
   * **extra**：额外信息说明，using index指使用到了覆盖索引，using index condition指使用了索引下推，using join buffer（block nested loop）指使用join连表，算法是block nested loop
   
-* show processlist，此命令用于查看目前执行的sql语句执行的状态
+* show processlist，此命令用于查看目前执行的sql语句执行的状态，比如当CPU使用率飙升时，可通过该命令查看哪些SQL语句在执行
 
 * show status，查看数据库运行的实时状态，比如查询运行期间SQL的执行次数、连接数、缓存内的线程数量、连接数等，具体看 [mysql SHOW STATUS 变量](https://www.jianshu.com/p/836f07dd89ec)
 
