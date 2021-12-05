@@ -9,12 +9,12 @@
 **容器的本质是进程，Kubernetes相当于操作系统**，管理这些进程组。
 
 * CNI：Container Network Interface，容器网络接口规范，如 Flannel、Calico、AWS VPC CNI
-* kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口
+* kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口，通过Socket和容器运行时通信。
   kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件
   kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI
-* CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范
+* CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范，是一组gRPC接口。包含两类服务，镜像服务和运行时服务。镜像服务提供下载、检查和删除镜像的RPC接口；运行时服务包含用于管理容器生命周期，与容器交互的调用的RPC接口（exec / attach / port-forward等）。dockershim、containerd、cri-o都是遵循CRI的容器运行时，称为高层级运行时。
 * CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
-* OCI：Open Container Initiative，容器运行时和镜像操作规范
+* OCI：Open Container Initiative，容器运行时和镜像操作规范，镜像规范规定高层级运行时会下载一个OCI镜像，并把它解压称OCI运行时文件系统包；运行时规范描述如何从OCI运行时文件系统包运行容器程序，并且定义其配置、运行环境和生命周期。定义新容器的namespaces、cgroups和根文件系统；它的一个参考实现是runC，称为底层级运行时。
 * CRD：Custom Resource Definition，自定义的资源对象，即yaml文件中的Kind，如Operator就是实现CRD的控制器，之后直接使用Operator创建的CRD声明对象即可使用
 * Master节点作用：编排、管理、调度用户提交的作业
   * Scheduler：编排和调度Pod，基本原理是通过监听api-server获取待调度的pod，然后基于一系列筛选和评优，为pod分配最佳的node节点。
