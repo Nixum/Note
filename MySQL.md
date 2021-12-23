@@ -327,19 +327,19 @@ int(20)表示能显示的宽度是20，比如id的值是10，那MySQL就会在�
 * group by 或order by多个字段时，需要为这多个字段建组合索引，不然也是全表扫
 
 
-## 6.分析 和 优化
+## 6.分析
 
 * Explain + SQL语句，给出该SQL语句的分析结果，看看查询的类型，有没有用到索引，是不是全表扫描
 
   比较重要的字段：
 
   * **select_type**：查询类型，如 简单查询、联合查询、子查询等
-  * **type**：访问类型，ALL(全表扫描)、index(索引查询)、range(索引范围查询)、ref(表间的连接匹配条件)、const(常量)，一个好的SQL起码得达到range级
+  * **type**：访问类型，ALL(全表扫描)、index(索引查询)、range(索引范围查询)、ref(表间的连接匹配条件)、const(常量)，index_merge(索引合并，5.0后才有的功能，使得MySQL可以在一次查询种使用多个索引，但是使用场景比较局限，多发生在查询条件涉及多个and和or的场景)，一个好的SQL起码得达到range级；
   * **possible_keys**：能使用哪个索引找到行，查询涉及到字段上若存在索引，则该索引将被列出，但不一定被查询使用
   * **key**：索引列的名称，如果没有使用索引，显示位NULL
   * **ref**：表示上述表的连接匹配条件，即哪些列或常量被用于查找索引列上的值
   * **rows**：扫描的行数
-  * **extra**：额外信息说明，using index指使用到了覆盖索引，using index condition指使用了索引下推，using join buffer（block nested loop）指使用join连表，算法是block nested loop
+  * **extra**：额外信息说明，using index指使用到了覆盖索引；using index condition指使用了索引下推；using join buffer（block nested loop）指使用join连表，算法是block nested loop；using union指使用索引并取并集；using sort_union 指先对取出的数据按rowid排序，然后再取并集；using intersect 索引取交集；
   
 * show processlist，此命令用于查看目前执行的sql语句执行的状态，比如当CPU使用率飙升时，可通过该命令查看哪些SQL语句在执行
 
