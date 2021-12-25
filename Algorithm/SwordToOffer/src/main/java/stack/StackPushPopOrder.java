@@ -26,7 +26,7 @@ public class StackPushPopOrder {
     public boolean isPopOrder(int[] pushOrder, int[] popOrder) {
         if (pushOrder == null || popOrder == null ||
                 popOrder.length != pushOrder.length ||
-                popOrder.length == 0 || pushOrder.length == 0)
+                popOrder.length == 0)
             return false;
         Stack<Integer> stack = new Stack<>();
         int popIndex = 0;
@@ -34,9 +34,7 @@ public class StackPushPopOrder {
             // 入栈序列元素入栈
             stack.push(pushOrder[i]);
             // 模拟出入栈,判断栈顶元素是否跟出栈序列的元素一致
-            while (stack.isEmpty() != true &&
-                    stack.peek() == popOrder[popIndex] &&
-                    popIndex < popOrder.length) {
+            while (!stack.isEmpty() && stack.peek() == popOrder[popIndex]) {
                 stack.pop();
                 popIndex++;
             }

@@ -34,9 +34,9 @@ public class TwoOrderLinkCombine {
             }
             p = p.next;
         }
-        if (h1 == null && h2 != null)
+        if (h2 != null)
             p.next = h2;
-        if (h1 != null && h2 == null)
+        if (h1 != null)
             p.next = h1;
         return newLink.next;
     }

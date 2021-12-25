@@ -38,12 +38,12 @@ public class QueueByStack {
     }
 
     public Integer deleteHead() throws Exception{
-        if (stackPop.isEmpty() == true) {
-            while (stackPush.isEmpty() == false) {
+        if (stackPop.isEmpty()) {
+            while (!stackPush.isEmpty()) {
                 stackPop.push(stackPush.pop());
             }
         }
-        if (stackPop.isEmpty() == true) {
+        if (stackPop.isEmpty()) {
             throw new Exception("queue is null");
         }
         return stackPop.pop();
