@@ -81,11 +81,109 @@ $facet/$bucket: 分面搜索，根据不同范围条件，多个维度一次性�
 
 ## 分析
 
-* 在查询语句中使用explain()方法分析查询语句，有三种分析模式，通过传参的方式使用，比如：`db.getCollection("order").explain('executionStats').find({})`
+* 在查询语句中使用explain()方法分析查询语句，有三种分析模式，通过传参的方式使用，比如：`db.getCollection("order").explain('executionStats').find({条件})`
   * queryPlanner：默认，只会输出被查询优化器选择出来的查询计划winningPlane
   * executionStats：除了输出被查询优化器选择出来的查询计划winningPlane，并执行语句（如果是写操作，不会真正操作数据库），给出分析结果，比如扫描的行数，使用什么索引，耗时，返回的条数等
   * allPlansExecution：列出所有可能的查询计划并执行，给出所有方案的结果，mongo支持这种分析模式，但aws的documentDB不支持
-* 对表的，使用stats()方法，比如`db.getCollection("order").stats()，或者db.stats()`，可以查询整张表的信息或整个库的统计信息，比如索引大小，对象数量，文件大小
+```
+# 常见的stage枚举：
+COLLSCAN：全表扫描
+IXSCAN：索引扫描
+FETCH：根据前面扫描到的位置抓取完整文档，相当于回表
+IDHACK：针对_id进行查询
+SHARD_MERGE 合并分片中结果
+SHARDING_FILTER 分片中过滤掉孤立文档
+SORT：进行内存排序，最终返回结果
+SORT_KEY_GENERATOR：获取每一个文档排序所用的键值
+LIMIT：使用limit限制返回数
+SKIP：使用skip进行跳过
+IDHACK：针对_id进行查询
+COUNTSCAN：count不使用用Index进行count时的stage返回
+COUNT_SCAN：count使用了Index进行count时的stage返回
+TEXT：使用全文索引进行查询时候的stage返回
+SUBPLA：未使用到索引的$or查询的stage返回
+PROJECTION：限定返回字段时候stage的返回
+
+# 一个executionStats例子
+{ 
+    "queryPlanner" : {
+        "plannerVersion" : 1.0, 
+        "namespace" : "库名.表名", 
+        "winningPlan" : {
+            "stage" : "SORT_AGGREGATE", 
+            "inputStage" : {
+                "stage" : "IXONLYSCAN", 
+                "indexName" : "索引名", 
+                "direction" : "forward"
+            }
+        }
+    }, 
+    "executionStats" : {
+        "executionSuccess" : true, 
+        "planningTimeMillis" : "0.276", 
+        "nReturned" : "1", 
+        "executionTimeMillis" : "10517.898",  # 执行时间
+        "totalKeysExamined" : "10519.0",  # 总扫描数
+        "totalDocsExamined" : "567542",   # 总扫描文档数
+        "executionStages" : {
+            "stage" : "SORT_AGGREGATE", 
+            "nReturned" : "1", 
+            "executionTimeMillisEstimate" : "10517.497", 
+            "inputStage" : {
+                "stage" : "IXONLYSCAN", # 
+                "nReturned" : "567542", # 返回的文档数
+                "executionTimeMillisEstimate" : "9786.122",  # 执行此阶段的耗时
+                "indexName" : "索引名", 
+                "direction" : "forward"
+            }
+        }
+    }, 
+    "serverInfo" : {
+        "host" : "oms", 
+        "port" : 27017.0, 
+        "version" : "4.0.0"
+    }, 
+    "ok" : 1.0, 
+    "operationTime" : Timestamp(1640604817, 1)
+}
+```
+* 对表的或对库的，使用stats()方法，比如`db.getCollection("order").stats()，或者db.stats()`，可以查询整张表的信息或整个库的统计信息
+```
+# 针对库的
+{ 
+    "db" : "order",  # 库名
+    "collections" : 11.0,  # 集合数
+    "objects" : 4938161.0,  # 对象数
+    "storageSize" : 4236443648.0,  # 占用磁盘大小
+    "indexes" : 32.0,  # 索引数
+    "indexSize" : 1424130048.0,  # 索引大小
+    "fileSize" : 5660573696.0,   # 文件大小
+    "ok" : 1.0, 
+    "operationTime" : Timestamp(1640604514, 1)
+}
+# 针对表的
+{ 
+    "ns" : "oms.order", 
+    "count" : 749031.0,  # 数量
+    "size" : 1479336225.0, # 大小
+    "avgObjSize" : 1975.90745, # 每个对象的平均大小
+    "storageSize" : 2164432896.0, # 存储大小 
+    "capped" : false, 
+    "nindexes" : 1.0, # 索引个数
+    "totalIndexSize" : 31129600.0, # 总索引大小
+    "indexSizes" : {
+        "_id_" : 94568448.0, 
+        "id" : 77438976.0, 
+        "idx_createAt_desc" : 31129600.0,   # 各个索引的大小
+    }, 
+    "ok" : 1.0, 
+    "operationTime" : Timestamp(1640327496, 1)
+}
+```
+* 慢查询
+```
+
+```
 
 # 复制集Replica Set机制
 
