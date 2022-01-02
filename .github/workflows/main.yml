@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@master
+      - name: init_hugo
+        uses: peaceiris/actions-hugo@v2.4.13
+        with:
+          hugo-version: '0.88.1'
+          extended: true
+      - name: set_up_hugo_site
+        run: |
+          hugo new site .
+          git clone https://github.com/Nixum/hugo-theme-stack.git ./themes/
+          cp themes/hugo-theme-stack/config.yaml ./config.yaml
+      - name: Build
+        run: | 
+          cp *.md ./content/
+          hugo --minify
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v2.5.1
+        env:
+          ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          EXTERNAL_REPOSITORY: Nixum/nixum.github.io
+          PUBLISH_BRANCH: master
+          PUBLISH_DIR: ./public
