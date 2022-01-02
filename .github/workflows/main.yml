@@ -21,25 +21,13 @@ jobs:
           git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/hugo-theme-stack
           rm ./blog/config.toml
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
+          cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
       - name: Build
         run: |
-          echo "ls---"
-          ls
           mkdir ./blog/content/post
           cp *.md ./blog/content/post/
-          echo "ls ./blog/---"
-          ls ./blog/
-          echo "ls ./blog/content---"
-          ls ./blog/content
           cd blog
           hugo --minify
-          echo "build"
-          echo "ls---"
-          ls
-          echo "ls ./public---"
-          ls ./public
-          pwd
-          echo "finish"
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v2.5.1
         env:
