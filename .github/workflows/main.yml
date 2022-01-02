@@ -38,14 +38,12 @@ jobs:
           ls
           echo "ls ./public---"
           ls ./public
-          echo "finish"
-      - name: deploy-test
-        run: |
           pwd
-#       - name: Deploy
-#         uses: peaceiris/actions-gh-pages@v2.5.1
-#         env:
-#           ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-#           EXTERNAL_REPOSITORY: Nixum/blog
-#           PUBLISH_BRANCH: master
-#           PUBLISH_DIR: ./public
+          echo "finish"
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v2.5.1
+        env:
+          ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          EXTERNAL_REPOSITORY: Nixum/blog
+          PUBLISH_BRANCH: master
+          PUBLISH_DIR: ./blog/public
