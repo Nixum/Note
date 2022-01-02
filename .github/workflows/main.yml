@@ -16,6 +16,8 @@ jobs:
           extended: true
       - name: set_up_hugo_site
         run: |
+          hugo version
+          hugo new site .
           git clone https://github.com/Nixum/hugo-theme-stack.git ./themes/
           ls
           cp themes/hugo-theme-stack/config.yaml ./config.yaml
