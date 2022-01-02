@@ -23,15 +23,23 @@ jobs:
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
       - name: Build
         run: |
+          ls
+          echo "---"
           cp *.md ./blog/content/
+          ls ./blog/
+          echo "---"
+          ls ./blog/content
+          echo "---"
           cd blog
           hugo --minify
+          ls
+          echo "---"
           ls ./public
           echo "finish"
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v2.5.1
-        env:
-          ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-          EXTERNAL_REPOSITORY: Nixum/blog
-          PUBLISH_BRANCH: master
-          PUBLISH_DIR: ./public
+#       - name: Deploy
+#         uses: peaceiris/actions-gh-pages@v2.5.1
+#         env:
+#           ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+#           EXTERNAL_REPOSITORY: Nixum/blog
+#           PUBLISH_BRANCH: master
+#           PUBLISH_DIR: ./public
