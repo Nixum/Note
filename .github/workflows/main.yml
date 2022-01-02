@@ -17,6 +17,7 @@ jobs:
       - name: set_up_hugo_site
         run: |
           git clone https://github.com/Nixum/hugo-theme-stack.git ./themes/
+          ls
           cp themes/hugo-theme-stack/config.yaml ./config.yaml
       - name: Build
         run: |
