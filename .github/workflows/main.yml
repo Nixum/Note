@@ -20,7 +20,7 @@ jobs:
           mkdir ./blog/themes/hugo-theme-stack
           git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/hugo-theme-stack
           rm ./blog/config.toml
-          cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
+          cp ./blog/themes/hugo-theme-stack/custom-content/config.yaml ./blog/config.yaml
           cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
       - name: Build
         run: |
