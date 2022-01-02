@@ -17,7 +17,8 @@ jobs:
       - name: set_up_hugo_site
         run: |
           hugo new site ./blog
-          git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/
+          mkdir ./blog/themes/hugo-theme-stack
+          git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/hugo-theme-stack
           ls
           echo ""
           ls ./blog
