@@ -16,14 +16,14 @@ jobs:
           extended: true
       - name: set_up_hugo_site
         run: |
-          hugo version
-          hugo new site .
-          git clone https://github.com/Nixum/hugo-theme-stack.git ./themes/
           ls
-          cp themes/hugo-theme-stack/config.yaml ./config.yaml
+          hugo new site ./blog
+          git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/
+          cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
       - name: Build
         run: |
-          cp *.md ./content/
+          cp *.md ./blog/content/
+          cd blog
           hugo --minify
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v2.5.1
