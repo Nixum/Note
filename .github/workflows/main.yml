@@ -19,9 +19,14 @@ jobs:
           hugo new site ./blog
           git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/
           ls
+          echo ""
           ls ./blog
+          echo ""
           ls ./blog/themes
+          echo ""
           ls ./blog/themes/hugo-theme-stack
+          echo ""
+          rm ./blog/config.toml
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
       - name: Build
         run: |
