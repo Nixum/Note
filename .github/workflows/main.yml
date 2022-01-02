@@ -16,9 +16,12 @@ jobs:
           extended: true
       - name: set_up_hugo_site
         run: |
-          ls
           hugo new site ./blog
           git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/
+          ls
+          ls ./blog
+          ls ./blog/themes
+          ls ./blog/themes/hugo-theme-stack
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
       - name: Build
         run: |
