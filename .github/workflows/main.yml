@@ -26,6 +26,8 @@ jobs:
           cp *.md ./blog/content/
           cd blog
           hugo --minify
+          ls ./public
+          echo "finish"
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v2.5.1
         env:
