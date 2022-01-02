@@ -23,17 +23,19 @@ jobs:
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
       - name: Build
         run: |
+          echo "ls---"
           ls
-          echo "---"
           cp *.md ./blog/content/
+          echo "ls ./blog/---"
           ls ./blog/
-          echo "---"
+          echo "ls ./blog/content---"
           ls ./blog/content
-          echo "---"
           cd blog
           hugo --minify
+          echo "build"
+          echo "ls---"
           ls
-          echo "---"
+          echo "ls ./public---"
           ls ./public
           echo "finish"
 #       - name: Deploy
