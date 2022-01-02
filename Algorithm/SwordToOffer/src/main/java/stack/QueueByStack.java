@@ -1,4 +1,4 @@
-package linkAndQueue;
+package stack;
 
 import org.junit.Test;
 

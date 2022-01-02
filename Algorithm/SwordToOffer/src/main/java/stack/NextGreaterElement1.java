@@ -21,7 +21,7 @@ public class NextGreaterElement1 {
             while (!stack.empty() && stack.peek() <= nums[i]) {
                 stack.pop();
             }
-            res[i] = !stack.empty() ? -1 : stack.peek();
+            res[i] = stack.empty() ? -1 : stack.peek();
             stack.push(nums[i]);
         }
         return res;
