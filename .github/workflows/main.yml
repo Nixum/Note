@@ -1,4 +1,4 @@
-name: CI
+name: page-deploy
 on:
   workflow_dispatch:
   repository_dispatch:
