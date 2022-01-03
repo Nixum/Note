@@ -24,9 +24,6 @@ jobs:
           git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/hugo-theme-stack
           rm ./blog/config.toml
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
-          echo "---"
-          cat ./blog/config.yaml
-          echo "---"
           cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
           echo "---"
           ls ./blog/content/
@@ -39,7 +36,9 @@ jobs:
           mkdir ./blog/content/post
           cp *.md ./blog/content/post/
           echo "---"
-          ls ./blog/content/
+          ls ./blog/content/page
+          echo "--------"
+          ls ./blog/content/cate*
           echo "---"
           cd blog
           hugo --minify
