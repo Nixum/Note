@@ -25,23 +25,12 @@ jobs:
           rm ./blog/config.toml
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
           cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
-          echo "---"
-          ls ./blog/content/
-          echo "---"
-      - name: Build
-        run: |
-          echo "---"
-          ls ./blog/content/
-          echo "---"
           mkdir ./blog/content/post
           cp *.md ./blog/content/post/
-          echo "---"
-          ls ./blog/content/page
-          echo "--------"
-          ls ./blog/content/cate*
-          echo "---"
+      - name: Build
+        run: |
           cd blog
-          hugo --minify
+          hugo
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v2.5.1
         env:
