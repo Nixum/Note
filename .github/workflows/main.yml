@@ -31,6 +31,8 @@ jobs:
           cd blog
           hugo
           cp themes/hugo-theme-stack/CNAME public/
+          echo "---"
+          ls
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v2.5.1
         env:
