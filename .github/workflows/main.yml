@@ -25,16 +25,17 @@ jobs:
           rm ./blog/config.toml
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
           cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
+          ls ./blog/content/
           cp *.md ./blog/content/post/
       - name: Build
         run: |
           cd blog
           hugo
           cp themes/hugo-theme-stack/CNAME public/
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v2.5.1
-        env:
-          ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-          EXTERNAL_REPOSITORY: Nixum/blog
-          PUBLISH_BRANCH: master
-          PUBLISH_DIR: ./blog/public
+#       - name: Deploy
+#         uses: peaceiris/actions-gh-pages@v2.5.1
+#         env:
+#           ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+#           EXTERNAL_REPOSITORY: Nixum/blog
+#           PUBLISH_BRANCH: master
+#           PUBLISH_DIR: ./blog/public
