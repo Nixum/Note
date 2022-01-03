@@ -1,3 +1,12 @@
+---
+title: Spring和SpringBoot
+description: Spring和SpringBoot常见问题、IOC、AOP原理
+date: 2019-04-17
+lastmod: 2020-06-03
+categories: ["框架"]
+tags: ["Spring", "SpringBoot", "IOC和AOP"]
+---
+
 [TOC]
 
 # SpringBoot

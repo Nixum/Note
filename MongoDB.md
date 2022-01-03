@@ -1,3 +1,12 @@
+---
+title: mongoDB
+description: mongoDB分布式架构，索引、事务原理
+date: 2021-11-28
+lastmod: 2021-12-25
+categories: ["数据库"]
+tags: ["MongoDB", "数据库", "数据库-锁", "数据库事务", "索引", "主从架构", "数据库优化"]
+---
+
 [TOC]
 
 # 特点

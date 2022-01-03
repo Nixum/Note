@@ -1,3 +1,12 @@
+---
+title: UML
+description: 类图画法
+date: 2019-07-11
+lastmod: 2020-04-28
+categories: ["设计"]
+tags: ["UML", "类图"]
+---
+
 [TOC]
 
 # 类图

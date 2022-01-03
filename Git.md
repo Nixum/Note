@@ -1,3 +1,12 @@
+---
+title: git
+description: git相关的命令和使用
+date: 2019-02-26
+lastmod: 2020-06-06
+categories: ["git"]
+tags: ["git"]
+---
+
 ![git流程](https://github.com/Nixum/Java-Note/raw/master/picture/git_flow.jpg)
 
 ## 常用命令

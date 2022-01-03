@@ -1,3 +1,12 @@
+---
+title: go并发
+description: go内存模型、channel、并发包相关类的实现原理
+date: 2021-03-22
+lastmod: 2021-05-15
+categories: ["go"]
+tags: ["go并发", "go内存模型", "go channel原理"]
+---
+
 [TOC]
 
 # 内存模型

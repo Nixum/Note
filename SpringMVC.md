@@ -1,3 +1,11 @@
+---
+title: SpringMVC
+date: 2019-02-15
+lastmod: 2020-09-13
+categories: ["框架"]
+tags: ["SpringMVC", "Spring Security"]
+---
+
 # SpringMVC工作原理
 
 [SpringMVC工作原理详解](https://github.com/Nixum/JavaGuide/blob/master/%E4%B8%BB%E6%B5%81%E6%A1%86%E6%9E%B6/SpringMVC%20%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86%E8%AF%A6%E8%A7%A3.md "")

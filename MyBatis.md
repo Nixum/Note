@@ -1,3 +1,14 @@
+---
+title: MyBatis
+description: MyBatis基本知识
+date: 2019-02-12
+lastmod: 2020-10-25
+categories: ["框架"]
+tags: ["ORM"]
+---
+
+[TOC]
+
 # ORM
 
 普通JDBC使用sql的prepareStatement + sql + 占位符 + 参数的方式执行sql语句

@@ -1,3 +1,12 @@
+---
+title: Kubernetes和Istio
+description: Kubernetes和Istio架构、原理
+date: 2020-07-22
+lastmod: 2021-12-03
+categories: ["devops"]
+tags: ["Kubernetes", "Istio"]
+---
+
 [TOC]
 
 # Kubernetes

@@ -1,3 +1,12 @@
+---
+title: go
+description: go集合类、协程、runtime、GC原理
+date: 2020-11-07
+lastmod: 2021-10-24
+categories: ["go"]
+tags: ["go", "go集合类原理", "go协程", "go GC"]
+---
+
 [TOC]
 
 **以下基于go.1.14**

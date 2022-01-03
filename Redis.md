@@ -1,3 +1,12 @@
+---
+title: Redis
+description: Redis数据结构、架构、常见常见、持久化、主从架构
+date: 2020-08-09
+lastmod: 2020-11-28
+categories: ["数据库"]
+tags: ["Redis", "主从架构", "缓存"]
+---
+
 [TOC]
 
 # 数据类型及结构

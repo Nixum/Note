@@ -1,3 +1,12 @@
+---
+title: Java SE
+description: Java基础
+date: 2019-02-18
+lastmod: 2020-10-23
+categories: ["Java"]
+tags: ["JavaSE", "面向对象"]
+---
+
 [TOC]
 
 # 一、面向对象

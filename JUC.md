@@ -1,3 +1,12 @@
+---
+title: Java并发
+description: JUC、线程、锁等原理
+date: 2019-03-02
+lastmod: 2021-11-12
+categories: ["Java"]
+tags: ["Java并发", "JUC", "线程"]
+---
+
 [TOC]
 
 # 线程、进程、协程
