@@ -33,8 +33,14 @@ jobs:
           echo "---"
       - name: Build
         run: |
+          echo "---"
+          ls ./blog/content/
+          echo "---"
           mkdir ./blog/content/post
           cp *.md ./blog/content/post/
+          echo "---"
+          ls ./blog/content/
+          echo "---"
           cd blog
           hugo --minify
       - name: Deploy
