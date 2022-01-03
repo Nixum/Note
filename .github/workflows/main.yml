@@ -19,17 +19,20 @@ jobs:
           extended: true
       - name: set_up_hugo_site
         run: |
-          hugo new site ./blog
-          mkdir ./blog/themes/hugo-theme-stack
-          git clone https://github.com/Nixum/hugo-theme-stack.git ./blog/themes/hugo-theme-stack
-          rm ./blog/config.toml
-          cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
-          cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
+          hugo new site ./blog111
+          mkdir ./blog111/themes/hugo-theme-stack
+          git clone https://github.com/Nixum/hugo-theme-stack.git ./blog111/themes/hugo-theme-stack
+          echo "---"
+          cat ./blog111/themes/hugo-theme-stack/layouts/_default/single.html
+          echo "---"
+          rm ./blog111/config.toml
+          cp ./blog111/themes/hugo-theme-stack/config.yaml ./blog111/config.yaml
+          cp -r ./blog111/themes/hugo-theme-stack/custom-content/* ./blog111/content/
       - name: Build
         run: |
-          mkdir ./blog/content/post
-          cp *.md ./blog/content/post/
-          cd blog
+          mkdir ./blog111/content/post
+          cp *.md ./blog111/content/post/
+          cd blog111
           hugo --minify
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v2.5.1
@@ -37,4 +40,4 @@ jobs:
           ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
           EXTERNAL_REPOSITORY: Nixum/blog
           PUBLISH_BRANCH: master
-          PUBLISH_DIR: ./blog/public
+          PUBLISH_DIR: ./blog111/public
