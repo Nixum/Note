@@ -1,6 +1,10 @@
 ---
-title: PlaceHolder
+title: Test Content
 date: 2019-02-25
+slug: test-test
+categories:
+    - Test
+    - 测试
 ---
 
 # Content
