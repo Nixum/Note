@@ -25,7 +25,6 @@ jobs:
           rm ./blog/config.toml
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
           cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
-          mkdir ./blog/content/post
           cp *.md ./blog/content/post/
       - name: Build
         run: |
