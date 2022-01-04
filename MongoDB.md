@@ -1,6 +1,6 @@
 ---
-title: mongoDB
-description: mongoDB分布式架构，索引、事务原理
+title: MongoDB
+description: MongoDB常用语句、架构、复制集与分片、集合的设计原则、索引、事务原理，引擎相关的待补充
 date: 2021-11-28
 lastmod: 2021-12-25
 categories: ["数据库"]
