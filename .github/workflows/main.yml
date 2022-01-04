@@ -26,6 +26,8 @@ jobs:
           cp ./blog/themes/hugo-theme-stack/config.yaml ./blog/config.yaml
           cp -r ./blog/themes/hugo-theme-stack/custom-content/* ./blog/content/
           cp *.md ./blog/content/post/
+          mkdir ./blog/static/img
+          cp ./blog/themes/hugo-theme-stack/assets/img/*.ico ./blog/static/img
       - name: Build
         run: |
           cd blog
