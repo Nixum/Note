@@ -7,6 +7,7 @@ tag: ["README"]
 <div align="center">  
     <img src="https://github.com/Nixum/Java-Note/raw/master/picture/cover_book.jpg" width=""/>
 </br>
+</div>
 
 为了更好的阅读体验，可前往 [个人bolg](http://nixum.cc)、[gitbook](https://nixum.gitbook.io/note/readme)
 
