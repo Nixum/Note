@@ -1,10 +1,10 @@
 ---
-title: Go
+title: Go SE
 description: go集合类、协程、runtime、GC原理
 date: 2020-11-07
 lastmod: 2021-10-24
-categories: ["go"]
-tags: ["go", "go集合类原理", "go协程", "go GC"]
+categories: ["Go"]
+tags: ["Go", "Go集合类原理", "Go协程", "Go GC"]
 ---
 
 [TOC]
@@ -156,28 +156,30 @@ fmt.Printf("len=%d, cap=%d\n",len(s),cap(s))  // len=5, cap=8
 ```go
 type hmap struct {
 	count     int    // 哈希表中元素的数量
-	// 1：可能有迭代器使用buckets，2：可能有迭代器使用oldbuckets，4：有协程正在向map中写入key，8：等量扩容
-	flags     uint8  // 记录map的状态
+	flags     uint8  // 记录map的状态, 1：可能有迭代器使用buckets，2：可能有迭代器使用oldbuckets，4：有协程正在向map中写入key，8：等量扩容
     B         uint8  // buckets的数量，len(buckets) = 2^B
 	noverflow uint16 // 溢出的bucket的个数
 	hash0     uint32 // 哈希种子，为哈希函数的结果引入随机性。该值在创建哈希表时确定，在构造方法中传入
 
-	buckets    unsafe.Pointer // 桶的地址
-	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半或0.75
-	nevacuate  uintptr // 迁移进度，小于nevacuate的表示已迁移
+	buckets    unsafe.Pointer // 桶的地址，指向一个bmap数组，即指向很多个桶
+	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半或0.75，非扩容状态下为null
+	nevacuate  uintptr // 扩容迁移的进度，小于nevacuate的buckets表示已迁移完成
 
-	extra *mapextra // 用于扩容的指针，单个桶装满时用于存储溢出数据，溢出桶和正常桶在内存上是连续的
+	extra *mapextra // 用于扩容的指针，存储单个桶装满时溢出的数据，溢出桶和正常桶在内存上是连续的，该字段是为了优化GC扫描而设计的。
 }
 
 type mapextra struct {
-	overflow    *[]*bmap
-	oldoverflow *[]*bmap
-	nextOverflow *bmap
+    // 当map的key和value都不是指针，并且size都小于128字节时（即可以被inline），会把bmap标记为不含指针，避免gc时扫描整个hmap。通过overflow实现，overflow是个指针，指向溢出的bucket，GC时又必定会扫描指针，也就是会扫描所有bmap，而当map的key和value都是非指针类型的话，可以直接标记整个map的颜色，不用去扫描每个bmap的overflow指针，避免扫描每个bmap的overflow指针，但溢出的bucket总是存在，与key和value的类型无关，于是就利用overflow来指向溢出的bucket，并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），于是整个bmap就完全没指针了，也就不会被GC扫描。另一方面，当 GC 在扫描 hmap 时，通过 extra.overflow 这条路径（指针）就可以将 overflow 的 bucket 正常标记成黑色，从而不会被 GC 错误地回收。
+	overflow    *[]*bmap  // 包含hmap.buckets的overflow的buckets
+	oldoverflow *[]*bmap  // 包含扩容时的hmap.oldbuckets的overflow的bucket
+	nextOverflow *bmap    // 指向空闲的 overflow bucket 的指针
 }
 
+// 即桶bucket
 type bmap struct {
-    tophash [bucketCnt]uint8 // len为8的数组，即每个桶只能存8个键值对
+    tophash [bucketCnt]uint8 // len为8的数组，即每个桶只能存8个键值对，包含此桶中每个key的哈希值的高8位，如果tophash[0] < minTopHash，tophash[0]则代表桶的搬迁evacuation状态。
 }
+
 // 但由于go没有泛型，哈希表中又可能存储不同类型的键值对，所以键值对所占的内存空间大小只能在编译时推导，
 // 无法先设置在结构体中，这些字段是在运行时通过计算内存地址的方式直接访问，这些额外的字段都是编译时动态创建
 type bmap struct {
@@ -187,9 +189,54 @@ type bmap struct {
     pad      uintptr
     overflow uintptr // 每个桶只能存8个元素，超过8个时会存入溢出桶，溢出桶只是临时方案，溢出过多时会进行扩容
 }
+
+// 重要的常量标志
+const (
+    // 一个桶中最多能装载的键值对（key-value）的个数为8
+    bucketCntBits = 3
+    bucketCnt     = 1 << bucketCntBits
+
+    // 触发扩容的装载因子为13/2=6.5
+    loadFactorNum = 13
+    loadFactorDen = 2
+
+    // 键和值超过128个字节，就会被转换为指针
+    maxKeySize  = 128
+    maxElemSize = 128
+
+    // 数据偏移量应该是bmap结构体的大小，它需要正确地对齐。
+    // 对于amd64p32而言，这意味着：即使指针是32位的，也是64位对齐。
+    dataOffset = unsafe.Offsetof(struct {
+        b bmap
+        v int64
+    }{}.v)
+
+
+    // 每个桶（如果有溢出，则包含它的overflow的链接桶）在搬迁完成状态（evacuated* states）下，要么会包含它所有的键值对，要么一个都不包含（但不包括调用evacuate()方法阶段，该方法调用只会在对map发起write时发生，在该阶段其他goroutine是无法查看该map的）。简单的说，桶里的数据要么一起搬走，要么一个都还未搬。
+    // tophash除了放置正常的高8位hash值，还会存储一些特殊状态值（标志该cell的搬迁状态）。正常的tophash值，最小应该是5，以下列出的就是一些特殊状态值。
+    emptyRest      = 0 // 表示cell为空，并且比它高索引位的cell或者overflows中的cell都是空的。（初始化bucket时，就是该状态）
+    emptyOne       = 1 // 空的cell，cell已经被搬迁到新的bucket
+    evacuatedX     = 2 // 键值对已经搬迁完毕，key在新buckets数组的前半部分
+    evacuatedY     = 3 // 键值对已经搬迁完毕，key在新buckets数组的后半部分
+    evacuatedEmpty = 4 // cell为空，整个bucket已经搬迁完毕
+    minTopHash     = 5 // tophash的最小正常值
+
+    // flags
+    iterator     = 1 // 可能有迭代器在使用buckets
+    oldIterator  = 2 // 可能有迭代器在使用oldbuckets
+    hashWriting  = 4 // 有协程正在向map写人key
+    sameSizeGrow = 8 // 等量扩容
+
+    // 用于迭代器检查的bucket ID
+    noCheck = 1<<(8*sys.PtrSize) - 1
+)
 ```
 
 ![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/picture/go_map_struct.png)
+
+注：一个bmap里key和value是各自存的，而不是想象中的key/value一对对存储，这样的好处是省掉padding字段，节省内存空间，方便内存对齐。
+
+> 例如，有这样一个类型的 map：`map[int64]int8`，如果按照 `key/value...` 这样的模式存储，那在每一个 key/value 对之后都要额外 padding 7 个字节；而将所有的 key，value 分别绑定到一起，这种形式 `key/key/.../value/value/...`，则只需要在最后添加 padding，每个 bucket 设计成最多只能放 8 个 key-value 对，如果有第 9 个 key-value 落入当前的 bucket，那就需要再构建一个 bucket ，通过 `overflow` 指针连接起来。
 
 ## 基本
 
@@ -203,7 +250,7 @@ type bmap struct {
 
   即key必须支持 == 或 != 运算的类型
 
-* map的容量为 装载因子6.5 * 2^B 个元素，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
+* map容量最多为 6.5 * 2^B 个元素，6.5是装载因子阈值常量，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
 
 * 拉链法解决哈希冲突（指8个正常位和溢出桶），除留余数法得到桶的位置（哈希值的低B位）。
 
@@ -408,270 +455,9 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 > 5. 继续遍历bucket下面的overflow链表。
 > 6. 如果遍历到了startBucket，说明遍历完了，结束遍历。
 
-# Runtime
-
-* 不同于Java，Go没有虚拟机，很多东西比如自动GC、对操作系统和CPU相关操作都变成了函数，写在runtime包里。
-* Runtime提供了go代码运行时所需要的基础设施，如协程调度、内存管理、GC、map、channel、string等内置类型的实现、对操作系统和CPU相关操作进行封装。
-* 诸如go、new、make、->、<-等关键字都被编译器编译成runtime包里的函数
-* build成可执行文件时，Runtime会和用户代码一起进行打包。
-
-# Goroutine
-
-## 基本
-
-* GPM模型 - M：N调度模型
-
-  其他模型：
-
-  * N：1 即 N个协程绑定1个线程，优点：协程在用户态线程即可完成切换，由协程调度器调度，不涉及内核态，无需CPU调度，轻量快速；缺点：无法使用多核加速，一旦某协程阻塞，会导致线程阻塞，此时并行变成串行
-  * 1：1 即 1个协程绑定1个线程，优点：解决N：1模型的缺点；缺点：调度均有协程调度器和CPU调度，代价较大，无法并行
-  * M：N 即 M个协程绑定N个线程，由协程调度器调度，线程在内核态通过CPU抢占式调用，协程在用户态通过协作式调度
-
-* 一般线程会占有1Mb以上的内存空间，每次对线程进行切换时会消耗较多内存，恢复寄存器中的内容还需要向操作系统申请或销毁对应的资源，每一次上下文切换都需要消耗~1us左右的时间，而Go调度器对goroutine的上下文切换为~0.2us，减少了80%的额外开销。
-
-* 协程本质是一个数据结构，封装了要运行的函数和运行的进度，交由go调度器进行调度，不断切换的过程。由go调度器决定协程是运行，还是切换出调度队列(阻塞)，去执行其他满足条件的协程。
-
-  go的调度器在用户态实现调度，调度的是一种名叫协程的执行流结构体，也有需要保存和恢复上下文的函数，运行队列。
-
-  协程同步造成的阻塞，只是调度器切换到别的协程去执行了，线程本身并不阻塞。
-
-* Go的调度器通过**使用与CPU数量相等的线程**减少线程频繁切换的内存开销，同时**在每一个线程上执行额外开销更低的Goroutine**来降低操作系统和软件的负载。
-
-* 1.2~1.3版本使用**基于协作的抢占式调度器**（通过编译器在函数调用时插入抢占式检查指令，在函数调用时检查当前goroutine是否发起抢占式请求），但gouroutine可能会因为垃圾回收和循环长时间占用资源导致程序暂停。
-
-  从1.14版本开始使用**基于信号的抢占式调度**，垃圾回收在扫描栈时会触发抢占式调度，但抢占时间点不够多，还不能覆盖全部边缘情况。
-
-  之所以要使用抢占式的，是因为不使用抢占式时，只有当goroutine主动让出CPU资源才能触发调度，可能会导致某个goroutine长时间占用线程，造成其他goroutine饿死；另外，垃圾回收需要暂停整个程序，在STW时，整个程序无法工作。
-
-## 早期调度模型-MG模型
-
-![goroutine early schedule](https://github.com/Nixum/Java-Note/raw/master/picture/go早期调度模型.png)
-
-线程M想要处理协程G，都必须访问全局队列GRQ，当多个M访问同一资源时需要加锁保证并发安全，因此M对G的创建，销毁，调度都需要上锁，造成激烈的锁竞争，导致性能较差。
-
-另外，当M0执行G0，但G0又产生了G1，此时为了继续执行G0，需要将G1移给M1，造成较差的局部性，因为一般情况下这两个G是有一定的关联性的，如果放在不同的M会增加系统开销；CPU在多个M之间切换也增加了系统开销。
-
-为了解决早期调度器模型的缺点，采用了GMP模型。
-
-## 调度器的GPM模型
-
-goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模型管理goroutine。
-
-* G：即goroutine，代码中的`go func{}`，代表一个待执行的任务
-* M：即machine，操作系统的线程，由操作系统的调度器调度和管理。
-* P：即processor，处理器的抽象，运行在线程上的本地调度器，用来管理和执行goroutine，使得goroutine在一个线程上跑，提供了线程需要的上下文，（局部计算资源，用于在同一线程写多个goroutine的切换），负责调度线程上的LRQ，是实现从N：1到N：M映射的关键。存在的意义在于工作窃取算法。
-
-## GPM三者的关系与特点
-
-* p的个数取决于**GOMAXPROCS**，默认使用CPU的个数，这些P会绑定到不同内核线程，尽量提升性能，让每个核都有代码在跑。
-
-* M的数量不一定和P匹配，可以设置多个M，M和P绑定后才可运行，多余的M会处于休眠状态。
-
-  调度器最多可创建10000个M，但最多只有GOMAXPROCS个活跃线程能够正常运行。
-
-  所以一般情况下，会设置与P一样数量的M，让所有的调度都发生在用户态，减少额外的调度和上下文切换开销。
-
-  一个G最多占有CPU 10ms，防止其他G饿死。
-
-* P包含一个LRQ(Local Run Queue本地运行队列)，保存P需要执行的goroutine的队列。**LRQ是一个长度为256的环形数组**，有head和tail两个序号，当数量达到256时，新创建的goroutine会保存在GRQ中。
-
-  当在G0中产生G1，此时会G1会优先加入当前的LRQ队列，保证其在同一个M上执行
-
-* 调度器本身包含一个GRQ(Global Run Queue全局运行队列)，保存所有未分配的goroutine，存于全局遍历sched中。GRQ是一个链表，由head，tail两个指针，从GRQ中获取G需要上锁。
-
-* 在没有P的情况下，所有G只能放在一个GRQ(全局队列)中，当M执行完G，且没有G可执行时，必须锁住该全局队列才能取G。
-
-* P持有G的LRQ(本地队列)，而持有P的M执行完G后在P本地队列中没有发现其他G可执行时，会先检查全局队列、网络，如果都没有可执行的G，这时就会从其他P的队列偷取一个G来执行（即工作窃取），否则，进入自旋状态。
-
-  M进入自旋，是为了避免频繁的暂止和复始产生大量的开销，当其他G准备就绪时，首先被调度到自旋的M上，其次才是去复始新线程。
-
-  自旋只会持续一段时间，如果自旋期间没有G需要调度，则之后会进入暂止状态，等待复始。
-  
-  M自旋时会调用G0协程，G0协程主要负责调度时协程的切换。
-  
-  M是否新建取决于正在自旋的M或者休眠的M的数量。
-  
-  如果LRQ满了，会把LRQ中随机一半G放到GRQ中；当M发现自己的LRQ、GRQ都没有G了，则会从其他M中窃取一半的G放到自己的LRQ。
-  
-* 运行时的G会尝试唤醒其他空闲的M和P进行组合，被唤醒的M和P由于刚被唤醒，进入自旋状态，G0发现P的本地队列没有G，则会从全局队列里获取G放入本地队列，获取数量`n = min(len(GQ)/GOMAXPROCS + 1, len(GQ/2))`
-
-* 空闲的M链表，主要用于保存无G可运行时而进入休眠的M，也保存在全局变量sched中，进入休眠的M会等待信号量m.park的唤醒。
-
-* 空闲的P链表，当无G可运行时，拥有P的M会释放P并进入休眠状态，释放的P会变成空闲状态，加入到空闲的P链表中，也保存在全局变量sched中，当M被唤醒时，其持有的P也会重新进入运行状态。
-
-> go中还有特殊的M和G, 它们是M0和G0.
->
-> M0是启动程序后的主线程, 这个M对应的实例会在全局变量M0中, 不需要在heap上分配, 
-> M0负责执行初始化操作和启动第一个G， 在之后M0就和其他的M一样了.
->
-> G0是仅用于负责调度的G, G0不指向任何可执行的函数, 每个M都会有一个自己的G0, 
-> 在调度或系统调用时会使用G0的栈空间, 全局变量的G0是M0的G0.
-
-## 调度的时机
-
-* go调度器，本质是为需要执行的G寻找M以及P，不是一个实体，调度是需要发生调度时由M执行runtime.schedule方法进行
-* 调度器初始化时，会依次调用mcommoninit：初始化M资源池、procresize：初始化P资源池、newproc：G的运行现场和调度队列
-* channel、mytex等sync操作发生协程阻塞
-* time.sleep
-* IO
-* GC
-* 主动yield
-* 运行过久或系统调度过久
-
-## 总的调度流程
-
-![goroutine schedule](https://github.com/Nixum/Java-Note/raw/master/picture/GMP模型整体调度.png)
-
-5.1 当M执行某个G时发生syscall或其他阻塞操作，M会阻塞，如果当前有一些G在执行，runtime会把这个线程M从P中摘除，然后再创建一个新的M（操作系统线程或者复用其他空闲线程）来服务这个P，即此时的M会直接管理阻塞的G，之前跟它绑定的P转移到其他M，执行其他G。
-
-当原阻塞的M系统调用或阻塞结束时，其绑定的这个G要继续往下执行，会优先尝试获取之前的P，若之前的P已经跟其他M绑定，则尝试从空闲的P列表获取P，将G放入这个P的本地队列，继续执行。如果获取不到P，则该M进入休眠，加入休眠队列，G则放入全局队列，等其他P消费它。
-
-### 调度Demo
-
-单核机器，只有一个处理器P，系统初始化两个线程M0和M1，处理器P优先绑定线程M0，线程M1进入休眠状态。目前P正在处理G0，LRQ里的G1、G2、G3等待处理，GRQ里的G4、G5等到分配。
-
-如果G0短时间处理完，P就会从LRQ取出G1进行处理，LRQ从GRQ取出G4进行分配；
-
-![goroutine runtime_1](https://github.com/Nixum/Java-Note/raw/master/picture/go_goroutine_runtime1.png)
-
-如果G0处理得很慢，系统就会让M0休眠，挂起G0，唤醒线程M1，将LRQ转移给M1进行处理；
-
-如果此时G1也处理得很慢，此时会阻塞，或者休眠M1，唤醒M0，回去继续处理G0；**切换M和G的操作由sysmon协程进行处理，即抢占式由sysmon函数实现**。
-
-如果G1处理得很快，则继续获取LRQ里的下一个G；待LRQ里的G都执行完了，切回M0，继续处理G0。
-
-![goroutine runtime_2](https://github.com/Nixum/Java-Note/raw/master/picture/go_goroutine_runtime2.png)
-
-如果是多核的，有多个P，多个M，当有一个P处理完所有的G后，会先从GRQ中获取G，如果获取不到，就会从另一个P的LRQ里取走一半G，继续处理。
-
-## sysmon协程
-
-**由sysmon协程进行协作式抢占**，对goroutine进行标记，执行goroutine时如果有标记就会让出CPU，对于syscall过久的P，会进行M和P的分配，防止P被占用过久影响调度。
-
-![go sysmon goroutine](https://github.com/Nixum/Java-Note/raw/master/picture/go_sysmon_goroutine.png)
-
-## M：Machine
-
-M本质是一个循环调度，不断的执行schedule函数，查找可运行的G。会在自旋与休眠的状态间转换。
-
-没有状态标记，只是会处于以下几个场景：
-
-* 自旋：M正在从LRQ中获取G，此时M会拥有一个P
-* 拥有一个P，执行G中的代码
-* 进行系统调用或者G的阻塞操作，此时M会释放P
-* 休眠，无G可执行，不拥有P，此时存在空闲线程队列
-
-## G：Goroutine的状态
-
-![go goroutine state](https://github.com/Nixum/Java-Note/raw/master/picture/go_goroutine_state.png)
-
-goroutine的状态不止以下几种，只是这几种比较常用
-
-| G状态       | 值     | 说明                                                         |
-| ----------- | ------ | ------------------------------------------------------------ |
-| _Gidle      | 0      | 刚刚被分配，还没被初始化                                     |
-| _Grunnable  | 1      | 表示在runqueue上，即LRQ，还没有被执行，此时的G才能被M执行，进入Grunning状态 |
-| _Grunning   | 2      | 执行中，不在runqueue上，与M、P绑定                           |
-| _Gsyscall   | 3      | 在执行系统调用，没有执行go代码，没在runqueue上，只与M绑定，此时P转移到其他M中 |
-| _Gwaiting   | 4      | 被阻塞（如IO、GC、chan阻塞、锁）不在runqueue，但一定在某个地方，比如channel中，锁排队中等 |
-| _Gdead      | 6      | 现在没有在使用，也许执行完，或者在free list中，或者正在被初始化，可能有stack |
-| _Gcopystack | 8      | 栈正在复制，此时没有go代码，也不在runqueue上，G正在获取一个新的栈的空间，并把原来的内容复制过去，防止GC扫描 |
-| _Gscan      | 0x1000 | 与runnable、running、syscall、waiting等状态结合，表示GC正在扫描这个G的栈 |
-
-## P：Processor的状态
-
-![go processor state](https://github.com/Nixum/Java-Note/raw/master/picture/go_processor_state.png)
-
-| 状态      | 描述                                                         |
-| --------- | ------------------------------------------------------------ |
-| _Pidle    | 空闲，无可运行的G，这时M拥有的P会加入空闲P队列中，LRQ为空    |
-| _Prunning | 被线程 M 持有，并且正在执行G或者G0（即用户代码或者调度器逻辑） |
-| _Psyscall | 用户代码触发了系统调用，此时P没有执行用户代码                |
-| _Pgcstop  | 被线程 M 持有，且因gc触发了STW而停止                         |
-| _Pdead    | 当运行时改变了P的数量时，多余的P会变成此状态                 |
-
-## 泄露与排查
-
-goroutine的泄露一般会导致内存的泄露，最终导致OOM，原因一般是该运行完成的goroutine一直在运行，没有结束，可能的原因是goroutine内阻塞，死循环。
-
-检查工具：pprof，请求/debug/pprof/goroutine接口或者heap接口，判断内存占用走势，分析内存使用情况。一般的走势是整体向上递增，伴随一个一个的峰谷。
-
-# GC
-
-## 基本
-
-* 使用可达性分析判断对象是否被回收
-* 三色标记法进行GC，本质是标记-清除算法，三色标记法是其改进版，主要是为了减少STW的时间
-* Go 语言为了实现高性能的并发垃圾收集器，使用三色抽象、并发增量回收、混合写屏障、调步算法以及用户程序协助等机制将垃圾收集的暂停时间优化至毫秒级以下
-
-## 三色标记
-
-* 白色：潜在垃圾，其内存可能会被垃圾收集器回收
-* 灰色：活跃对象，因为存在指向白色对象的外部指针，垃圾收集器会扫描这些对象的子对象
-* 黑色：活跃对象，包括不存在任何引用外部指针对象以及从根对象可达的对象
-
-![go gc简化过程](https://github.com/Nixum/Java-Note/raw/master/picture/go_gc.gif)
-
-1. 初始对象都是白色，首先把所有对象都放到白色集合中
-2. 从根节点开始遍历对象，遍历到的对象标记为灰色，放入到灰色集合
-3. 遍历灰色对象，把自己标记为黑色，放入黑色集合，将其引用的对象标记为灰色，放入灰色集合
-4. 重复第3步，直到灰色集合为空，此时所有可达对象都被标记，标记阶段完成
-5. 清除阶段开始，白色集合里的对象为不可达对象，即垃圾，对内存进行迭代清扫，回收白色对象
-6. 重置GC状态，将所有的对象放入白色集合中
-
-> 实际上并没有对应颜色的集合，对象被内存分配器分配在span中，span里有个gcmarkBits字段，每个bit代表一个slot被标记，白色对象该bit为0，灰色或黑色为1。
->
-> 每个p中都有wbBuf和gcw gcWork, 以及全局的workbuf标记队列, 实现生产者-消费者模型, 在这些队列中的指针为灰色对象, 表示已标记, 待扫描.
->
-> 从队列中取出来并把其引用对象入队的为黑色对象, 表示已标记, 已扫描. (runtime.scanobject).
-
-## 写屏障
-
-在标记过程中，用户程序可能会修改对象的指针，导致标记错误，对象被错误回收，因此在标记阶段需要STW，此时也无法并发或增量执行。
-
-> 想要在并发或增量的标记算法中保证正确性，需要达成任意一种三色不变性
->
-> * 强三色不变性：黑色对象不会指向白色对象，只会指向灰色对象或黑色对象
-> * 弱三色不变性：黑色对象指向的白色对象必须包含一条从灰色对象经由多个白色对象的可达路径
-
-go中使用了写屏障来保证标记的正确性。写屏障是在写入指针前执行的一小段代码，用以防止并发标记时指针丢失，这一小段代码Go是在编译时加入的。
-
-### Dijkstra的插入写屏障
-
-![go dijkstra插入写屏障](https://github.com/Nixum/Java-Note/raw/master/picture/go_dijkstra_插入写屏障.png)
-
-> Dijkstra写屏障是对被写入的指针进行grey操作, 不能防止指针从heap被隐藏到黑色的栈中, 需要STW重扫描栈.
-
-### Yuasa的删除写屏障
-
-![go yuasa删除写屏障](https://github.com/Nixum/Java-Note/raw/master/picture/go_yuasa_删除写屏障.png)
-
-> Yuasa写屏障是对将被覆盖的指针进行grey操作, 不能防止指针从栈被隐藏到黑色的heap对象中, 需要在GC开始时保存栈的快照.
-
-## 垃圾收集过程
-
-> 1. 清理终止阶段；
->    1. **暂停程序**，所有的处理器在这时会进入安全点（Safe point）；
->    2. 如果当前垃圾收集循环是强制触发的，我们还需要处理还未被清理的内存管理单元；
-> 2. 标记阶段；
->    1. 将状态切换至 `_GCmark`、开启写屏障、用户程序协助（Mutator Assiste）并将根对象入队；
->    2. 恢复执行程序，标记进程和用于协助的用户程序会开始并发标记内存中的对象，写屏障会将被覆盖的指针和新指针都标记成灰色，而所有新创建的对象都会被直接标记成黑色；
->    3. 开始扫描根对象，包括所有 Goroutine 的栈、全局对象以及不在堆中的运行时数据结构，扫描 Goroutine 栈期间会暂停当前处理器；
->    4. 依次处理灰色队列中的对象，将对象标记成黑色并将它们指向的对象标记成灰色；
->    5. 使用分布式的终止算法检查剩余的工作，发现标记阶段完成后进入标记终止阶段；
-> 3. 标记终止阶段；
->    1. **暂停程序**、将状态切换至 `_GCmarktermination` 并关闭辅助标记的用户程序；
->    2. 清理处理器上的线程缓存；
-> 4. 清理阶段；
->    1. 将状态切换至 `_GCoff` 开始清理阶段，初始化清理状态并关闭写屏障；
->    2. 恢复用户程序，所有新创建的对象会标记成白色；
->    3. 后台并发清理所有的内存管理单元，当 Goroutine 申请新的内存管理单元时就会触发清理；
-
-## GC触发时机
-
-太难了。。。有时间再继续整理
-
 # 参考
+
+[从 map 的 extra 字段谈起](https://cloud.tencent.com/developer/article/1859042)
 
 [Go入门指南](https://learnku.com/docs/the-way-to-go/chapter-description/3611)
 
@@ -684,18 +470,3 @@ go中使用了写屏障来保证标记的正确性。写屏障是在写入指针
 [Go map原理剖析](https://segmentfault.com/a/1190000020616487)
 
 [深度解密Go语言之channel](https://zhuanlan.zhihu.com/p/74613114)
-
-[GC](https://qcrao91.gitbook.io/go/gc/gc)
-
-[图解Go协程调度原理，小白都能理解 ](https://www.cnblogs.com/secondtonone1/p/11803961.html)
-
-[深入golang runtime的调度](https://zboya.github.io/post/go_scheduler)
-
-[gopher meetup-深入浅出Golang Runtime-yifhao](https://www.lanzous.com/i7lj0he)
-
-[Golang调度器GMP原理](https://studygolang.com/articles/27069?fr=sidebar)
-
-[【golang】GMP调度详解](https://segmentfault.com/a/1190000023869478)
-
-极客时间 - Go并发编程实战
-
