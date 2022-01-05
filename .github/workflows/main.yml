@@ -28,6 +28,7 @@ jobs:
           cp *.md ./blog/content/post/
           mkdir ./blog/static/img
           cp ./blog/themes/hugo-theme-stack/assets/img/*.ico ./blog/static/img
+          git clone https://github.com/Nixum/Nixum.git ./blog/content/page
       - name: Build
         run: |
           cd blog
