@@ -28,12 +28,6 @@ jobs:
           cp *.md ./blog/content/post/
           mkdir ./blog/static/img
           cp ./blog/themes/hugo-theme-stack/assets/img/*.ico ./blog/static/img
-          ls ./blog/content
-          echo "--"
-          ls ./blog/content/page/
-          echo "--"
-          ls ./blog/content/page/about/
-          echo "--"
           rm ./blog/content/page/about/.gitkeep
           git clone https://github.com/Nixum/Nixum.git ./blog/content/page/about
       - name: Build
@@ -41,10 +35,10 @@ jobs:
           cd blog
           hugo
           cp themes/hugo-theme-stack/CNAME public/
-#       - name: Deploy
-#         uses: peaceiris/actions-gh-pages@v2.5.1
-#         env:
-#           ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-#           EXTERNAL_REPOSITORY: Nixum/blog
-#           PUBLISH_BRANCH: master
-#           PUBLISH_DIR: ./blog/public
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v2.5.1
+        env:
+          ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+          EXTERNAL_REPOSITORY: Nixum/blog
+          PUBLISH_BRANCH: master
+          PUBLISH_DIR: ./blog/public
