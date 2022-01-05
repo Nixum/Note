@@ -1,5 +1,5 @@
 ---
-title: go
+title: Go
 description: go集合类、协程、runtime、GC原理
 date: 2020-11-07
 lastmod: 2021-10-24

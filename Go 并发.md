@@ -1,5 +1,5 @@
 ---
-title: go并发
+title: Go并发
 description: go内存模型、channel、并发包相关类的实现原理
 date: 2021-03-22
 lastmod: 2021-05-15
