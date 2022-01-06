@@ -65,7 +65,7 @@ type Slice struct {
 
 > 看起来二者没有什么区别，都在堆上分配内存，但是它们的行为不同，适用于不同的类型。
 >
-> new (T) 为每个新的类型 T 分配一片内存，初始化为 0 并且返回类型为 *T 的内存地址：这种函数 返回一个指向类型为 T，值为 0 的地址的指针，它**适用于值类型如数组和结构体**；它相当于 &T{}。
+> new (T) 为每个新的类型 T 分配一片内存，初始化为 0 并且返回类型为 *T 的内存地址：这种函数 返回一个指向类型为 T，值为 0 的地址的指针，它**适用于值类型，如数组和结构体**；它相当于 &T{}。
 > make(T) 返回一个类型为 T 的初始值，它只**适用于 3 种内建的引用类型：切片、map 和 channel**。
 
 * range遍历的注意点：使用range遍历时，底层的slice会发生一次拷贝，即range指向的slice是原始slice的拷贝，长度也是；将slice的每个元素赋值给v时，也发生了一次拷贝，无法通过修改v来修改slice。
@@ -169,13 +169,18 @@ type hmap struct {
 }
 
 type mapextra struct {
-    // 当map的key和value都不是指针，并且size都小于128字节时（即可以被inline），会把bmap标记为不含指针，避免gc时扫描整个hmap。通过overflow实现，overflow是个指针，指向溢出的bucket，GC时又必定会扫描指针，也就是会扫描所有bmap，而当map的key和value都是非指针类型的话，可以直接标记整个map的颜色，不用去扫描每个bmap的overflow指针，避免扫描每个bmap的overflow指针，但溢出的bucket总是存在，与key和value的类型无关，于是就利用overflow来指向溢出的bucket，并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），于是整个bmap就完全没指针了，也就不会被GC扫描。另一方面，当 GC 在扫描 hmap 时，通过 extra.overflow 这条路径（指针）就可以将 overflow 的 bucket 正常标记成黑色，从而不会被 GC 错误地回收。
+    // 当map的key和value都不是指针，并且size都小于128字节时（即可以被inline），会把bmap标记为不含指针，避免gc时扫描整个hmap。
+    // 通过overflow实现，bmap.overflow是个指针，指向溢出的bucket，GC时又必定会扫描指针，也就是会扫描所有bmap，
+    // 而当map的key和value都是非指针类型时，可直接标记整个map的颜色，避免扫描每个bmap的overflow指针，
+    // 但溢出的bucket总是存在，与key和value的类型无关，于是就利用overflow来指向溢出的bucket，
+    // 并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），于是整个bmap就完全没指针了，也就不会被GC扫描。
+    // 另一方面，当 GC 在扫描 hmap 时，通过 extra.overflow 这条路径（指针）就可以将 overflow 的 bucket 正常标记成黑色，从而不会被 GC 错误地回收。
 	overflow    *[]*bmap  // 包含hmap.buckets的overflow的buckets
 	oldoverflow *[]*bmap  // 包含扩容时的hmap.oldbuckets的overflow的bucket
 	nextOverflow *bmap    // 指向空闲的 overflow bucket 的指针
 }
 
-// 即桶bucket
+// 即桶bucket的结构
 type bmap struct {
     tophash [bucketCnt]uint8 // len为8的数组，即每个桶只能存8个键值对，包含此桶中每个key的哈希值的高8位，如果tophash[0] < minTopHash，tophash[0]则代表桶的搬迁evacuation状态。
 }
@@ -212,7 +217,7 @@ const (
     }{}.v)
 
 
-    // 每个桶（如果有溢出，则包含它的overflow的链接桶）在搬迁完成状态（evacuated* states）下，要么会包含它所有的键值对，要么一个都不包含（但不包括调用evacuate()方法阶段，该方法调用只会在对map发起write时发生，在该阶段其他goroutine是无法查看该map的）。简单的说，桶里的数据要么一起搬走，要么一个都还未搬。
+    // 每个桶（如果有溢出，则包含它的overflow的链接桶）在搬迁完成状态下，要么会包含它所有的键值对，要么一个都不包含（但不包括调用evacuate()方法阶段，该方法调用只会在对map发起write时发生，在该阶段其他goroutine是无法查看该map的）。简单的说，桶里的数据要么一起搬走，要么一个都还未搬。
     // tophash除了放置正常的高8位hash值，还会存储一些特殊状态值（标志该cell的搬迁状态）。正常的tophash值，最小应该是5，以下列出的就是一些特殊状态值。
     emptyRest      = 0 // 表示cell为空，并且比它高索引位的cell或者overflows中的cell都是空的。（初始化bucket时，就是该状态）
     emptyOne       = 1 // 空的cell，cell已经被搬迁到新的bucket
@@ -234,7 +239,7 @@ const (
 
 ![go map 结构图](https://github.com/Nixum/Java-Note/raw/master/picture/go_map_struct.png)
 
-注：一个bmap里key和value是各自存的，而不是想象中的key/value一对对存储，这样的好处是省掉padding字段，节省内存空间，方便内存对齐。
+注：一个bmap里key和value是各自存的，而key/value一对对存储，这样的好处是省掉padding字段，节省内存空间，方便内存对齐。
 
 > 例如，有这样一个类型的 map：`map[int64]int8`，如果按照 `key/value...` 这样的模式存储，那在每一个 key/value 对之后都要额外 padding 7 个字节；而将所有的 key，value 分别绑定到一起，这种形式 `key/key/.../value/value/...`，则只需要在最后添加 padding，每个 bucket 设计成最多只能放 8 个 key-value 对，如果有第 9 个 key-value 落入当前的 bucket，那就需要再构建一个 bucket ，通过 `overflow` 指针连接起来。
 
@@ -250,7 +255,7 @@ const (
 
   即key必须支持 == 或 != 运算的类型
 
-* map容量最多为 6.5 * 2^B 个元素，6.5是装载因子阈值常量，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。
+* map容量最多为 6.5 * 2^B 个元素，6.5是装载因子阈值常量，装载因子 = 哈希表中的元素 / 哈希表总长度，装载因子越大，冲突越多。B最大值是63.
 
 * 拉链法解决哈希冲突（指8个正常位和溢出桶），除留余数法得到桶的位置（哈希值的低B位）。
 
@@ -266,14 +271,23 @@ const (
 
 ## 创建初始化
 
-最终会在运行时调用makemap函数进行创建和初始化，
+通过`make(map[type]type)`，或者`make(map[type]type, n), n <= 8`创建的map，底层会调用makemap_small函数，并直接从堆上进行分配。
+
+```go
+func makemap_small() *hmap {
+    h := new(hmap)
+    h.hash0 = fastrand()
+    return h
+}
+```
+
+当hint > 8时，则会在运行时调用makemap函数进行创建和初始化，
+
 1. 计算哈希表占用的内存是否溢出或者超出能分配的最大值
 
 2. 调用fastrand()获取随机哈希种子
 
-3. 根据hint来计算需要的桶的数量，即计算B的值，用于初始化桶的数量 = 2^B；hint是一个预置的长度。
-
-   这个值不知道怎么来的，本人的机器debug时发现默认创建map时，hint=137，B=5
+3. 根据hint来计算需要的桶的数量来计算B的值（hint是make的第二个参数），用于初始化桶的数量 = 2^B；
 
 4. 调用makeBucketArray()分配连续的空间，创建用于保存桶的数组
 
@@ -284,6 +298,7 @@ const (
 ```go
 func makemap(t *maptype, hint int, h *hmap) *hmap {
 ...
+    h.hash0 = fastrand()
 	// 函数内，计算桶的数量
 	B := uint8(0)
 	//计算得到合适的B
@@ -291,6 +306,14 @@ func makemap(t *maptype, hint int, h *hmap) *hmap {
 		B++
     }
     h.B = B
+    if h.B != 0 {
+		var nextOverflow *bmap
+		h.buckets, nextOverflow = makeBucketArray(t, h.B, nil)
+		if nextOverflow != nil {
+			h.extra = new(mapextra)
+			h.extra.nextOverflow = nextOverflow
+		}
+	}
 ...
 }
 
@@ -300,8 +323,10 @@ func overLoadFactor(count int, B uint8) bool {
 }
 
 func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets unsafe.Pointer, nextOverflow *bmap) {
-	base := bucketShift(b)
+	base := bucketShift(b)  // base = 2 ^ B
 	nbuckets := base
+    // B < 4时，即桶的数量小于16，认为哈希冲突几率较小，因此不会创建溢出桶
+    // B >= 4时，创建2^(B-4)个溢出桶
 	if b >= 4 {
 		nbuckets += bucketShift(b - 4)
 		sz := t.bucket.size * nbuckets
@@ -310,11 +335,26 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 			nbuckets = up / t.bucket.size
 		}
 	}
-	buckets = newarray(t.bucket, int(nbuckets))
+    if dirtyalloc == nil {
+        // 为null, 会分配一个新的底层数组
+		buckets = newarray(t.bucket, int(nbuckets))
+	} else {
+        // 不为null，则它指向的是曾经分配过的底层数组，该底层数组是由之前同样的t和b参数通过makeBucketArray分配的，如果数组不为空，需要把该数组之前的数据清空并复用
+		buckets = dirtyalloc
+		size := t.bucket.size * nbuckets
+		if t.bucket.ptrdata != 0 {
+			memclrHasPointers(buckets, size)
+		} else {
+			memclrNoHeapPointers(buckets, size)
+		}
+	}
 	// 如果多申请了桶，将多申请的桶放在nextOverflow里备用
 	if base != nbuckets {
+        // 先计算出多申请出来的内存地址 nextOverflow
 		nextOverflow = (*bmap)(add(buckets, base*uintptr(t.bucketsize)))
+        // 计算出申请的最后一块bucket的地址
 		last := (*bmap)(add(buckets, (nbuckets-1)*uintptr(t.bucketsize)))
+        // 将最后一块bucket的overflow指针（指向链表的指针）指向buckets 的首部。 原因呢，是为了将来判断是否还有空的bucket 可以让溢出的bucket空间使用。
 		last.setoverflow(t, (*bmap)(buckets))
 	}
 	return buckets, nextOverflow
