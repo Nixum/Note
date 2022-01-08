@@ -1,10 +1,10 @@
 ---
-title: Go SE
-description: go集合类、协程、runtime、GC原理
+title: Go
+description: go 数组、slice、map原理、内存对齐
 date: 2020-11-07
 lastmod: 2021-10-24
 categories: ["Go"]
-tags: ["Go", "Go集合类原理", "Go协程", "Go GC"]
+tags: ["Go", "Go slice和map原理"]
 ---
 
 [TOC]
@@ -28,8 +28,8 @@ go编译时默认会使用内联优化，使用`go build --gcflags="-l" main.go`
 # 数组
 
 * 声明时必须指定固定长度，因为编译时需要知道数组长度以便分配内存，如`var arr1 [5]int`，或者`var arr2 = [5]int{1,2,3}, 其余数字为0`
-* 数组长度最大是2Gb
-* 当数组类型是整形时，所有元素都会被自动初始化为0，即声明完数组，数组会被设置类型的默认值
+* 数组**长度最大是2Gb**
+* 当数组类型是整形时，所有元素都会被自动初始化为0，即声明完数组，**数组会被设置类型的默认值**
 * 可以使用new()来创建，如`var arr3 = new([3]int)`，arr3的类型是`*[3]int`，arr1、arr2的类型是`[5]int`
 * 函数的参数可以是[5]int, 表明入参是数组，如果是[]int，表明入参是slice。类型[3]int和[5]int是两种不同的类型。
 * **数组是值类型**，赋值和传参会进行拷贝，函数内部的修改不会影响原始数组。
@@ -68,17 +68,9 @@ type Slice struct {
 > new (T) 为每个新的类型 T 分配一片内存，初始化为 0 并且返回类型为 *T 的内存地址：这种函数 返回一个指向类型为 T，值为 0 的地址的指针，它**适用于值类型，如数组和结构体**；它相当于 &T{}。
 > make(T) 返回一个类型为 T 的初始值，它只**适用于 3 种内建的引用类型：切片、map 和 channel**。
 
-* range遍历的注意点：使用range遍历时，底层的slice会发生一次拷贝，即range指向的slice是原始slice的拷贝，长度也是；将slice的每个元素赋值给v时，也发生了一次拷贝，无法通过修改v来修改slice。
+* range遍历的注意点：将slice的每个元素赋值给v时，发生了一次拷贝，无法通过修改v来修改slice。如果是slice是指针结构体类型，还是能修改的。也就是说如果slice是指针类型，通过range遍历append时要注意
 
-demo
 ```go
-	arr := []int{1, 2, 3} // 比如此时arr的地址是0xc00000e380
-	for _, v := range arr {
-        // 此时arr的地址是0xc00000c3c0，可见发生了拷贝，v的地址就一直不变的
-		arr = append(arr, v)
-	}
-	fmt.Println(arr)  // 打印：1 2 3 1 2 3
-
 	arr2 := []int{1, 2, 3}
 	newArr := []*int{}
 	for _, v := range arr2 {
@@ -99,7 +91,7 @@ demo
 2. 原slice容量不够，将slice扩容，得到新的slice
 3. 将新元素追加到新slice，长度 + 1，返回新slice
 
-另外，copy函数拷贝两个slice时，会将源slice拷贝到目标slice，如果目标slice的长度<源slice，不会发生扩容。
+另外，**copy函数拷贝**两个slice时，会将源slice拷贝到目标slice，**如果目标slice的长度<源slice，不会发生扩容**。
 
 Demo：
 
@@ -121,7 +113,7 @@ data = [0 0 0 0 0 0 0 0 9 0]
 
 扩容实际上包括两部分：计算容量的规则 和 内存对齐
 
-1. 如果期望容量大于当前容量的两倍就会使用期望容量，期望容量指的是把元素加进去后的容量。
+1. 如果期望容量大于当前容量的两倍就会使用期望容量，期望容量指的是把元素加进去后的容量，一般发生在append 多个的时候，如 append(arr, 1, 2, 3, 4)。
 
 2. 如果当前切片的长度小于 1024，扩容两倍。
 
@@ -132,7 +124,7 @@ data = [0 0 0 0 0 0 0 0 9 0]
    内存对齐主要是为了提高内存分配效率，减少内存碎片。
 
 ```go
-// 此时期望容量是2 + 3 = 5 > 旧容量的两倍 2 * 2 = 4，期望容量为5，占40个字节，触发内存对齐，向上取整为48字节，此时新容量为 48 / 8 = 6。
+// 此时期望容量是2 + 3 = 5 > 旧容量的两倍 2 * 2 = 4，期望容量为5，占40个字节，不是2^n次，so触发内存对齐，向上取整为48字节，此时新容量为 48 / 8 = 6。
 s1 := []int64{1, 2}
 s1 = append(s1, 4, 5, 6)
 fmt.Printf("len=%d, cap=%d\n",len(s1),cap(s1))  // len=5, cap=6
@@ -149,6 +141,70 @@ s = append(s, 6)
 fmt.Printf("len=%d, cap=%d\n",len(s),cap(s))  // len=5, cap=8
 ```
 
+## 内存对齐
+
+CPU读取数据时不会一个字节一个字节去读取，而是一块一块，块的大小可以是2、4、6、8、16字节，块大小称为内存访问粒度。32位CPU一次读取4个字节，64位CPU一次读取8个字节。
+
+如果未进行内存对齐，会导致CPU进行两次内存访问，并且需要花费额外的时钟周期来处理对齐及运算，如果对齐了内存，一次读取就能访问完成，内存对齐可能会耗费额外的空间，但是可以加快读取效率，标准的空间换时间做法。
+
+```go
+type Part1 struct {
+	a bool
+	b int32
+	c int8
+	d int64
+	e byte
+}
+// 乍一看按每个类型所占字节数去算，算出来的内存占用是15个字节，但实际上是32字节
+```
+
+对齐规则：
+
+> - 结构体的成员变量，第一个成员变量的偏移量为 0。往后的每个成员变量的对齐值必须为编译器默认对齐长度（`#pragma pack(n)`）或当前成员变量类型的长度（`unsafe.Sizeof`），取最小值作为当前类型的对齐值。其偏移量必须为对齐值的整数倍
+> - 结构体本身，对齐值必须为编译器默认对齐长度（`#pragma pack(n)`）或结构体的所有成员变量类型中的最大长度，取最大数的最小整数倍作为对齐值
+> - 结合以上两点，可得知若编译器默认对齐长度（`#pragma pack(n)`）超过结构体内成员变量的类型最大长度时，默认对齐长度是没有任何意义的
+
+对齐过程：
+
+| 成员变量   | 类型  | 偏移量 | 自身占用 |
+| ---------- | ----- | ------ | -------- |
+| a          | bool  | 0      | 1        |
+| 字节对齐   | 无    | 1      | 3        |
+| b          | int32 | 4      | 4        |
+| c          | int8  | 8      | 1        |
+| 字节对齐   | 无    | 9      | 7        |
+| d          | int64 | 16     | 8        |
+| e          | byte  | 24     | 1        |
+| 字节对齐   | 无    | 25     | 7        |
+| 总占用大小 | -     | -      | 32       |
+
+内存布局：axxx|bbbb|cxxx|xxxx|dddd|dddd|e，之后要保证整个结构体进行字节对齐，发现它不是2^n，可得出最近一个数是32。
+
+对结构体内字段顺序进行调整后，可以发现算出来的大小会不一样
+
+```go
+type Part2 struct {
+	e byte
+	c int8
+	a bool
+	b int32
+	d int64
+}
+// 调整字段顺序后，算出来的大小是16，原因是整个结构体本身不需要额外对齐
+```
+
+| 成员变量   | 类型  | 偏移量 | 自身占用 |
+| ---------- | ----- | ------ | -------- |
+| e          | byte  | 0      | 1        |
+| c          | int8  | 1      | 1        |
+| a          | bool  | 2      | 1        |
+| 字节对齐   | 无    | 3      | 1        |
+| b          | int32 | 4      | 4        |
+| d          | int64 | 8      | 8        |
+| 总占用大小 | -     | -      | 16       |
+
+内存布局：ecax|bbbb|dddd|dddd
+
 # Map
 
 ## 数据结构
@@ -156,14 +212,15 @@ fmt.Printf("len=%d, cap=%d\n",len(s),cap(s))  // len=5, cap=8
 ```go
 type hmap struct {
 	count     int    // 哈希表中元素的数量
-	flags     uint8  // 记录map的状态, 1：可能有迭代器使用buckets，2：可能有迭代器使用oldbuckets，4：有协程正在向map中写入key，8：等量扩容
+    // flags枚举：1: 可能有迭代器使用buckets，2: 可能有迭代器使用oldbuckets，4: 有协程正在向map中写入key，8:等量扩容
+    flags     uint8  // 记录map的状态
     B         uint8  // buckets的数量，len(buckets) = 2^B
 	noverflow uint16 // 溢出的bucket的个数
 	hash0     uint32 // 哈希种子，为哈希函数的结果引入随机性。该值在创建哈希表时确定，在构造方法中传入
 
 	buckets    unsafe.Pointer // 桶的地址，指向一个bmap数组，即指向很多个桶
 	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半或0.75，非扩容状态下为null
-	nevacuate  uintptr // 扩容迁移的进度，小于nevacuate的buckets表示已迁移完成，同时也表示下一个要迁移的桶在oldbuckets中的位置
+	nevacuate  uintptr // 扩容迁移的进度，小于nevacuate的buckets表示已迁移完成，同时也用来计算下一个要迁移的桶在oldbuckets中的位置
 
 	extra *mapextra // 用于扩容的指针，存储单个桶装满时溢出的数据，溢出桶和正常桶在内存上是连续的，该字段是为了优化GC扫描而设计的。
 }
@@ -182,8 +239,9 @@ type mapextra struct {
 
 // 即桶bucket的结构
 type bmap struct {
-    // len为8的数组，即每个桶只能存8个键值对，包含此桶中每个key的哈希值的高8位，如果tophash[0] < minTopHash，说明前minTopHash个以及被搬迁过
-    // tophash的最低位代表桶的搬迁evacuation状态，0表示在X part，1表示在Y part。
+    // 表示一个桶，实际上为len为8的数组，每个桶只能存8个键值对，包含此桶中每个key的哈希值的高8位
+    // 如果tophash[0] < minTopHash，说明前minTopHash个以及被搬迁过
+    // tophash的最低位代表桶的搬迁evacuation状态，最低位0表示在X part，1表示在Y part。
     tophash [bucketCnt]uint8 
 }
 
