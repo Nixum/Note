@@ -1206,6 +1206,20 @@ docker run --rm --name kubectl bitnami/kubectl:latest version
 docker run --rm -it --entrypoint env 镜像:tag /bin/bash
 ```
 
+# ServiceMersh
+
+优点：
+
+1. 业务无需感知微服务组件，诸如限流、熔断、容错、降级、负载均衡等服务治理相关的中间件，这些功能全由ServiceMersh提供
+2. 不限制开发语言和框架，提供多语言服务治理能力
+3. 服务零成本升级，对服务无侵入，不会产生SDK依赖
+4. 使得微服务体系统一管理和演进
+
+缺点：
+
+1. 部署复杂，比如跨集群、跨机房等一些复杂环境覆盖不易
+2. 每次网络请求会多一跳，带来一定的资源消耗和延时
+
 # Istio
 
 upstream：发出请求的流量

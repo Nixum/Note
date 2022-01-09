@@ -1,10 +1,10 @@
 ---
 title: Go并发
-description: go内存模型、channel、并发包相关类的实现原理
+description: go内存模型、context、channel、并发包相关类的实现原理
 date: 2021-03-22
 lastmod: 2021-05-15
 categories: ["Go"]
-tags: ["Go并发", "Go内存模型", "Go channel原理"]
+tags: ["Go并发", "Go内存模型", "Go channel原理", "context原理"]
 ---
 
 [TOC]
@@ -89,6 +89,10 @@ func hello() {
   * send操作必定heppen before于receive操作；
   * close一个channel的操作，必定happen before从关闭的channel中读取一个零值；
 * 此外还有Mutex / RWMutex、WaitGroup、Once、atomic
+
+# Context
+
+
 
 # Channel
 

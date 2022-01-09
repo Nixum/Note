@@ -234,7 +234,7 @@ type mapextra struct {
     // 另一方面，当 GC 在扫描 hmap 时，通过 extra.overflow 这条路径（指针）就可以将 overflow 的 bucket 正常标记成黑色，从而不会被 GC 错误地回收。
 	overflow    *[]*bmap  // 包含hmap.buckets的overflow的buckets
 	oldoverflow *[]*bmap  // 包含扩容时的hmap.oldbuckets的overflow的bucket
-	nextOverflow *bmap    // 指向空闲的 overflow bucket 的指针
+	nextOverflow *bmap    // 指向空闲的 overflow bucket 的指针，用于预分配
 }
 
 // 即桶bucket的结构
@@ -335,7 +335,7 @@ const (
 
 ## 创建初始化
 
-通过`make(map[type]type)`，或者`make(map[type]type, hint), hint <= 8`创建的map，底层会调用makemap_small函数，并直接从堆上进行分配。
+通过`make(map[type]type)`，或者`make(map[type]type, hint), hint <= 8`创建的map，底层会调用makemap_small函数，并直接从堆上进行分配，此时只分配内存空间，不初始化桶，懒加载，只有在第一次插入时才会初始化桶，此时B=0，桶的数量为1。
 
 ```go
 func makemap_small() *hmap {
@@ -357,7 +357,7 @@ func makemap_small() *hmap {
 
    当桶的数量小于2^4时，由于数据较少，哈希冲突的可能性较小，此时不会创建溢出桶。
 
-   当桶的数量大于2^4时，就会额外创建2^(B-4)个溢出桶，溢出桶与普通桶在内存空间上是连续的。
+   当桶的数量大于2^4时，就会额外创建2^(B-4)个溢出桶，溢出桶与普通桶在内存空间上是连续的，使用extra的nextOveflow来做溢出桶，预分配。
 
 ```go
 func makemap(t *maptype, hint int, h *hmap) *hmap {
@@ -443,7 +443,7 @@ mapaccess2也会调用mapaccess1，只是返回的时候会返回多一个用于
 
 2. 确定使用buckets数组还是oldbuckets数组：判断oldbuckets数组中是否为空，不为空说明正处于扩容中，还没完成迁移，则重新计算桶的位置，并在oldbuckets数组找到对应的桶；如果为空，则在buckets数组中找到对应的桶。
 
-3. 在桶中找tophash的位置：用key哈希计算得到的哈希值，取高8个bit位，计算得到此bucket桶中的tophash，即key在桶中的编号，之后在桶中的正常位遍历比较。
+3. 在桶中找tophash的位置：用key哈希计算得到的哈希值，取高8个bit位 + minTopshash，计算得到此bucket桶中的tophash，即key在桶中的编号，之后在桶中的正常位遍历比较。
 
 4. 每个桶是一整片连续的内存空间，先遍历bucket桶中的正常位，与桶中的tophash进行比较，当找到对应的tophash时，根据tophash进行计算得到key，根据key的大小计算得到value的地址，找到value。
 
@@ -477,7 +477,7 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 
 1. 先判断hmap是否为空，是否是并发写入，如果是直接抛错误；修改当前hamp的状态。
 
-2. 根据key计算出哈希；还要就是判断bucket桶是否为空，为空则分配bmap数组。
+2. 根据key计算出哈希；还要就是判断bucket桶是否为空，为空则分配bmap数组，。
 
 3. 判断 hmap的oldbuckets是否为空，不为空说明当前处于扩容搬迁，则进行搬迁工作，完了再进行之后的流程。
 
@@ -655,7 +655,7 @@ func growWork(t *maptype, h *hmap, bucket uintptr) {
 
 ## 删除
 
-调用delete函数，无论要删除的key是否存在，delete都不会返回任何结果。删除实际上也是一个key的定位 + 删除的操作，定位到key后，将其键值对置空，hmap的count - 1，tophash置为empty。删除过程也会触发扩容迁移。
+调用delete函数，无论要删除的key是否存在，delete都不会返回任何结果。删除实际上也是一个key的定位 + 删除的操作，定位到key后，将其键值对置空，hmap的count - 1，tophash置为empty。删除过程也会检查是否处于扩容状态，如果是，则会触发搬迁。
 
 ## 遍历
 
