@@ -155,7 +155,7 @@ chan<- <-chan int  // 等价于 chan<- (<-chan int)
 chan (<-chan int)  // 等价于 chan (<-chan int)
 ```
 
-* 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan以及被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的。
+* 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan已经被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的。
 * 双向chan可以赋值给单向chan，但反过来不可以
 
 ## 初始化
@@ -208,7 +208,7 @@ func makechan(t *chantype, size int) *hchan {
 
 ## 接收数据
 
-使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分配str接收到的零值是发送者发的还是ch关闭`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
+使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分辨str接收到的零值是发送者发的还是ch关闭`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
 
 1. 如果chan是nil，则把接收者的goroutine park（阻塞休眠），接收者被永久阻塞。
 

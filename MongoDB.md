@@ -281,6 +281,14 @@ MMap存储引擎的 主键索引、普通索引、组合索引的数据结构都
 * 可以创建部分索引，比如对id>50的文档才会对id创建索引；对有值的字段才建索引，需要在创建索引时使用partialFilterExpression表达式
 * 创建索引时使用后台创建索引，{background: true}
 
+# 引擎
+
+## MMAP
+
+## wiredtiger
+
+有空再补...
+
 # 事务
 
 mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB server不支持事务，至少需要一主一从两个。
