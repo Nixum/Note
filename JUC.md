@@ -288,13 +288,13 @@ synchronized是几种锁的封装：自旋锁、锁消除、锁粗化、轻量�
 
 **线程池 Executors静态类**，工厂方法生成以下线程池
 
-​	newCachedThreadPool：核心数是0，最大数是Integer.MAX_VALUE，使用SynchronousQueue，不存储任务。对于每个任务，如果有空闲线程可用，立即让他执行任务，如果没有可用得空闲线程，则创建新线程，空闲线程超时设置是1分钟，线程池可无限扩展。容易造成堆外内存溢出，一般用于大量短期任务
+## 线程池的分类
 
-​	newFixedThreadPool：构建有固定大小的线程池，使用LinkedBlockingQueue。如果提交的任务数多于核心线程数，则把任务放到队列中，等其他任务完成后再运行他，创建的线程不会超时
+* newCachedThreadPool：核心数是0，最大数是Integer.MAX_VALUE，使用SynchronousQueue，不存储任务。对于每个任务，如果有空闲线程可用，立即让他执行任务，如果没有可用得空闲线程，则创建新线程，空闲线程超时设置是1分钟，线程池可无限扩展。容易造成堆外内存溢出，一般用于大量短期任务
 
-​	newSingleThreadExecutor：大小为 1 的线程池，使用LinkedBlockingQueue，每次只有一个线程执行任务，从阻塞队列中取任务一个接一个执行
+* newFixedThreadPool：构建有固定大小的线程池，使用LinkedBlockingQueue。如果提交的任务数多于核心线程数，则把任务放到队列中，等其他任务完成后再运行他，创建的线程不会超时
 
-
+* newSingleThreadExecutor：大小为 1 的线程池，使用LinkedBlockingQueue，每次只有一个线程执行任务，从阻塞队列中取任务一个接一个执行
 
 这三个静态方法 返回实现了ExecutorService接口的ThreadPoolExecutor类的对象
 
@@ -306,6 +306,8 @@ threadPool.execute(线程实例);	// 无返回值
 Future<T> = threadPool.submit(实现了Callable<T>的实例); // 有返回值
 threadPool.shutdown();
 ```
+
+## 基础
 
 在阿里巴巴开发手册中不提倡使用Executors创建，而是通过 ThreadPoolExecutor的方式去定制线程池，从而明确线程池的参数
 

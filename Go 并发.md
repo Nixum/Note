@@ -130,9 +130,9 @@ type waitq struct {
 
 * chan是引用类型，使用make关键字创建，未初始化时的零值是nil，如
 
-  `ch := make(chan, string, 10)`，创建一个能处理string的缓冲区大小为10的channel，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；
+  `ch := make(chan string, 10)`，创建一个能处理string的缓冲区大小为10的channel，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；
 
-  `ch := make(chan, string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，即如果连续发送两次数据，第一次如果没有被接收的话，第二次就会被阻塞。
+  `ch := make(chan string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，即如果连续发送两次数据，第一次如果没有被接收的话，第二次就会被阻塞。
 
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
