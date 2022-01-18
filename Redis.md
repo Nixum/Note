@@ -19,7 +19,7 @@ Redis所有类型有一个顶层的数据结构叫RedisObject，这个RedisObjec
 
 比如：SADD命令只能用于Set，LPUSH命令只能用于List，而DEL、TTL又能用于所有键，要正确实现这些命令，就需要为不同类型的键设置不同的处理方式；另外，同一种数据类型可能由不同的数据结构实现，比如List，底层可能是压缩列表或者双向链表，因此还需要知道数据类型的编码方式。
 
-![](https://github.com/Nixum/Java-Note/raw/master/picture/RedisObject.jpg)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/RedisObject.png)
 
 ```c
 typedef struct redisObject {
@@ -82,7 +82,7 @@ Redis的String类型底层有两种保存形式，当保存的是64位有符号�
 * 当保存的是字符串时，如果字符串<=44字节，RedisObject中元数据，指针和SDS是一块连续的内存区域，避免内存碎片
 * 当保存的是字符串时，如果字符串>44字节，RedisObject会给SDS分配独立的空间，并用指针指向SDS
 
-![Redis String RedisObject: 来自极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/picture/Redis_String RedisObject.png)
+![Redis String RedisObject: 来自极客时间Redis核心技术与实战](https://github.com/Nixum/Java-Note/raw/master/picture/Redis_String_RedisObject.png)
 
 当使用String类型时，且value的类型是String时，如果value的长度太小，可能会出现元数据的大小比数据本身的大小还大，造成额外的内存开销。如果能替换成Long类型，实际存储的大小会大大降低。
 

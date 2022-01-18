@@ -810,19 +810,17 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 ## Service
 
-工作在第四层，传输层，一般转发TCP、UDP流量。通过spec.selector，根据Pod的标签选择对应的Pod。
+* 工作在第四层，传输层，一般转发TCP、UDP流量。
 
-每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
+* 每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
 
-虽然Service每次重启IP也会发生变化，但是相比Pod会更加稳定。
+  虽然Service每次重启IP也会发生变化，但是相比Pod会更加稳定。
 
-一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
+* 一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
 
-创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的ip和端口作为环境变量，该环境变量会随着Pod或Service的ip和端口的改变而改变，可以实现基于环境变量的服务发现，但是只有在同一namespace下的Pod内才可以使用此环境变量进行访问。
+* Service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中，所以请求经过Service会进行kube-proxy的转发。
 
-Service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中，所以请求经过Service会进行kube-proxy的转发。
-
-大量的Pod会产生大量的iptables导致性能问题，kube-proxy使用IPVS模式来解决。
+  大量的Pod会产生大量的iptables导致性能问题，kube-proxy使用IPVS模式来解决。
 
 ### 关于Headless
 
@@ -869,6 +867,104 @@ Service的本质是通过kube-proxy在宿主机上设置iptables规则、DNS映�
 当无法通过ClusterIP访问Service访问时，检查Service是否有Endpoints，检查Kube-proxy是否正确运行；
 
 最后检查宿主机上的iptables。
+
+### EndPoints的作用
+
+
+
+### 关于服务发现
+
+Kubernetes支持两种服务发现：环境变量和DNS服务
+
+#### 环境变量
+
+创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的IP和端口作为环境变量，该环境变量会随着Service的IP和端口的改变而改变，但设置到容器里的环境变量不会。
+
+可以使用`kubectl exec -it {pod名字} -n {名称空间 env}`查看，HOST为service的cluster-IP
+
+Kubernetes会设置两类环境变量：
+
+* service环境变量
+
+  ```ini
+  {service名称}_SERVICE_HOST=172.20.97.162
+  {service名称}_SERVICE_PORT=8080
+  ```
+
+* Docker Link环境变量
+
+  DockerLink的作用：
+
+  > 同一个宿主机上的多个docker容器之间如果想进行通信，可以通过使用容器的ip地址来通信，也可以通过宿主机的ip加上容器暴露出的端口号来通信，前者会导致ip地址的硬编码，不方便迁移，并且容器重启后ip地址会改变，除非使用固定的ip，后者的通信方式比较单一，只能依靠监听在暴露出的端口的进程来进行有限的通信。通过docker的link机制可以通过一个name来和另一个容器通信，link机制方便了容器去发现其它的容器并且可以安全的传递一些连接信息给其它的容器。
+  >
+  > 使用时需要先连接容器，使用命令`docker run -d --name {容器名称} --link {另一个容器名称}`，之后在容器内即可使用对方容器的名称进行通信
+
+  ```ini
+  {service名称}_PORT_8080_TCP_ADDR=172.20.97.162
+  {service名称}_PORT_8080_TCP_PORT=8080
+  {service名称}_PORT_8080_TCP_PROTO=tcp
+  {service名称}_PORT=tcp://10.100.251.57:8080
+  {service名称}_PORT_8080_TCP=tcp://10.100.251.57:8080
+  ```
+
+然后，服务即可通过环境变量获取要访问的服务的IP和端口，但是这种服务发现方式有一些**缺点**：
+
+* 先前的服务必须先运行起来，否则环境变量无法被注入，导致Pod无法使用该环境变量
+* 如果依赖的service被删了或绑定了新地址，环境变量不会被修改，仍然使用旧有地址
+* 只有在同一namespace下的Pod内才可以使用此环境变量进行访问，不同namespace下无法通过变量访问
+
+#### DNS服务
+
+一般情况下，会使用CoreDNS作为Kubernetes集群的DNS，CoreDNS默认配置的缓存时间是30s，增大cache时间对域名解析TTL敏感型的应用有一定的影响，会延缓应用感知域名解析配置变更时间。
+
+Kubernetes 通过修改每个 Pod 中每个容器的域名解析配置文件`/etc/resolv.conf` 来达到服务发现的目的。
+
+比如：
+
+```ini
+# /etc/resolv.conf
+nameserver 172.20.0.10
+# 主机名查询列表，默认只包含本地域名，阈值为6个，256个字符
+search {名称空间}.svc.cluster.local svc.cluster.local cluster.local us-west-2.compute.internal
+# 阈值为 15
+options ndots:5
+# 等待 DNS 服务器响应的超时时间，单位为秒。阈值为 30 s。
+options timeout: 30
+# 向同一个 DNS 服务器发起重试的次数，单位为次。阈值为 5。
+options attempts: 1
+```
+
+其含义为：DNS服务器为172.20.0.10，当查询的关键词中的 . 的数量少于5个，则根据search中配置的域名进行查询，当查询都没有返回正确响应时再尝试查询关键词本身，比如执行`host -v cn.bing.com`，会得到
+
+```ini
+Trying "cn.bing.com.{名称空间}.svc.cluster.local"
+Trying "cn.bing.com.svc.cluster.local"
+Trying "cn.bing.com.cluster.local"
+Trying "cn.bing.com.us-west-2.compute.internal"
+Trying "cn.bing.com"
+...
+```
+
+coreDNS会监听集群内所有ServiceAPI，以在服务不可用时移除记录，在新服务创建时插入新记录，记录存储在coreDNS的本地缓存中。
+
+Kubernates的DNS服务支持Service的A记录、SRV记录（用于通用化地定位服务）和CNAME记录。
+
+当设置了service并select了一类pod之后，DNS服务就会产生以下A记录和SRV记录
+
+```ini
+{service名称}.{名称空间}.svc.cluster.local. 5 IN A 10.100.71.56
+_http._tcp.{service名称}.{名称空间}.svc.cluster.local. 30 IN SRV 10 100 443 {service名称}.{名称空间}.svc.cluster.local.
+```
+
+如果是headless service，则生成的A记录如下
+
+```ini
+{service名称}.{名称空间}.svc.cluster.local. 5 IN A 192.168.62.111
+{service名称}.{名称空间}.svc.cluster.local. 5 IN A 192.168.62.112
+{service名称}.{名称空间}.svc.cluster.local. 5 IN A 192.168.62.113
+```
+
+
 
 ## Ingress
 
