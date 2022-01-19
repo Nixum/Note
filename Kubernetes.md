@@ -868,8 +868,18 @@ Service的本质是通过kube-proxy在宿主机上设置iptables规则、DNS映�
 
 最后检查宿主机上的iptables。
 
-### EndPoints的作用
+### endpoints的作用
 
+当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址。
+
+endpoints controller的作用
+
+* 负责生成和维护所有endpoint对象的控制器；
+* 负责监听service和对应pod的变化；
+* 监听到service被删除，则删除和该service同名的endpoint对象；
+* 监听到新的service被创建，则根据新建service信息获取相关pod列表，然后创建对应endpoint对象；
+* 监听到service被更新，则根据更新后的service信息获取相关pod列表，然后更新对应endpoint对象；
+* 监听到pod事件，则更新对应的service的endpoint对象，将pod IP记录到endpoint中；
 
 
 ### 关于服务发现
@@ -917,15 +927,16 @@ Kubernetes会设置两类环境变量：
 
 一般情况下，会使用CoreDNS作为Kubernetes集群的DNS，CoreDNS默认配置的缓存时间是30s，增大cache时间对域名解析TTL敏感型的应用有一定的影响，会延缓应用感知域名解析配置变更时间。
 
-Kubernetes 通过修改每个 Pod 中每个容器的域名解析配置文件`/etc/resolv.conf` 来达到服务发现的目的。
+**Kubernetes 通过修改每个 Pod 中每个容器的域名解析配置文件`/etc/resolv.conf` 来达到服务发现的目的**。
 
 比如：
 
 ```ini
 # /etc/resolv.conf
+# nameserver表示DNS服务器
 nameserver 172.20.0.10
-# 主机名查询列表，默认只包含本地域名，阈值为6个，256个字符
-search {名称空间}.svc.cluster.local svc.cluster.local cluster.local us-west-2.compute.internal
+# 主机名查询列表，默认只包含本地域名，阈值为6个，256个字符，会以 {名称空间}.svc.cluster.local、svc.cluster.local、cluster.local 3个后缀，最多进行8次查询 (IPV4和IPV6查询各四次) 才能得到正确解析结果
+search {名称空间}.svc.cluster.local svc.cluster.local cluster.local
 # 阈值为 15
 options ndots:5
 # 等待 DNS 服务器响应的超时时间，单位为秒。阈值为 30 s。
@@ -934,7 +945,11 @@ options timeout: 30
 options attempts: 1
 ```
 
-其含义为：DNS服务器为172.20.0.10，当查询的关键词中的 . 的数量少于5个，则根据search中配置的域名进行查询，当查询都没有返回正确响应时再尝试查询关键词本身，比如执行`host -v cn.bing.com`，会得到
+nameserver指向的IP，就是 coreDNS的service的ClusterIP，所有的域名解析都需要经过coreDNS的ClusterIP来进行解析，不论是Kubernetes内部域名还是外部域名；
+
+coreDNS会监听集群内所有ServiceAPI，以在服务不可用时移除记录，在新服务创建时插入新记录，记录存储在coreDNS的本地缓存中。
+
+在这个`/etc/resolv.conf`里配置含义为：DNS服务器为172.20.0.10，当查询的关键词中的 `.` 的数量少于5个，则根据search中配置的域名进行查询，当查询都没有返回正确响应时再尝试查询关键词本身，比如执行`host -v cn.bing.com`，会得到
 
 ```ini
 Trying "cn.bing.com.{名称空间}.svc.cluster.local"
@@ -945,9 +960,16 @@ Trying "cn.bing.com"
 ...
 ```
 
-coreDNS会监听集群内所有ServiceAPI，以在服务不可用时移除记录，在新服务创建时插入新记录，记录存储在coreDNS的本地缓存中。
+所以，直接请求集群内部同一namespace下的域名时效率最高，因为只需要查询一次即可找到，比如在同一namespace下直接`curl {服务service名} `的效率是比`curl {服务service名}.{namespace}`要高，因为少了一次域名查询。这种DNS查询解析叫非全限定域名查找，因为我们配置了`ndots=5`，所以当域名中`.` 的个数小于5个，就会走search查询解析，如果要使用全限定域名查找，则需要在域名后面加`.`，就不会走search查询解析了，比如当`cn.bing.com.`此时就只会查询一次了，查不到才会走search查询。也可以通过修改`ndots`的数量，来减少域名查询次数的问题，可以在Pod的配置中添加`dnsConfig`修改`ndots`的值。当容器内部的`/etc/resolv.config`都找不到时，就会使用宿主机的`/etc/resolv.config`进行查找。
 
-Kubernates的DNS服务支持Service的A记录、SRV记录（用于通用化地定位服务）和CNAME记录。
+> Kubernetes 集群中支持通过 dnsPolicy 字段为每个 Pod 配置不同的 DNS 策略。目前支持四种策略：
+>
+> * ClusterFirst：通过集群 DNS 服务来做域名解析，Pod 内 /etc/resolv.conf 配置的 DNS 服务地址是集群 DNS 服务的 CoreDNS 地址。该策略是集群工作负载的默认策略；
+> * None：忽略集群 DNS 策略，需要您提供 dnsConfig 字段来指定 DNS 配置信息；
+> * Default：Pod 直接继承集群节点的域名解析配置。即在集群直接使用节点的 /etc/resolv.conf 文件；
+> * ClusterFirstWithHostNetwork：强制在 hostNetWork 网络模式下使用 ClusterFirst 策略（默认使用 Default 策略）
+
+另外，Kubernates的DNS服务支持Service的A记录、SRV记录（用于通用化地定位服务）和CNAME记录。
 
 当设置了service并select了一类pod之后，DNS服务就会产生以下A记录和SRV记录
 
