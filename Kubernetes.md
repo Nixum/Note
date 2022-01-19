@@ -818,9 +818,12 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
 * 一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
 
-* Service由kube-proxy组件 + kube-dns组件 + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中，所以请求经过Service会进行kube-proxy的转发。
+* service负载分发策略有两种模式：
 
-  大量的Pod会产生大量的iptables导致性能问题，kube-proxy使用IPVS模式来解决。
+  * RoundRobin：轮询模式，即轮询将请求转发到后端的各个pod上（默认模式）
+    
+  * SessionAffinity：基于客户端IP地址进行会话保持的模式，第一次客户端访问后端某个pod，之后的请求都转发到这个pod上
+    
 
 ### 关于Headless
 
@@ -881,6 +884,19 @@ endpoints controller的作用
 * 监听到service被更新，则根据更新后的service信息获取相关pod列表，然后更新对应endpoint对象；
 * 监听到pod事件，则更新对应的service的endpoint对象，将pod IP记录到endpoint中；
 
+### Service的实现
+
+Service由kube-proxy组件 + kube-dns组件(coreDNS) + iptables共同实现。kube-proxy会为创建的service创建一条路由规则（由service到pod），并添加到宿主机的iptables中，所以请求经过Service会进行kube-proxy的转发。
+
+kube-proxy采用iptables的方式配置负载均衡，基于iptables的kube-proxy的主要职责包括两大块：
+
+* 侦听service更新事件，并更新service相关的iptables规则；
+
+* 侦听endpoint更新事件，更新endpoint相关的iptables规则（如 KUBE-SVC-链中的规则），然后将包请求转入endpoint对应的Pod；
+
+  如果某个service尚没有Pod创建，那么针对此service的请求将会被丢弃。
+
+大量的Pod会产生大量的iptables导致性能问题，kube-proxy使用IPVS模式来解决。
 
 ### 关于服务发现
 
