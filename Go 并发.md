@@ -1,17 +1,15 @@
 ---
 title: Go并发
-description: go内存模型、context、channel、并发包相关类的实现原理
+description: context、channel、并发包相关类的实现原理
 date: 2021-03-22
 lastmod: 2021-05-15
 categories: ["Go"]
-tags: ["Go并发", "Go内存模型", "Go channel原理", "context原理"]
+tags: ["Go并发", "Go channel原理", "context原理"]
 ---
 
 [TOC]
 
-# 内存模型
-
-这里的内存模型不是指内存分配、整理回收的规范，而是在并发环境下多goroutine读取共享变量时变量的可见性条件。
+# 变量可见性
 
 由于不同的架构和不同的编译器优化，会发生指令重排，导致程序运行时不一定会按照代码的顺序执行，因此两个goroutine在处理共享变量时，能够看到其他goroutine对这个变量进行的写结果。
 
@@ -102,6 +100,8 @@ CSP模型（Communicating Sequential Process，通信顺序进程），允许使
 
 本质上就是，在使用协程执行函数时，不通过内存共享(会用到锁)的方式通信，而是通过Channel通信传递数据。
 
+动画参考：https://go.xargin.com/docs/data_structure/channel/
+
 ## 数据结构
 
 ```go
@@ -114,8 +114,8 @@ type hchan struct {
 	elemtype *_type // 当前channel能够收发的元素类型
 	sendx    uint   // 指向底层循环数组buf，表示当前可发送的元素位置的索引值，当sendx=dataqsiz时，会回到buf数组的起点，一旦接收新数据，指针就会加上elemsize，移向下个位置
 	recvx    uint   // 指向底层循环数组buf，表示当前可接收的元素位置的索引值
-	recvq    waitq  // 等待队列，存储当前channel因缓冲区空间不足而接收阻塞的goroutine列表，双向链表
-	sendq    waitq  // 等待队列，存储当前channel因缓冲区空间不足而发送阻塞的goroutine列表，双向链表
+	recvq    waitq  // 等待接收队列，存储当前channel因缓冲区空间不足而阻塞的goroutine列表，双向链表
+	sendq    waitq  // 等待发送队列，存储当前channel因缓冲区空间不足而阻塞的goroutine列表，双向链表
 
 	lock mutex  // 互斥锁，保证每个读channel或写channel的操作都是原子的
 }
@@ -136,8 +136,6 @@ type waitq struct {
 
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
-* 当 chan是 nil时，对chan的发送和接收的调用者总是阻塞的
-
 * 带有 <- 的chan是有方向的，不带 <- 的chan是双向的，比如
 
 ```go
@@ -156,7 +154,10 @@ chan (<-chan int)  // 等价于 chan (<-chan int)
 ```
 
 * 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan已经被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的。
-* 双向chan可以赋值给单向chan，但反过来不可以
+* 双向chan可以赋值给单向chan，但反过来不可以；
+* 给一个nil channel发送数据，会造成永久阻塞，从一个nil channel接收数据，会造成永久阻塞；
+* 给一个已经关闭的channel发送数据，会引起panic；
+* 从一个已经关闭的channel接收数据，如果缓冲区为空，则返回一个零值；
 
 ## 初始化
 

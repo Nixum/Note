@@ -23,7 +23,14 @@ go在编译时会自动判断函数是否可以内联，当函数内包含以下
 
 编译时使用`go build -gcflags="-m -m" main.go`可以知道编译器的内联优化策略，
 
-go编译时默认会使用内联优化，使用`go build --gcflags="-l" main.go`可禁掉全局内联，如果传递两个或以上-l，则会打开内联
+go编译时默认会使用内联优化，使用`go build --gcflags="-l" main.go`可禁掉全局内联，如果传递两个或以上-l，则会打开内联；
+
+# defer
+
+* 多个defer是栈的关系，先进后出，即在一个函数中，写在前面的defer会比写在后面的defer调用得晚；
+* defer和return同时出现时，先return后defer，defer可以修改到return里的变量；
+* 遇到panic时，会先遍历此协程内的defer链表，并执行defer，如果在执行过程中遇到recover，则停止panic，返回recover处继续往下执行，如果没遇到recover，则遍历完本协程的defer链表后，向stderr抛出panic信息；
+* 执行defer过程中出现panic，此时的panic会覆盖它之前的panic，直至被捕获或抛出；
 
 # 数组
 

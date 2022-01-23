@@ -617,6 +617,15 @@ PVC与PV的绑定条件：
 >
 > 完成这两步，PV对应的“持久化 Volume”就准备好了，Pod可以正常启动，将“持久化 Volume”挂载在容器内指定的路径。当需要卸载时，则先Unmount再进行Dettach。
 
+### 访问模式
+
+由卷的提供商提供，比如AWS的EBS中的GP2、GP3磁盘，是ReadWriteOnce模式，所以一个卷只能被一个pod使用，否则会出现写冲突，即使用pod的复制集只能设置为1，且更新策略为recreate，保证只有一个pod使用才行；而如果是ReadWriteMany模式，比如AWS的EFS（EFS本质上是AWS对NFS的一次封装），则允许多个pod共享同一个持久卷
+
+* ReadWriteOnce：卷可以被一个节点以读写方式挂载，允许同一个节点上的多个Pod访问；
+* ReadOnlyMany：卷可以被多个节点以只读方式挂载；
+* ReadWriteMany：卷可以被多个节点以读写方式挂载；
+* ReadWriteOncePod：卷可以被单个 Pod 以读写方式挂载；
+
 ```yaml
 apiVersion: apps/v1
 kind: StatefulSet
@@ -654,8 +663,6 @@ spec:
         requests: 
           storage: 10Gi
 ```
-
-注意点：一般来说，一个卷只允许被挂在一个pod上，如果静态分配的PV，虽然也可以设置PVC和PV，但是pod的复制集只能有一个，且需要设置更新策略为recreate，保证只有一个pod使用该pv，否则会有写冲突；一般每个pod挂的是不同的卷。
 
 ## 控制器模型
 
@@ -840,9 +847,10 @@ endpoints controller的作用
 
 Service由kube-proxy组件 + kube-dns组件(coreDNS) + iptables或IPVS共同实现。
 
-1. coreDNS创建时会调用kubelet修改每个节点的`/etc/resolv.conf`文件，添加coreDNS的service的clusterIP作为DNS服务的IP。
-2. 当kube-proxy监听到service和endpoints对象的创建和修改后，会更新一条由service到pod路由规则，并添加到宿主机的iptables中。
-3. 通过service域名请求时，会先请求coreDNS服务获取对应service的clusterIP，再根据这个ip在iptables中转发到对应的pod，iptables会负责负载均衡。
+1. coreDNS创建时会调用kubelet修改每个节点的`/etc/resolv.conf`文件，添加coreDNS的service的clusterIP作为DNS服务的IP；
+2. coreDNS会监听service和endpoints的变化，缓存到内存中，主要是service名称与其clusterIP的映射；
+3. kube-proxy也会监听service和endpoints的变化，然后更新由service到pod路由规则，并添加到宿主机的iptables中；
+4. 通过service域名请求时，会先请求coreDNS服务获取对应service的clusterIP，再根据这个ip在iptables中转发到对应的pod，iptables会负责负载均衡；
 
 kube-proxy只是controller，对iptables进行更新，基于iptables的kube-proxy的主要职责包括两大块：
 
@@ -1512,3 +1520,4 @@ Sidecar使用Envoy，代理服务的端口和协议。
 
 [Service核心原理](https://www.lixueduan.com/post/kubernetes/04-service-core/)
 
+[KubeDNS和CoreDNS](https://zhuanlan.zhihu.com/p/80141656)
