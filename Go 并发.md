@@ -102,37 +102,15 @@ CSP模型（Communicating Sequential Process，通信顺序进程），允许使
 
 动画参考：https://go.xargin.com/docs/data_structure/channel/
 
-## 数据结构
-
-```go
-type hchan struct {
-	qcount   uint   // 已经接收但还没被取走的元素个数，即channel中的循环数组的元素个数
-	dataqsiz uint   // channel中的循环数组的长度
-	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组，buf的总大小是elemsize的整数倍
-	elemsize uint16 // 当前channel能够收发的元素大小
-	closed   uint32
-	elemtype *_type // 当前channel能够收发的元素类型
-	sendx    uint   // 指向底层循环数组buf，表示当前可发送的元素位置的索引值，当sendx=dataqsiz时，会回到buf数组的起点，一旦接收新数据，指针就会加上elemsize，移向下个位置
-	recvx    uint   // 指向底层循环数组buf，表示当前可接收的元素位置的索引值
-	recvq    waitq  // 等待接收队列，存储当前channel因缓冲区空间不足而阻塞的goroutine列表，双向链表
-	sendq    waitq  // 等待发送队列，存储当前channel因缓冲区空间不足而阻塞的goroutine列表，双向链表
-
-	lock mutex  // 互斥锁，保证每个读channel或写channel的操作都是原子的
-}
-
-type waitq struct {
-	first *sudog
-	last  *sudog
-}
-```
-
 ## 基本
 
 * chan是引用类型，使用make关键字创建，未初始化时的零值是nil，如
 
   `ch := make(chan string, 10)`，创建一个能处理string的缓冲区大小为10的channel，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；
 
-  `ch := make(chan string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，即如果连续发送两次数据，第一次如果没有被接收的话，第二次就会被阻塞。
+  `ch := make(chan string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，即如果连续发送两次数据，第一次如果没有被接收的话，第二次就会被阻塞；
+
+  `var ch chan int`表示创建了一个nil channel；
 
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
@@ -153,11 +131,59 @@ chan<- <-chan int  // 等价于 chan<- (<-chan int)
 chan (<-chan int)  // 等价于 chan (<-chan int)
 ```
 
-* 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan已经被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的。
+* 接收数据时可以有两个返回值，第一个是返回的元素，第二个是bool类型，表示是否成功地从chan中读取到一个值。如果是false，说明chan已经被close并且chan中没有缓存的数据，此时第一个元素是零值。所以，如果接收时第一个元素是零值，可能是sender真的发送了零值，也可能是closed并且没有元素导致的，所以最好通过第二个返回值来确定。
 * 双向chan可以赋值给单向chan，但反过来不可以；
 * 给一个nil channel发送数据，会造成永久阻塞，从一个nil channel接收数据，会造成永久阻塞；
 * 给一个已经关闭的channel发送数据，会引起panic；
+
+```go
+ch := make(chan int)
+go func() { ch <- 1 }() // panic: send on closed channel
+time.Sleep(time.Second)
+go func() { close(ch) }()
+time.Sleep(time.Second)
+x, ok := <-ch
+fmt.Println(x, ok)
+```
+
 * 从一个已经关闭的channel接收数据，如果缓冲区为空，则返回一个零值；
+* 已关闭的channel再次关闭，会panic；
+* channel在关闭时会自动退出循环
+
+```go
+ch := make(chan int, 100)
+for elem := range ch {
+	fmt.println(elem)
+}
+```
+
+## 数据结构
+
+```go
+type hchan struct {
+	qcount   uint   // 已经接收但还没被取走的元素个数，即channel中的循环数组的元素个数
+    dataqsiz uint   // channel中的循环数组的长度, ch:=make(chan int, 10), 就是这个10
+	buf      unsafe.Pointer // channel中缓冲区数据指针，buf是一个循环数组，buf的总大小是elemsize的整数倍
+	elemsize uint16 // 当前channel能够收发的元素大小
+	closed   uint32
+	elemtype *_type // 当前channel能够收发的元素类型
+	sendx    uint   // 指向底层循环数组buf，表示当前可发送的元素位置的索引值，当sendx=dataqsiz时，会回到buf数组的起点，一旦接收新数据，指针就会加上elemsize，移向下个位置
+	recvx    uint   // 指向底层循环数组buf，表示当前可接收的元素位置的索引值
+	recvq    waitq  // 等待接收队列，存储当前channel因缓冲区空间不足而阻塞的goroutine列表，双向链表
+	sendq    waitq  // 等待发送队列，存储当前channel因缓冲区空间不足而阻塞的goroutine列表，双向链表
+
+	lock mutex  // 互斥锁，保证每个读channel或写channel的操作都是原子的，保护hchan和sudog上的字段。
+    // 持有lock时，禁止更改另一个G的状态(比如不要把状态改成ready)，防止死锁
+}
+
+// 双向链表
+// sudog表示goroutine，是对goroutine的一层封装，代表一个在等待队列中的G
+// 一个G可以出现在多个等待队列上，因此一个G可以有多个sudog
+type waitq struct {
+	first *sudog
+	last  *sudog
+}
+```
 
 ## 初始化
 
@@ -165,8 +191,7 @@ chan (<-chan int)  // 等价于 chan (<-chan int)
 func makechan(t *chantype, size int) *hchan {
     ...
     elem := t.elem
-        // 略去检查代码
-        mem, overflow := math.MulUintptr(elem.size, uintptr(size))
+    // 略去检查代码，检查数据项大小是否超过64KB，是否有错误的内存对齐，缓冲区大小是否溢出
     ...
 
     var c *hchan
@@ -198,14 +223,140 @@ func makechan(t *chantype, size int) *hchan {
 
 ## 发送数据
 
-使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据，该函数设置了阻塞参数为true。
+使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据，该函数设置了阻塞参数为true；
 
-1. 如果chan是nil，则把发送者的goroutine park（阻塞休眠），此时发送者将被永久阻塞。
-2. 如果chan没有被close，但是chan满了，则直接返回false，但是由于阻塞参数为true，这部分不会被执行。
-3. 如果chan被close了，再往里发数据会触发panic。
-4. 当存在等待的接收者时，通过send函数，从接收队列recvq中取出最先进入等待的goroutine，直接发送数据，不需要先放到buf中。
-5. 当没有接收者，且缓冲区存在空余空间时，会使用chanbuf计算出下一个可以存储数据的位置，将要发送的数据拷贝到缓冲区并增加sendx索引和qcount计数器，将发送的数据写入channel缓冲区，写入后就返回成功。
-6. 当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送者的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前发送者的goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束。
+1. 如果chan是nil，则把发送者的goroutine park（阻塞休眠），此时发送者将被永久阻塞；
+
+2. 如果chan没有被close，但是chan满了，则直接返回false，但是由于阻塞参数为true，这部分不会被执行；
+
+3. 上锁，保证线程安全；
+
+4. 再次检查chan是否被关闭，如果被close，再往里发数据会触发 解锁，panic；
+
+5. 同步发送
+
+   如果没被close，当recvq存在等待的接收者时，通过send函数，取出第一个等待的goroutine，直接发送数据，不需要先放到buf中；
+
+   send函数将因为等待数据的接收而阻塞的goroutine的状态从Gwaiting或者Gscanwaiting改为Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度**时会立即执行这个等待接收数据的goroutine；
+
+6. 异步发送
+
+   当recvq中没有等待的接收者，且缓冲区存在空余空间时，会使用chanbuf函数获取sendx索引值，计算出下一个可以存储数据的位置，然后调用typedmemmove函数将要发送的数据拷贝到缓冲区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
+
+7. 阻塞发送
+
+   当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送者的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前发送者的goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束；
+
+```go
+func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
+	// 如果chan是nil，则把发送者的goroutine park（阻塞休眠），此时发送者将被永久阻塞
+    if c == nil {
+		if !block {
+			return false
+		}
+		gopark(nil, nil, waitReasonChanSendNilChan, traceEvGoStop, 2)
+		throw("unreachable")
+	}
+
+	if raceenabled {
+		racereadpc(c.raceaddr(), callerpc, funcPC(chansend))
+	}
+
+    // 当chan不为null，且没被close，full方法判断chan发送是否阻塞，是则直接返回true
+    // full方法有两种情况判断是否可发送
+    // 1. 如果hchan.dataqsiz=0，说明是阻塞队列，如果此时hchan.recvq.first==nil，说明没有接收者，发送阻塞
+    // 2. 比较hchan.qcount是否等于hchan.dataqsiz，如果是说明chan已满，发送阻塞
+	if !block && c.closed == 0 && full(c) {
+		return false
+	}
+    
+    // 上锁
+	lock(&c.lock)
+	// 如果chan被关闭，再往里发送数据就会解锁，然后panic
+	if c.closed != 0 {
+		unlock(&c.lock)
+		panic(plainError("send on closed channel"))
+	}
+	// 如果chan没关闭，获取接收者等待队列中的第一个G开始发送数据
+	if sg := c.recvq.dequeue(); sg != nil {
+		// G存在，调用send函数，send函数主要完成两件事
+        // 1. 调用sendDirect()函数将数据拷贝到接收变量的内存地址上
+        // 2. 调用goready()函数将等待接收的阻塞G的状态从Gwaiting或者Gscanwaiting改为Grunnable，把G绑定到P的LRQ中，下一轮调度时会唤醒这个等待接收数据的G立即执行。
+		send(c, sg, ep, func() { unlock(&c.lock) }, 3)
+		return true
+	}
+	// 当recvq中没有等待接收数据的G，且chan的缓冲区还有空间时
+	if c.qcount < c.dataqsiz {
+        // 调用chanbuf获取sendx索引的元素的指针，；
+		qp := chanbuf(c, c.sendx)
+		if raceenabled {
+			raceacquire(qp)
+			racerelease(qp)
+		}
+        // 调用typedmemmove()将要发送的数据拷贝到缓冲区buf
+		typedmemmove(c.elemtype, qp, ep)
+        // 然后增加sendx索引和qcount计数器的值
+		c.sendx++
+		if c.sendx == c.dataqsiz {
+            // 因为buf缓冲区是环形，如果索引到了队尾，则置0重新回到队头
+			c.sendx = 0
+		}
+		c.qcount++
+        // 完成后就解锁，返回成功
+		unlock(&c.lock)
+		return true
+	}
+
+	if !block {
+		unlock(&c.lock)
+		return false
+	}
+
+	// Block on the channel. Some receiver will complete our operation for us.
+	gp := getg()
+	mysg := acquireSudog()
+	mysg.releasetime = 0
+	if t0 != 0 {
+		mysg.releasetime = -1
+	}
+	// No stack splits between assigning elem and enqueuing mysg
+	// on gp.waiting where copystack can find it.
+	mysg.elem = ep
+	mysg.waitlink = nil
+	mysg.g = gp
+	mysg.isSelect = false
+	mysg.c = c
+	gp.waiting = mysg
+	gp.param = nil
+	c.sendq.enqueue(mysg)
+	gopark(chanparkcommit, unsafe.Pointer(&c.lock), waitReasonChanSend, traceEvGoBlockSend, 2)
+	// Ensure the value being sent is kept alive until the
+	// receiver copies it out. The sudog has a pointer to the
+	// stack object, but sudogs aren't considered as roots of the
+	// stack tracer.
+	KeepAlive(ep)
+
+	// someone woke us up.
+	if mysg != gp.waiting {
+		throw("G waiting list is corrupted")
+	}
+	gp.waiting = nil
+	gp.activeStackChans = false
+	if gp.param == nil {
+		if c.closed == 0 {
+			throw("chansend: spurious wakeup")
+		}
+		panic(plainError("send on closed channel"))
+	}
+	gp.param = nil
+	if mysg.releasetime > 0 {
+		blockevent(mysg.releasetime-t0, 2)
+	}
+	mysg.c = nil
+	releaseSudog(mysg)
+	return true
+}
+```
 
 ## 接收数据
 
@@ -224,6 +375,9 @@ func makechan(t *chantype, size int) *hchan {
    这个和chansend共用一把锁，所以不会有并发问题。
 
 6. 当channel的sendq队列没有等待状态的goroutine，且缓冲区不存在数据时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
+
+```go
+```
 
 ## 关闭
 
