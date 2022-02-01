@@ -148,7 +148,7 @@ fmt.Println(x, ok)
 
 * 从一个已经关闭的channel接收数据，如果缓冲区为空，则返回一个零值；
 * 已关闭的channel再次关闭，会panic；
-* channel在关闭时会自动退出循环
+* channel在关闭时会自动退出循环；
 
 ```go
 ch := make(chan int, 100)
@@ -156,6 +156,8 @@ for elem := range ch {
 	fmt.println(elem)
 }
 ```
+
+* 注意channel不提供跨goroutine的数据保护，如果多个channel传递一份数据的指针，使得每个goroutine可以操作同一份数据，也会出现并发安全问题；
 
 ## 数据结构
 
@@ -223,29 +225,36 @@ func makechan(t *chantype, size int) *hchan {
 
 ## 发送数据
 
-使用`ch <- "test"`发送数据，最终会调用chansend函数发送数据，该函数设置了阻塞参数为true；
+使用`ch <- "test"`发送数据，最终会调用`chansend()`函数发送数据，该函数设置了阻塞参数为true；
 
 1. 如果chan是nil，则把发送者的goroutine park（阻塞休眠），此时发送者将被永久阻塞；
 
 2. 如果chan没有被close，但是chan满了，则直接返回false，但是由于阻塞参数为true，这部分不会被执行；
 
-3. 上锁，保证线程安全；
-
-4. 再次检查chan是否被关闭，如果被close，再往里发数据会触发 解锁，panic；
+3. 上锁，保证线程安全，再次检查chan是否被close，如果被close，再往里发数据会触发 解锁，panic；
 
 5. 同步发送
 
-   如果没被close，当recvq存在等待的接收者时，通过send函数，取出第一个等待的goroutine，直接发送数据，不需要先放到buf中；
+   如果**没被close，当recvq存在等待的接收者时**，通过`send()`函数，取出第一个等待的goroutine，直接发送数据，不需要先放到buf中；
 
-   send函数将因为等待数据的接收而阻塞的goroutine的状态从Gwaiting或者Gscanwaiting改为Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度**时会立即执行这个等待接收数据的goroutine；
+   `send()`函数将因为等待数据的接收而阻塞的goroutine的状态从Gwaiting或者Gscanwaiting改为Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度**时会立即执行这个等待发送数据的goroutine；
 
 6. 异步发送
 
-   当recvq中没有等待的接收者，且缓冲区存在空余空间时，会使用chanbuf函数获取sendx索引值，计算出下一个可以存储数据的位置，然后调用typedmemmove函数将要发送的数据拷贝到缓冲区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
+   **当recvq中没有等待的接收者，且buf区存在空余空间时**，会使用`chanbuf()`函数获取sendx索引值，计算出下一个可以存储数据的位置，然后调用`typedmemmove()`函数将要发送的数据拷贝到buff区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
 
 7. 阻塞发送
 
-   当不存在缓冲区或者缓冲区已满，会先调用getg函数获取正在发送者的goroutine，执行acquireSudog函数创建sudog对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine），将该sudog对象加入sendq队列，调用goparkunlock函数让当前发送者的goroutine进入等待，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒。调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束；
+   **当recvq中没有等待的接收者，且buf区已满或不存在buf区时**，会先调用`getg()`函数获取正在发送者的goroutine，执行`acquireSudog()`函数获取sudoG对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine）
+   
+   然后将该sudoG对象加入sendq队列，调用`goparkunlock()`函数让当前发送者的goroutine进入等待状态，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒；
+   
+   调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束；
+
+**channel发送数据时涉及两次goroutine的调度**：
+
+1. 当接收队列里存在sudoG可以直接发送数据时，执行`goready()`函数，将G从Gwaiting或GScanwaiting转为Grunnable，等待下次调度触发，交由M执行；
+2. 当没有等待接收数据的G，并且没有缓冲区，或者缓冲区已满时，执行`gopark()`函数挂起当前G，将G阻塞，此时状态为Gwaiting，让出CPU等待调度器调度；
 
 ```go
 func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
@@ -307,20 +316,21 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		return true
 	}
 
+    // 能过到这边，说明没有等待接收数据的G，并且没有缓冲区，或者缓冲区已满，此时进入阻塞发送
 	if !block {
 		unlock(&c.lock)
 		return false
 	}
 
-	// Block on the channel. Some receiver will complete our operation for us.
+	// 获取当前goroutine
 	gp := getg()
+    // 获取一个sudo G；acquireSudog()方法主要是获取可复用的sudoG对象，会优先从本地缓存获取，获取不到就会从全局缓存中获取，追加到本地缓存，如果全局缓存也没有，则新创建一个sudoG
 	mysg := acquireSudog()
 	mysg.releasetime = 0
 	if t0 != 0 {
 		mysg.releasetime = -1
 	}
-	// No stack splits between assigning elem and enqueuing mysg
-	// on gp.waiting where copystack can find it.
+	// 为sudo G设置好要发送的数据和状态，比如发送的Channel、是否在select中和待发送的数据的内存地址等
 	mysg.elem = ep
 	mysg.waitlink = nil
 	mysg.g = gp
@@ -328,15 +338,14 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 	mysg.c = c
 	gp.waiting = mysg
 	gp.param = nil
+    // 将sudo G加入待发送队列
 	c.sendq.enqueue(mysg)
+    // 调用gopark方法挂起当前goroutine，状态为waitReasonChanSend，阻塞等待channel
 	gopark(chanparkcommit, unsafe.Pointer(&c.lock), waitReasonChanSend, traceEvGoBlockSend, 2)
-	// Ensure the value being sent is kept alive until the
-	// receiver copies it out. The sudog has a pointer to the
-	// stack object, but sudogs aren't considered as roots of the
-	// stack tracer.
+	// 确保发送的值保存活动状态，直到接收者将其复制出来。因为sudoG具有指向堆栈对象的指针，但其不能作为GC时的root对象。发送的数据是分配在堆上的，避免被GC。
 	KeepAlive(ep)
 
-	// someone woke us up.
+	// 当goroutine被唤醒后，解除阻塞状态，完成channel阻塞数据的发送
 	if mysg != gp.waiting {
 		throw("G waiting list is corrupted")
 	}
@@ -353,6 +362,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		blockevent(mysg.releasetime-t0, 2)
 	}
 	mysg.c = nil
+    // 发送完成之后，解除channel的绑定，重置sudoG状态，释放sudoG，释放时，如果本地缓存已满，会转移一部分到全局缓存，否则放到本地缓存等待被复用
 	releaseSudog(mysg)
 	return true
 }
@@ -360,30 +370,253 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
 ## 接收数据
 
-使用` str <- ch 或 str, ok <- ch ok用于判断ch是否关闭，如果没有ok，可能会无法分辨str接收到的零值是发送者发的还是ch关闭`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
+使用` str <- ch 或 str, ok <- ch (ok用于判断ch是否关闭，如果没有ok，可能会无法分辨str接收到的零值是发送者发的还是ch关闭)`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
 
-1. 如果chan是nil，则把接收者的goroutine park（阻塞休眠），接收者被永久阻塞。
+1. 如果chan是nil，则把接收者的goroutine park（阻塞休眠），接收者被永久阻塞；
 
-2. 如果当前channel已经被关闭且缓冲区不存在任何数据，此时会清除ep指针中的数据并立即返回。
+2. 不上锁检查 buf 区大小：如果chan的buf区大小为0 或者 没有数据可接收，检查是否被关闭，被关闭则返回；如果没被关闭，则再次检查buf区大小是否为0 或者 没有数据可接收，如果是，则清除ep指针中的数据并返回selected为true，received为false；
 
-3. 如果chan已经被close，且队列中没有缓存元素，返回selected为true，received为false。
+   这里两次empty检查，因为第一次检查，chan可能还没关闭，但是第二次检查时关闭了，由于可能在两次检查时有待接收的数据达到了，所以需要两次empty检查；
 
-4. 当channel的sendq队列存在等待状态的goroutine时，如果是unbuffer的chan，直接使用recv函数直接从阻塞的发送者中获取数据；如果是有buffer的chan，则从sendq队列的头中读取一个值，并把这个发送者的值加入队列的尾部，即优先获取发送者的数据。
+3. 上锁检查buf区大小：上锁，如果chan已经被close，且buf区没有数据，清除ep指针中的数据，解锁，返回selected为true，received为false；
 
-5. 当channel的sendq队列没有等待状态的goroutine，且缓冲区存在数据时，从channel的缓冲区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除队列中的数据，递增recvx，递减qcount，完成数据接收。当发送recvx超过channel的buf时，会将其归零。
+4. 同步接收
 
-   这个和chansend共用一把锁，所以不会有并发问题。
+   **当chan的sendq队列存在等待状态的goroutine时**（能拿到就说明要不就是buf区为0，要不就是buf区已满）
 
-6. 当channel的sendq队列没有等待状态的goroutine，且缓冲区不存在数据时，创建sudog对象，加入recvq队列，当前goroutine进入阻塞状态，等待其他goroutine向channel发送数据。
+   如果是无buf区的chan，直接使用`recv()`函数从阻塞的发送者中获取数据；
+
+   如果是有buf区的chan，说明此时buf区已满，则先从buf区中获取可接收的数据（从buf区中copy到接收者的内存），然后从sendq队列的队首中读取待发送的数据，加入到buf区中（将发送者的数据copy到buf区），更新可接收和可发送的下标chan.recvx和sendx的值；
+
+   最后调用`goready()`函数将等待接收的阻塞gorouotine的状态从Gwaiting 或者 Gscanwaiting 改变成 Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度时**立即执行这个待接收数据的goroutine；
+
+5. 异步接收
+
+   **当channel的sendq队列没有等待状态的goroutine，且buf区存在数据时**，从channel的buf区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除buf区中的数据，递增recvx，递减qcount，完成数据接收；
+
+   这个和chansend共用一把锁，所以不会有并发问题；
+
+6. 阻塞接收
+
+   **当channel的sendq队列没有等待状态的goroutine，且buf区不存在数据时**，执行`acquireSudog()`函数获取sudoG对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine）
+
+   然后将该sudoG对象加入待发送recvq队列，调用`goparkunlock()`函数让当前接收者的goroutine进入等待状态，表示当前goroutine正在等待其他goroutine从channel中发送数据，等待调度器唤醒；
+
+   goroutine被唤醒后，chan完成阻塞数据的接收，接收完成后进行基本的参数检查，解除chan的绑定，释放sudoG，表示接收数据完成；
+
+**channel 接收过程中包含 2 次有关 goroutine 调度过程**：
+
+1. 当发送队列中存在 sudoG 可以直接接收数据时，调用`goready()`，G 的状态从 Gwaiting 或者 Gscanwaiting 改变成 Grunnable，等待下次调度便立即运行；
+2. 当 buf 区为空，且没有发送者时，调用 `gopark()`挂起当前G，此时状态为Gwaiting，让出 cpu 的使用权并等待调度器的调度；
 
 ```go
+func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool) {
+	if debugChan {
+		print("chanrecv: chan=", c, "\n")
+	}
+	// 如果chan是nil，接收者会被阻塞，gopark会引起waitReasonChanReceiveNilChan原因的休眠，并抛出unreachable的错误
+	if c == nil {
+		if !block {
+			return
+		}
+		gopark(nil, nil, waitReasonChanReceiveNilChan, traceEvGoStop, 2)
+		throw("unreachable")
+	}
+	// 当chan不为nil，在没有获取锁的情况下，检查chan的buf区大小和是否存在可接收数据
+    // empty方法是原子检查，检查chan.dataqsiz、chan.qcount是否为0，发送队列是否为空
+	if !block && empty(c) {
+		if atomic.Load(&c.closed) == 0 {
+			return
+		}
+        // 这里两次empty检查，因为第一次检查，chan可能还没关闭，但是第二次检查时关闭了，由于可能在两次检查时有待接收的数据达到了，所以需要两次empty检查
+		if empty(c) {
+			if raceenabled {
+				raceacquire(c.raceaddr())
+			}
+            // 如果chan的buf区大小和是否存在可接收数据，此时会清除ep指针中的数据
+			if ep != nil {
+				typedmemclr(c.elemtype, ep)
+			}
+			return true, false
+		}
+	}
+	
+	var t0 int64
+	if blockprofilerate > 0 {
+		t0 = cputicks()
+	}
+    // 获取锁后，再检查一遍
+	lock(&c.lock)
+    // 如果chan已经关闭且buf区不存在数据了，则清理ep指针中的数据并返回
+    // 这里也是从已经关闭的chan中读数据，读出来的是该类型零值的原因
+	if c.closed != 0 && c.qcount == 0 {
+		if raceenabled {
+			raceacquire(c.raceaddr())
+		}
+		unlock(&c.lock)
+		if ep != nil {
+			typedmemclr(c.elemtype, ep)
+		}
+		return true, false
+	}
+
+    // 从发送队列队首中找到等待发送的goroutine（能拿到就说明要不就是buf区为0，要不就是buf区已满）
+    // 如果buf区大小为0，则直接接收数据；
+    // 否则，说明buf区已满，先从buf区中获取要发送的数据，再将sender的数据加入到buf区中，更新可接收和可发送的下标chan.recvx和sendx的值
+	if sg := c.sendq.dequeue(); sg != nil {
+		recv(c, sg, ep, func() { unlock(&c.lock) }, 3)
+		return true, true
+	}
+
+    // 当chan的buf区存在数据时，直接从buf区中获取数据，进行发送，更新接收数据的下标值，解锁
+	if c.qcount > 0 {
+		qp := chanbuf(c, c.recvx)
+		if raceenabled {
+			raceacquire(qp)
+			racerelease(qp)
+		}
+		if ep != nil {
+			typedmemmove(c.elemtype, ep, qp)
+		}
+		typedmemclr(c.elemtype, qp)
+		c.recvx++
+		if c.recvx == c.dataqsiz {
+			c.recvx = 0
+		}
+		c.qcount--
+		unlock(&c.lock)
+		return true, true
+	}
+
+	if !block {
+		unlock(&c.lock)
+		return false, false
+	}
+
+	// 到了这里，说明sendq里没有待发送的goroutine，且buf区也没有数据
+	gp := getg()
+	mysg := acquireSudog()
+	mysg.releasetime = 0
+	if t0 != 0 {
+		mysg.releasetime = -1
+	}
+	mysg.elem = ep
+	mysg.waitlink = nil
+	gp.waiting = mysg
+	mysg.g = gp
+	mysg.isSelect = false
+	mysg.c = c
+	gp.param = nil
+    // 设置好待接收的sudoG后，加入待发送的等待队列
+	c.recvq.enqueue(mysg)
+    // 挂起当前goroutine，状态设置为waitReasonChanReceive，阻塞等待chan
+	gopark(chanparkcommit, unsafe.Pointer(&c.lock), waitReasonChanReceive, traceEvGoBlockRecv, 2)
+	// goroutine被唤醒后，完成chan阻塞数据的接收，解除chan的绑定释放sudoG
+	if mysg != gp.waiting {
+		throw("G waiting list is corrupted")
+	}
+	gp.waiting = nil
+	gp.activeStackChans = false
+	if mysg.releasetime > 0 {
+		blockevent(mysg.releasetime-t0, 2)
+	}
+	closed := gp.param == nil
+	gp.param = nil
+	mysg.c = nil
+	releaseSudog(mysg)
+	return true, !closed
+}
 ```
 
 ## 关闭
 
-1. 如果 chan 为 nil，close 会 panic
-2. 如果 chan 已经 closed，再次 close 也会 panic。
-3. 否则的话，如果 chan 不为 nil，chan 也没有 closed，就把等待队列中的 sender（writer）和 receiver（reader）从队列中全部移除并唤醒。
+1. 如果 chan 为 nil，close 会 panic；
+
+2. 上锁：
+
+   如果 chan 已经 closed，再次 close 也会 panic；
+
+   否则的话，如果 chan 不为 nil，chan 也没有 closed，设置chan的标记为close；
+
+3. 释放所有的接收者：
+
+   将接收者等待队列中的sudoG对象加入到待清除队列glist中，这里会优先回收接收者，这样即使从close中的chan读取数据，也不会panic，最多读到默认值；
+
+4. 释放所有发送者：
+   将发送者等待队列中的sudoG对象加入到待清除队列glist中，这里可能会发生panic，因为往一个close的chan中发送数据会panic；
+
+5. 进行最后的调度，遍历glist中的sudoG，调用`goready()`触发调度，将每个goroutine状态从 Gwaiting 转为 Grunnable状态，等待调度器调度；
+
+```go
+func closechan(c *hchan) {
+	if c == nil {
+		panic(plainError("close of nil channel"))
+	}
+
+	lock(&c.lock)
+	if c.closed != 0 {
+		unlock(&c.lock)
+		panic(plainError("close of closed channel"))
+	}
+
+	if raceenabled {
+		callerpc := getcallerpc()
+		racewritepc(c.raceaddr(), callerpc, funcPC(closechan))
+		racerelease(c.raceaddr())
+	}
+
+	c.closed = 1
+
+	var glist gList
+
+	// 释放所有接收者：将所有接收者的sudoG等待队列加入到待清除的队列glist中
+	for {
+		sg := c.recvq.dequeue()
+		if sg == nil {
+			break
+		}
+		if sg.elem != nil {
+			typedmemclr(c.elemtype, sg.elem)
+			sg.elem = nil
+		}
+		if sg.releasetime != 0 {
+			sg.releasetime = cputicks()
+		}
+		gp := sg.g
+		gp.param = nil
+		if raceenabled {
+			raceacquireg(gp, c.raceaddr())
+		}
+		glist.push(gp)
+	}
+
+	// 释放所有发送者：将所有发送者的sudoG等待队列加入到待清除的队列glist中，这里可能会产生panic
+	for {
+		sg := c.sendq.dequeue()
+		if sg == nil {
+			break
+		}
+		sg.elem = nil
+		if sg.releasetime != 0 {
+			sg.releasetime = cputicks()
+		}
+		gp := sg.g
+		gp.param = nil
+		if raceenabled {
+			raceacquireg(gp, c.raceaddr())
+		}
+		glist.push(gp)
+	}
+	unlock(&c.lock)
+
+	// 为所有被阻塞的 goroutine 调用 goready 触发调度。将所有 glist 中的 goroutine 状态从 _Gwaiting 设置为 _Grunnable 状态，等待调度器的调度
+	for !glist.empty() {
+		gp := glist.pop()
+		gp.schedlink = 0
+		goready(gp, 3)
+	}
+}
+```
 
 ## 应用场景
 
