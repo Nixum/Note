@@ -88,11 +88,9 @@ func hello() {
   * close一个channel的操作，必定happen before从关闭的channel中读取一个零值；
 * 此外还有Mutex / RWMutex、WaitGroup、Once、atomic
 
-# 并发包
+# Mutex - 互斥锁
 
-## Mutex - 互斥锁
-
-### 数据结构
+## 数据结构
 
 ```go
 type Mutex struct {
@@ -108,13 +106,29 @@ const (
 }
 ```
 
-### 基本
+![](https://github.com/Nixum/Java-Note/raw/master/picture/go_mutex_state.png)
+
+- mutexLocked 对应右边低位第一个bit，1 代表锁被占用，0代表锁空闲
+- mutexWoken 对应右边低位第二个bit，1 表示已唤醒，0表示未唤醒
+- mutexStarving 对应右边低位第三个bit，1 代表锁处于饥饿模式，0代表锁处于正常模式
+- mutexWaiterShift 值为3，根据 `mutex.state >> mutexWaiterShift` 得到当前阻塞的`goroutine`数目，最多可以阻塞`2^29`个`goroutine`。
+- starvationThresholdNs 值为1e6纳秒，也就是1毫秒，当等待队列中队首goroutine等待时间超过`starvationThresholdNs`也就是1毫秒，mutex进入饥饿模式。
+
+## 基本
 
 * 只有Lock和Unlock两个方法，用于锁定临界区
 
 * Mutex的零值是没有goroutine等待的未加锁状态，不会因为没有初始化而出现空指针或者无法获取到锁的情况，so无需额外的初始化，直接声明变量即可使用`var lock sync.Mutex`，或者是在结构体里的属性，均无需初始化
 
-* 如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待的队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；如果此时有新的goroutine也在获取锁，会参与到获取锁的竞争中，如果等待队列中的goroutine等待超过1ms，则会加入队头优先获取锁，新来的goroutine加入到队尾，以此解决等待的goroutine的饥饿问题。
+* 锁有两种模式：正常模式和饥饿模式
+
+  正常模式下，如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；
+
+  如果此时有新的goroutine也在获取锁，会参与到获取锁的竞争中，这是非公平的，因为新请求锁的goroutine是在CPU上被运行，并且数量也可能很多，所以被唤醒的goroutine获取锁的概率并不大，所以，如果等待队列中的goroutine等待超过1ms，则会优先加入到队列的头部，如果超过1ms都没有获取到锁，则进入饥饿模式；
+
+  饥饿模式下，锁的所有权会直接从释放锁的goroutine转交给队首的goroutine，新请求锁的goroutine就算锁的空闲状态也不会去获取锁，也不会自旋，直接加入等待队列的队尾，以此解决等待的goroutine的饥饿问题；
+
+  恢复为正常模式的条件：一个goroutine获取锁后，当前goroutine是队列的最后一个，拿锁的耗时小于1ms；
 
 * Unlock方法可以被任意goroutine调用，释放锁，即使它本身没有持有这个锁，so写的时候要牢记，谁申请锁，就该谁释放锁，保证在一个方法内被调用
 
@@ -134,23 +148,197 @@ const (
 
   ​	3.给获取锁的goroutine设置token，进行标记
 
-### Lock方法
+## Lock方法
 
-1. 调用Lock的goroutine通过CAS的方式获取锁，如果获取到了直接返回，否则进入lockSlow方法
-2. 在lockSlow方法内，意味着锁已经被持有，当前调用Lock方法的goroutine正在等待，且非饥饿状态，其首先会自旋，尝试获取锁，而无需休眠，主要是在当临界区耗时很短的场景下提高性能
-3. 非饥饿状态下抢锁，先在state锁标志位+1，如果锁已经被持有或者此时是饥饿状态，state的waiter的数量+1，进入等待
-4. 如果此时是饥饿状态，并且锁还被持有，state设置为饥饿状态，清除mutexWoken标记，表示非唤醒状态
-5. 使用3中的锁位，CAS尝试加锁，如果成功，检查原来的锁是未加锁状态，并且也不是饥饿状态，则成功获取锁，返回
-6. 如果是未加锁状态，判断是否是第一次加入waiter队列（通过waitStartTime变量），如果是，则加入队尾，如果不是首次，则加入到队首(设置sema的值)，阻塞等待，直至被唤醒（因为锁被释放了）
-7. 唤醒后，如果是饥饿状态（即当前时间 - waitStartTime > 1ms），在state锁标志位+1，waiter数-1，获取锁，然后判断没有其他waiter或者此goroutine等待时间没有超过1ms，清除饥饿标记
+1. 调用Lock的goroutine通过CAS的方式获取锁，如果获取到了直接返回，否则进入lockSlow方法，lockSlow方法主要是通过自旋等待锁的释放；
 
-### Unlock方法
+   goroutine本身进入自旋的条件比较苛刻：
+
+   * 互斥锁只有在普通模式才能进入自旋；
+
+   * `runtime.sync_runtime_canSpin`需要返回true：
+
+   	1. 运行在多 CPU 的机器上；
+   	2. 当前 Goroutine 为了获取该锁进入自旋的次数小于四次；
+   	3. 当前机器上至少存在一个正在运行的处理器 P 并且处理的运行队列为空；
+
+2. 在lockSlow方法内，意味着锁已经被持有，当前调用Lock方法的goroutine正在等待，且非饥饿状态，其首先会自旋，尝试获取锁，无需休眠，否则进入 3
+
+3. 不满足自旋时，当前锁可能有如下几种状态：
+
+   - 锁还没有被释放，锁处于正常状态
+   - 锁还没有被释放， 锁处于饥饿状态
+   - 锁已经被释放， 锁处于正常状态
+   - 锁已经被释放， 锁处于饥饿状态
+
+4. 非饥饿状态下抢锁，新的goroutine尝试获取锁，如果是饥饿状态，则将锁直接给等待队列的队首goroutine；
+
+5. 如果锁被获取，或者是饥饿状态，waiter数量 + 1
+
+6. 当此goroutine被唤醒，要么获取到锁，要么进入休眠
+
+7. 如果old state状态是未被锁，且非饥饿状态，表明当前goroutine获取到了锁，结束
+
+8. 判断当前goroutine是新加入的还是被唤醒的，新加入的放到等待队列的尾部，刚被唤醒的加入等待队列的头部，通过信号量阻塞，直到当前goroutine被唤醒
+
+9. 判断当前state是否是饥饿状态，如果不是则唤醒当前goroutine，继续循环
+
+10. 如果当前state是饥饿状态，当前goroutine设置锁，waiter数量 - 1，如果当前goroutine是队列中最后一个goroutine，清除饥饿状态，获取锁，结束
+
+```go
+func (m *Mutex) Lock() {
+	// cas的方式获取锁，获取到之后立即返回
+	if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
+		if race.Enabled {
+			race.Acquire(unsafe.Pointer(m))
+		}
+		return
+	}
+	// 获取不到锁，说明已被其他goroutine获取到了锁，此时会尝试通过自旋的方式等待锁的释放
+	m.lockSlow()
+}
+
+func (m *Mutex) lockSlow() {
+	var waitStartTime int64
+	starving := false
+    // 当前goroutine是否被唤醒
+	awoke := false
+	iter := 0
+	old := m.state
+	for {
+		// 判断当前state已被锁，且非饥饿状态，且能自旋（能否自旋的条件见上）
+		if old&(mutexLocked|mutexStarving) == mutexLocked && runtime_canSpin(iter) {
+			// 自旋过程中如果发现state还没有设置woken标识，则进行设置，标记自己被唤醒
+            // 自旋是为了让其他goroutine在释放锁后能第一时间唤醒此goroutine
+			if !awoke && old&mutexWoken == 0 && old>>mutexWaiterShift != 0 &&
+				atomic.CompareAndSwapInt32(&m.state, old, old|mutexWoken) {
+				awoke = true
+			}
+            // 进入自旋
+			runtime_doSpin()
+			iter++
+			old = m.state
+			continue
+		}
+		new := old
+		// 如果此时是非饥饿状态，state设置为持有锁状态
+		if old&mutexStarving == 0 {
+			new |= mutexLocked
+		}
+        // 如果已经持有锁 或者 是饥饿状态，state的waiter数量+1
+		if old&(mutexLocked|mutexStarving) != 0 {
+			new += 1 <<mutexWaiterShift
+		}
+		// 如果此时是饥饿状态，还持有锁，state设置为饥饿状态
+		if starving && old&mutexLocked != 0 {
+			new |= mutexStarving
+		}
+        // goroutine被唤醒，state设置为非唤醒状态
+		if awoke {
+			if new&mutexWoken == 0 {
+				throw("sync: inconsistent mutex state")
+			}
+			new &^= mutexWoken
+		}
+        // cas更新锁的状态
+		if atomic.CompareAndSwapInt32(&m.state, old, new) {
+            // 如果old不是饥饿状态也不是被锁状态，表明当前goroutine已通过cas获取到了锁，break
+			if old&(mutexLocked|mutexStarving) == 0 {
+				break
+			}
+			// 如果之前已经在等了，就排在队首
+			queueLifo := waitStartTime != 0
+            // 如果之前没在等，则初始化等待时间
+			if waitStartTime == 0 {
+				waitStartTime = runtime_nanotime()
+			}
+            // 该方法会不断尝试获取锁并陷入休眠等待信号量的释放，一旦当前 Goroutine 可以获取信号量，它就会立刻返回
+			runtime_SemacquireMutex(&m.sema, queueLifo, 1)
+            // 如果当前goroutine是饥饿状态，或者已经等待超过1ms，就设置为饥饿状态
+			starving = starving || runtime_nanotime()-waitStartTime > starvationThresholdNs
+			old = m.state
+            // 如果是饥饿模式
+			if old&mutexStarving != 0 {
+				// 如果goroutine被唤醒，且处于饥饿状态，锁的所有权转移给当前goroutine
+				if old&(mutexLocked|mutexWoken) != 0 || old>>mutexWaiterShift == 0 {
+					throw("sync: inconsistent mutex state")
+				}
+                // 当前goroutine获取锁，waiter数量-1
+				delta := int32(mutexLocked - 1<<mutexWaiterShift)
+                // 如果当前goroutine非饥饿状态，或者 当前goroutine是队列中最后一个goroutine
+				if !starving || old>>mutexWaiterShift == 1 {
+					// 退出饥饿模式
+					delta -= mutexStarving
+				}
+				atomic.AddInt32(&m.state, delta)
+				break
+			}
+            // 不是饥饿模式，就把当前goroutine设置为被唤醒
+			awoke = true
+			iter = 0
+		} else {
+            // cas不成功，没有拿到锁，锁被其他goroutine获取或者锁没有被释放，更新状态，重新循环
+			old = m.state
+		}
+	}
+
+	if race.Enabled {
+		race.Acquire(unsafe.Pointer(m))
+	}
+}
+```
+
+## Unlock方法
 
 1. 将state的锁位-1，如果state=0，即此时没有加锁，且没有正在等待获取锁的goroutine，则直接结束方法，如果state != 0，执行unlockSlow方法
 2. 如果Mutex处于饥饿状态，直接唤醒等待队列中的waiter
 3. 如果Mutex处于正常状态，如果没有waiter，或者已经有在处理的情况，则直接释放锁，state锁位-1，返回；否则，waiter数-1，设置唤醒标记，通过CAS解锁，唤醒在等待锁的goroutine（此时新老goroutine一起竞争锁）
 
-### 基于Mutex的拓展
+```go
+func (m *Mutex) Unlock() {
+	if race.Enabled {
+		_ = m.state
+		race.Release(unsafe.Pointer(m))
+	}
+    // 修改state的状态为释放锁
+	new := atomic.AddInt32(&m.state, -mutexLocked)
+	if new != 0 {
+		// 说明此时没有成功解锁
+		m.unlockSlow(new)
+	}
+}
+
+func (m *Mutex) unlockSlow(new int32) {
+	if (new+mutexLocked)&mutexLocked == 0 {
+		throw("sync: unlock of unlocked mutex")
+	}
+    // 非饥饿模式下
+	if new&mutexStarving == 0 {
+		old := new
+		for {
+			// 如果没有等待的goroutine，或者 锁被获取了，或者锁是饥饿模式，或者有goroutine被唤醒
+			if old>>mutexWaiterShift == 0 || old&(mutexLocked|mutexWoken|mutexStarving) != 0 {
+				return
+			}
+			// 这里说明此时锁的状态还是空闲，且没有goroutine被唤醒，且队列中有goroutine等待获取锁
+            // 等待获取锁的goroutine数量-1，设置woken标识
+			new = (old - 1<<mutexWaiterShift) | mutexWoken
+            // 设置新的state，通过信号量唤醒一个阻塞的goroutine获取锁
+			if atomic.CompareAndSwapInt32(&m.state, old, new) {
+				runtime_Semrelease(&m.sema, false, 1)
+				return
+			}
+			old = m.state
+		}
+	} else {
+		// 饥饿模式下，直接将锁的所有权给队首的goroutine
+        // 此时的state还没加锁，被唤醒的goroutine会设置它，如果此时有新的goroutine来请求锁，因为还处于饥饿状态，就仍然认为还被锁，新来的goroutine不会抢到锁
+		runtime_Semrelease(&m.sema, true, 1)
+	}
+}
+```
+
+## 基于Mutex的拓展
 
 * 可重入锁
 * 增加tryLock方法，通过返回true或false来表示获取锁成功或失败，主要用于控制获取锁失败后的行为，而不用阻塞在方法调用上
@@ -158,9 +346,9 @@ const (
 * 增加可观测性指标，比如等待锁的goroutine的数量，需要使用unsafe.Pointer方法获取Mutex中的state的值，解析出正在等待的goroutine的数量
 * 实现线程安全的队列，通过在出队和入队方法中使用Mutex保证线程安全
 
-## RWMutex - 读写锁
+# RWMutex - 读写锁
 
-### 数据结构
+## 数据结构
 
 ```go
 type RWMutex struct {
@@ -173,7 +361,7 @@ type RWMutex struct {
 const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
 ```
 
-### 基本
+## 基本
 
 * 主要提升Mutex在读多写少的场景下的吞吐量，读时共享锁，写时排他锁，基于Mutex实现
 * 由5个方法构成：
@@ -186,26 +374,85 @@ const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
 * 必须先使用RLock / Lock方法才能使用RUnlock / Unlock方法，否则会panic，重复释放锁也会panic。
 * 可以利用RWMutex实现线程安全的map
 
-### RLock / RUnlock 方法
+## RLock / RUnlock 方法
 
 1. RLock时，对readerCount的值+1，判断是否< 0，如果是，说明此时有writer在竞争锁或已持有锁，则将当前goroutine加入readerSem指向的队列中，进行等待，防止写锁饥饿。
 2. RUnlock时，对readerCount的值-1，判断是否<0，如果是，说明当前有writer在竞争锁，调用rUnlockSlow方法，对readerWait的值-1，判断是否=0，如果是，说明当前goroutine是最后一个要解除读锁的，此时会唤醒要请求写锁的writer。
 
-### Lock方法
+## Lock方法
 
 RWMutex内部使用Mutex实现写锁互斥，解决多个writer间的竞争
 
 1. 调用w的Lock方法加锁，防止其他writer上锁，反转 readerCount的值，使其变成负数（readerCount - rwmutexMaxReaders + rwmutexMaxReaders）告诉reader有writer要请求锁
 2. 如果此时readerCount != 0，说明当前有reader持有读锁，需要记录需要等待完成的reader的数量，即readerWait的值（readerWaiter + 第1步算的readerCount的值），并且如果此时readerWait != 0，将当前goroutine加入writerSema指向的队列中，进行等待。直到有goroutine调用RUnlock方法且是最后一个释放锁时，才会被唤醒。
 
-### Unlock方法
+## Unlock方法
 
 1. 反转readerCount的值（readerCount + rwmutexMaxReaders），使其变成reader的数量，唤醒这些reader
 2. 调用w的Unlock方法释放当前goroutine的锁，让其他writer可以继续竞争。
 
-## WaitGroup
+# sync.Map
 
-### 数据结构
+## 数据结构
+
+```go
+type Map struct {
+    // 锁，用于保护dirty
+	mu Mutex
+	// 存读的数据，只读，由dirty提升得到
+	read atomic.Value
+	// 包含最新写入的数据，并且在写的时候，会把read中未被删除的数据拷贝到该dirty中，
+	dirty map[interface{}]*entry
+    // 从read中读数据时该值+1, 当len(dirty) == misses时，将dirty拷贝到read中
+	misses int
+}
+
+type readOnly struct {
+	m       map[interface{}]*entry
+	amended bool // true表明dirty中存在read中没有的键值对
+}
+
+// read和dirty都包含了*entry，里面的p是一个指针，read和dirty各自维护了一套key，但他们都指向同一个value
+type entry struct {
+    // p的状态有三种：1.=nil，表示键值对已被删除；2.=expunged，表示该key被标记删除；3.=正常值
+    p unsafe.Pointer
+}
+```
+
+## 基本
+
+* 将map与RWMutex封装成一个结构体，使用读写锁封装map的各种操作即可
+
+* 有六个方法
+
+  * LoadOrStore：根据key获取value，如果该key存在且没有被标记为删除，则返回原来的value和true，不存在则进行store，返回该value和false
+  * Load：根据key获取value
+  * Delete：删除
+  * LoadAndDelete：根据key删除对应的键值对，如果可以存在，返回对应的value和true
+  * Range：遍历
+  * Store：添加key和value
+
+* 使用RWMutex封装的并发安全的map，因为锁的粒度太大，性能不会太好；通过减少锁的粒度和持有锁的时间，可以提升新能，常见的减少锁的粒度是将锁分片，将锁进行分片，分别控制map中不同的范围的key，类似JDK7中的ConcurrentHashMap的segment锁实现。
+
+* 官方出品的sync.Map，但它只有在部分特殊的场景里才有优势，比如一个只会增长的map，一个key只会被写一次，读很多次；或者 多个goroutine为不相交的键集读、写和重写键值对；
+
+  sync.Map内部有两个map，一个只读read，一个可写dirty，对只读read的操作(读、更新、删除)不需要加锁，以此减少锁对性能的影响；
+
+  写入键值对时，会优先修改read中的数据，如果read中存在则直接修改，因为read和dirty指向同一个value，所以直接修改一次即可；
+
+  如果read中读不到，就会加锁读取dirty里的，同时增加miss的值(miss表示读取穿透的次数)，当miss的值=dirty的长度时，就会将dirty提升为read，然后清空dirty，避免总是从dirty中加锁读取；将dirty提升为read这个操作在load方法中执行；
+
+  加锁读取dirty时，还要再检查read，确定read中真的不存在才会操作dirty；
+
+  dirty提升为read时，只需简单的赋值即可，创建新的dirty时，需要遍历把read中非expunged的值赋给dirty；
+
+  删除key时，只是对该key打上一个expunged标记，只有在将dirty提升为read时才会清理删除的数据；
+
+  sync.Map没有len方法，要获取里面有多少个key只能遍历获取；
+
+# WaitGroup
+
+## 数据结构
 
 ```go
 type WaitGroup struct { 
@@ -218,7 +465,12 @@ type WaitGroup struct {
 }
 ```
 
-### 基本
+信号量的作用：
+
+- 当信号量>0时，表示资源可用，获取信号量时系统自动将信号量减1；
+- 当信号量==0时，表示资源暂不可用，获取信号量时，当前线程会进入睡眠，当信号量为正时被唤醒。
+
+## 基本
 
 * state的值由32bit的值表示信号量，64bit的值表示计数和waiter的数量组成。因为原子操作只能64bit对齐，而计数值和waiter的数量是一个64bit的值，在64bit的编译器上，一次读取是64bit，刚好可以直接操作，但是如果是32bit的机器，一次只能读32bit，为了保证进行64bit对齐时一定能获取到计数值和waiter的值，在进行64bit的原子操作对齐时，第一次是对齐到了一个空32bit和第一个32bit的值，第二次对齐就能保证获取了。
 * 同RWMutex，WaitGroup的三个方法内还很多data race检查，保证并发时候共享数据的正确性，一旦检查出有问题，会直接panic
@@ -229,24 +481,92 @@ type WaitGroup struct {
 * noCopy是一个实现了Lock接口的结构体，且不对外暴露，其Lock方法和Unlock方法都是空实现，用于vet工具检查WaitGroup在使用过程中有没有被复制；当我们自定义的结构不想被复制使用时，也可以使用它。
 * 使用时要避免复制
 
-### Add方法
+## Add方法
 
 1. 原子的将WaitGroup的计数值加到state上，如果当前的计数值 > 0，或者 waiter的数量等于0，直接返回
 2. 否则，即代表当前的计数值为0，但waiter的数量不一定为0，此时state的值就是waiter的数量
 3. 将state的值设置为0，即waiter的数量设置为0，然后唤醒所有waiter
 
-### Done方法
+```go
+func (wg *WaitGroup) state() (statep *uint64, semap *uint32) {
+	if uintptr(unsafe.Pointer(&wg.state1))%8 == 0 {
+		return (*uint64)(unsafe.Pointer(&wg.state1)), &wg.state1[2]
+	} else {
+		return (*uint64)(unsafe.Pointer(&wg.state1[1])), &wg.state1[0]
+	}
+}
+
+func (wg *WaitGroup) Add(delta int) {
+	statep, semap := wg.state()
+	state := atomic.AddUint64(statep, uint64(delta)<<32)
+	v := int32(state >> 32) // 计数器
+	w := uint32(state) // 等待计数器
+	if v < 0 {
+		panic("sync: negative WaitGroup counter")
+	}
+    // 等待计数器不为0，说明已经执行了wait方法，此时不允许调用add方法
+	if w != 0 && delta > 0 && v == int32(delta) {
+		panic("sync: WaitGroup misuse: Add called concurrently with Wait")
+	}
+	if v > 0 || w == 0 {
+		return
+	}
+    // 如果执行到这里，说明计数器为0，但等待计数器不为0
+	// 说明此时发生了并发调用Add方法和wait方法，并发调用导致状态不一致
+	if *statep != state {
+		panic("sync: WaitGroup misuse: Add called concurrently with Wait")
+	}
+    // 状态位清零，唤醒等待的goroutine
+	*statep = 0
+	for ; w != 0; w-- {
+		runtime_Semrelease(semap, false, 0)
+	}
+}
+```
+
+## Done方法
 
 1. 调用Add方法，只是参数为-1，表示计数值 - 1，有一个waiter完成其任务；waiter指的是调用Wait方法的goroutine
 
-### Wait方法
+```go
+func (wg *WaitGroup) Done() {
+	wg.Add(-1)
+}
+```
+
+## Wait方法
 
 1. 循环内不断检测state的值，当其计数值为0时，说明所有任务已经完成，调用这个方法的goroutine不必继续等待，直接返回，结束该方法
 2. 否则，说明此时还有任务没完成，调用该方法的goroutine成为waiter，把waiter的数量 + 1，加入等待队列，阻塞自己
 
-## Cond = condition + Wait/Notify
+```go
+func (wg *WaitGroup) Wait() {
+	statep, semap := wg.state()
+	for {
+		state := atomic.LoadUint64(statep)
+		v := int32(state >> 32)
+		w := uint32(state)
+        // 计数器为0，说明goroutine执行结束
+		if v == 0 {
+			return
+		}
+		// 调用wait方法的goroutine的数目+1，此时调用Add方法时就能知道有多少goroutine在等待
+		if atomic.CompareAndSwapUint64(statep, state, state+1) {
+			// 阻塞等待，直至被唤醒
+			runtime_Semacquire(semap)
+			if *statep != 0 {
+				panic("sync: WaitGroup is reused before previous Wait has returned")
+			}
+			
+			return
+		}
+	}
+}
+```
 
-### 数据结构
+# Cond = condition + Wait/Notify
+
+## 数据结构
 
 ```go
 type Cond struct { 
@@ -257,7 +577,7 @@ type Cond struct {
 }
 ```
 
-### 基本
+## 基本
 
 * 初始化时，要指定使用的锁，比如Mutex
 
@@ -277,9 +597,9 @@ type Cond struct {
 
   调用Wait后一定要检测等待条件是否满足，还需不需要继续等待，在等待的goroutine被唤醒不等于等待条件已满足，可能只是被某个goroutine唤醒而已，被唤醒时，只是得到了一次检测机会。
 
-## Once
+# Once
 
-### 数据结构
+## 数据结构
 
 ```go
 type Once struct {
@@ -288,7 +608,7 @@ type Once struct {
 }
 ```
 
-### 基本
+## 基本
 
 * sync.Once只有一个Do方法，入参是一个无参数无返回值的函数，当且仅当第一次调用Do方法的时候该函数才会执行，即使之后调用了n次、入参的值不一样都不会被执行
 * 可以将sync.Once与想要只初始化一次的对象封装成一个结构体，提供只初始化一次该值的方法，常用于初始化单例资源、并发访问只初始化一次的共享资源、需要延迟初始化的场景等
@@ -313,29 +633,9 @@ func (o *Once) doSlow(f func()) {
 }
 ```
 
-## 并发安全的map
+# Pool
 
-* 将map与RWMutex封装成一个结构体，使用读写锁封装map的各种操作即可
-
-* 使用RWMutex封装的并发安全的map，因为锁的粒度太大，性能不会太好；通过减少锁的粒度和持有锁的时间，可以提升新能，常见的减少锁的粒度是将锁分片，将锁进行分片，分别控制map中不同的范围的key，类似JDK7中的ConcurrentHashMap的segment锁实现。
-
-* 官方出品的sync.Map，但它只有在部分特殊的场景里才有优势，比如一个只会增长的map，一个key只会被写一次，读很多次；或者 多个goroutine为不相交的键集读、写和重写键值对
-
-  sync.Map内部有两个map，一个只读read，一个可写dirty，对只读read的操作(读、更新、删除)不需要加锁，以此减少锁对性能的影响。
-
-  如果read中读不到，就会加锁读取dirty里的，同时增加miss的值(miss表示读取穿透的次数)，当miss的值=dirty的长度时，就会将dirty提升为read，然后清空dirty，避免总是从dirty中加锁读取
-
-  加锁读取dirty时，还要再检查read，确定read中真的不存在才会操作dirty
-
-  dirty提升为read时，只需简单的赋值即可，创建新的dirty时，需要遍历把read中非expunged的值赋给dirty
-
-  删除key时，只是对该key打上一个expunged标记，只有在将dirty提升为read时才会清理删除的数据
-
-  sync.Map没有len方法，要获取里面有多少个key只能遍历获取
-
-## Pool
-
-### 数据结构
+## 数据结构
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/go syncPool数据结构.png)
 
@@ -345,7 +645,7 @@ func (o *Once) doSlow(f func()) {
 * private字段代表一个缓存元素，且只能由相应的一个P存取，因为一个P同时只能执行一个goroutine，所以不会有并发问题
 * shared字段可以被任意的P访问，但是只有本地的P次啊能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个local-free的队列实现
 
-### 基本
+## 基本
 
 * sync.Pool用于保存一组可独立访问的临时对象，它池化的对象如果没有被其他对象持有引用，可能会在未来某个时间点被回收掉
 * sync.Pool是并发安全的，多个gotoutine可以并发调用它存取对象；
@@ -355,7 +655,7 @@ func (o *Once) doSlow(f func()) {
 * 当Pool里没有元素可用时，Get方法会返回nil；可以向Pool中Put一个nil的值，Pool会将其忽略
 * 当使用Pool作为buffer池时，要注意buffer如果太大，reset后它就会占很大空间，引起内存泄漏，因此在回收元素时，需要检查大小，如果太大了就直接置为null，丢弃即可
 
-### Get方法
+## Get方法
 
 1. 将当前goroutine固定在P上，优先从local的private字段取出一个元素，将private置为null
 2. 如果取出的元素为null，从当前的local.shared的head中取出一个元素，如果还取不到，调用getSlow函数去其他shared中取
@@ -364,12 +664,12 @@ func (o *Once) doSlow(f func()) {
 
 因为当前的goroutine被固定在了P上，在查找元素时不会被其他P执行
 
-### Put方法
+## Put方法
 
 1. 如果Put进来的元素是null，直接返回
 2. 固定当前goroutine，如果本地private没有值，直接设置，否则加入到shared中
 
-## 原子操作
+# 原子操作
 
 * 依赖atomic包，因为没有泛型，目前该包支持int32、int64、uint32、unit64、uintptr、Pointer的原子操作，比如Add、CompareAndSwap、Swap、Load、Store等（Pointer不支持Add），对于有符号的数值来说，Add一个负数相当于减
 * 对于现代多核操作系统来说，由于cache、指令重排、可见性问题，一个核对地址的值的更改，在更新到主内存中前，会先存在多级缓存中，此时，多个核看到该数据可能还没看到更新的数据，还在使用旧数据，而atomic包提供的方法会提供内存屏障的功能，保证赋值数据的完整性和可见性
@@ -453,9 +753,9 @@ func cas(p *unsafe.Pointer, old, new *node) (ok bool) {
 }
 ```
 
-## Weighted = Semaphore信号量
+# Weighted = Semaphore信号量
 
-### 数据结构
+## 数据结构
 
 ```go
 type Weighted struct {
@@ -466,7 +766,7 @@ type Weighted struct {
 }
 ```
 
-### 基本
+## 基本
 
 * 信号量中的PV操作，P：获取资源，如果获取不到，则阻塞，加入到等待队列中；V：释放资源，从等待队列中唤醒一个元素执行P操作
 
@@ -486,21 +786,21 @@ type Weighted struct {
 
 * 信号量的实现也可通过buffer为n的channel实现，只是一次只能请求一个资源，而Weighted一次可以请求多个
 
-### Acquire方法
+## Acquire方法
 
 1. 加锁，判断可用资源 >= 入参所需的资源数，且没有waiter，说明资源足够，直接cur+上所需资源数，解锁返回
 2. 如果所需资源数>最大资源数，说明是不可能任务，解锁，依赖ctx的Done方法返回，否则一直等待
 3. 如果资源数不够，将调用者加入等待队列，并创建一个read chan，用于通知唤醒，解锁
 4. 等待唤醒有两种条件，一种是通过read chan唤醒，另一种是通过ctx.Done唤醒
 
-### Release方法
+## Release方法
 
 1. 加锁，当前已使用资源数cur - 入参要释放的资源数，唤醒等待队列中的元素，解锁
 2. 唤醒等待队列的元素时，会遍历waiters队列，按照先入先出的方式唤醒调用者，前提是释放的资源数要够队首的元素资源的要求，比如释放100个资源，但是队首元素要求101个资源，那队列中的所有等待者都将继续等待，直到队首元素出队，这样做是为了避免饥饿
 
-## SingleFlight
+# SingleFlight
 
-### 结构体
+## 结构体
 
 ```go
 // 代表一个正在处理的请求，或者已经处理完的请求
@@ -522,7 +822,7 @@ type Group struct {
 }
 ```
 
-### 基本
+## 基本
 
 * SingleFlight可以合并多个请求为一个请求，再将该请求的结果返回给多个请求，从而达到合并并发请求的目的，减少并发调用的数量。比如有多个相同的读请求查库，那就可以合并成一个请求查库，再把结果响应回这多个请求中；或者是解决缓存击穿问题，降低对下游服务的并发压力
 
@@ -534,9 +834,9 @@ type Group struct {
 
   Forget方法：告诉Group忽略这个key，之后这个key的请求会执行入参函数，而不是等待前一个未完成的入参函数的结果
 
-## CyclicBarrier - 循环栅栏
+# CyclicBarrier - 循环栅栏
 
-### 数据结构
+## 数据结构
 
 ```go
 type CyclicBarrier interface {
@@ -553,13 +853,13 @@ type CyclicBarrier interface {
 }
 ```
 
-### 基本
+## 基本
 
 * 类似Java的CyclicBarrier，允许一组goroutine相互等待，到达一个共同的执行点再继续往下执行；同时也可被重复使用。
 * CyclicBarrier是一个接口，然后有两个初始化的方法，New方法，指定循环栅栏的参与者数量即可初始化；NewWithAction方法，除了指定参与者数量，第二个参数是一个函数，表示在最后一个参与者到达之后，但其他参与者还没放行之前，会调用该函数
 * 每个参与的goroutine都会调用Await方法进行阻塞，当调用Await方法的goroutine的个数=参与者的数量时，Await方法造成的阻塞才会解除
 
-## ErrGroup
+# ErrGroup
 
 * 类似WaitGroup，只是功能更丰富，多了与Context集成，可以通过Context监控是否发生cancel；error可以向上传播，把子任务的错误传递给Wait的调用者
 * ErrGroup用于并发处理子任务，将一个大任务拆成几个小任务，通过Go方法并发执行。
@@ -568,7 +868,15 @@ type CyclicBarrier interface {
 * Go方法会创建一个goroutine来执行子任务，如果并发的量太大，会导致创建大量的goroutine，带来goroutine的调度和GC压力，占用更多资源，解决方案可以是使用worker pool或者信号量来控制goroutine的数量或保持重用
 * 子任务如果发生panic会导致程序崩溃
 
-## 检测工具
+# 检测工具
 
 * go race detector：主要用于检测多个goroutine对共享变量的访问是否存在协程安全问题。编译器通过探测所有内存的访问，加入代码监视对内存地址的访问，在程序运行时，监控共享变量的非同步访问，出现race时，打印告警信息。比如在运行时加入race参数`go run -race main.go`，当执行到一些并发操作时，才会检测运行时是否有并发问题
 * 命令`go vet xxx.go`可以进行死锁检测
+
+# 参考
+
+[go中sync.Mutex源码解读](https://www.cnblogs.com/ricklz/p/14535653.html)
+
+[go中waitGroup源码解读](https://www.cnblogs.com/ricklz/p/14496612.html)
+
+[深度解密Go语言之sync.map](https://zhuanlan.zhihu.com/p/344834329)
