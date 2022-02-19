@@ -344,10 +344,6 @@ metadata:
   name: two-containers
 spec:
   restartPolicy: Never
-  volumes:
-  - name: shared-data
-    hostPath:
-      path: /data
   containers:
   - name: nginx-container
     image: nginx
@@ -361,6 +357,10 @@ spec:
       mountPath: /pod-data
       command: ["/bin/sh"]
       args: ["-c", "echo Hello from the debian container > /pod-data/ index.html"]
+  volumes:
+  - name: shared-data
+    hostPath:
+      path: /data
 ```
 
 声明了两个容器，都挂载了shared-data这个Volume，且该Volume是hostPath，对应宿主机上的/data目录，所以么，nginx-container 可 以 从 它 的/usr/share/ nginx/html 目 录 中， 读取到debian-container生 成 的 index.html文件。
@@ -662,6 +662,32 @@ spec:
       resources: 
         requests: 
           storage: 10Gi
+---
+# 声明要挂载的PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nginx-pv
+  labels:
+    app: nginx
+spec:
+  capacity:
+    storage: 500Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-09b712ab658f73e6f::fsap-xxx
+---
+# 声明要挂载的StorageClass
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: efs-sc
+provisioner: efs.csi.aws.com
 ```
 
 ## 控制器模型
@@ -811,6 +837,37 @@ CronJob使用 spec.schedule来控制，使用jobTemplate来定义job模板，spe
 
 spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）、Forbid（新Job不会被创建）、Replace（新的Job会替换旧的，没有执行完的Job）
 
+```yaml
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: order-cronjob-auto-close-order
+  namespace: regoo
+  labels:
+    app: order
+spec:
+  schedule: "*/5 * * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+          labels:
+            app: order
+        spec:
+          containers:
+            - image: curlimages/curl:7.77.0
+              name: curl
+              imagePullPolicy: IfNotPresent
+              command: ["curl", "-X", "POST", "http://order:8080/order/schedule/auto_close_order"]
+          restartPolicy: OnFailure
+```
+
 ### Operator
 
 本质是一个Deployment，会创建一个CRD，常用于简化StatefulSet的部署，用来管理有状态的Pod，维持拓扑状态和存储状态。需要编写与Kubernetes Matser交互的代码，才能实现自定义CRD的行为。
@@ -829,6 +886,27 @@ spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）�
 
   * RoundRobin：轮询模式，即轮询将请求转发到后端的各个pod上（默认模式）
   * SessionAffinity：基于客户端IP地址进行会话保持的模式，第一次客户端访问后端某个pod，之后的请求都转发到这个pod上
+
+```yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: order
+  namespace: regoo
+  labels:
+    app: order
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: order
+  type: NodePort
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
+```
 
 ### endpoints的作用
 
@@ -1025,8 +1103,6 @@ _http._tcp.{service名称}.{名称空间}.svc.cluster.local. 30 IN SRV 10 100 44
 {service名称}.{名称空间}.svc.cluster.local. 5 IN A 192.168.62.113
 ```
 
-
-
 ## Ingress
 
 工作在第七层，应用层，即一般代理Http流量。
@@ -1036,6 +1112,38 @@ _http._tcp.{service名称}.{名称空间}.svc.cluster.local. 30 IN SRV 10 100 44
 Ingress是反向代理的规则，Ingress Controller是负责解析Ingress的规则后进行转发。可以理解为Nginx，本质是将请求通过不同的规则进行路由转发。常见的Ingress Class实现有Nginx-Ingress-Controller、AWS-LB-Ingress-Controller，使用Ingress时会在集群中创建对应的controller pod。
 
 Ingress Controller可基于Ingress资源定义的规则将客户端请求流量直接转发到Service对应的后端Pod资源上（比如aws-lb-ingress-controller 的 IP mode），其会绕过Service资源，直接转发到Pod上，省去了kube-proxy实现的端口代理开销。
+
+```yaml
+# 使用aws alb作为ingress，并将流量转发istio-ingressgateway service
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  namespace: istio-system
+  name: istio-api
+  labels:
+    app: istio-api
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/load-balancer-name: "online-api"
+    alb.ingress.kubernetes.io/target-type: "instance"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+    alb.ingress.kubernetes.io/certificate-arn: "xxx"
+    alb.ingress.kubernetes.io/scheme: "internet-facing"
+    alb.ingress.kubernetes.io/tags: "app=eks"
+    alb.ingress.kubernetes.io/load-balancer-attributes: "deletion_protection.enabled=true,access_logs.s3.enabled=true,access_logs.s3.bucket=regoo-logs,access_logs.s3.prefix=alb"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /*
+            backend:
+              serviceName: istio-ingressgateway
+              servicePort: 80
+          - path: /*
+            backend:
+              serviceName: istio-ingressgateway
+              servicePort: 443
+```
 
 ### 和Istio Ingressgateway的区别
 
@@ -1225,8 +1333,7 @@ Reflector 和 Informer 之间，用到了一个“增量先进先出队列”进
 
 **NodeSelector**：将Pod和Node进行绑定的字段
 
-```
-如：
+```yaml
 apiVersion: v1
 kind: Pod
 ...
@@ -1239,7 +1346,7 @@ spec:
 
 **HostAliases**：定义了Pod的hosts文件（比如/etc/hosts）里的内容
 
-```
+```yaml
 spec:
   hostAliases:
   - ip: "10.1.2.3"
@@ -1280,7 +1387,7 @@ spec:
 
 ## 常用命令
 
-```
+```yaml
 查看所有Pod
 kubectl get pod -A
 
@@ -1343,16 +1450,13 @@ kubectl run -it --rm --restart=Never busybox --image=busybox sh
 kubectl get nodes --show-labels
 
 给node设置标签
-kubectl label nodes [node名称] disktype=ssd
+kubectl label nodes <your-node-name> disktype=ssd
 
 删除节点
 1. 先排干上面的pod
-kubectl drain [node名称] --delete-local-data --force --ignore-daemonsets
+kubectl drain node名称 --delete-local-data --force --ignore-daemonsets
 2. 删除
-kubectl delete node [node名称]
-如果误驱逐节点，进行恢复
-kubectl uncordon [node名称]
-
+kubectl delete node node名称 
 
 将镜像打成压缩包
 docker save -o 压缩包名字  镜像名字:标签
@@ -1363,6 +1467,26 @@ docker run --rm --name kubectl bitnami/kubectl:latest version
 
 启动时修改entrypoint
 docker run --rm -it --entrypoint env 镜像:tag /bin/bash
+
+构建镜像
+docker build -t xxx:tag .
+
+从容器里复制文件出来
+docker cp 容器id:/容器内文件路径/文件名 /宿主机路径/文件名
+
+
+修改envoy的日志级别
+curl -XPOST http://localhost:15000/logging?level=debug
+curl -XPOST http://localhost:15000/logging?level=info
+
+查看istio整个服务网格的配置
+istioctl proxy-config routes [istio-ingressgateway pod的名字] -n istio-system
+
+滚动更新
+kubectl patch deployment $APP-stable -n $NAMESPACE --patch '{"spec": {"template": {"metadata": {"labels":{"cm":"stable"},"annotations": {"version/config": "'$DATE'" }}}}}'
+
+复制pod里的文件到当前机器
+kubectl cp [pod名字]:[work_dir]/文件名 -n [名称空间] -c [容器名称] ./复制后的文件名
 ```
 
 # ServiceMersh
@@ -1446,6 +1570,66 @@ Istio会将Envoy容器本身的定义，以configMap的方式进行保存，当�
 * **ServiceEntry**：面向服务，将外部的服务注册到服务网格中，为其转发请求，添加超时重试等策略，扩展网格，比如连接不同的集群，使用同一个istio管理。
 
 Sidecar使用Envoy，代理服务的端口和协议。
+
+```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: public-api-gateway
+  namespace: regoo
+spec:
+  selector:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  # 入口配置
+  servers:
+    - port:
+        number: 8080
+        name: http
+        protocol: HTTP
+      hosts:
+        - "api.xxx.com"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: order
+  namespace: regoo
+  labels:
+    app: order
+spec:
+  # 只允许请求来自该host的流量
+  hosts:
+    - "*"
+  # 绑定Gateway
+  gateways:
+    - public-api-gateway
+  http:
+  	# 路由匹配
+    - match:
+        - uri:
+            prefix: /order/v1
+      route:
+        - destination:
+            port:
+              number: 8080
+            host: order
+            subset: stable
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: order
+  namespace: regoo
+  labels:
+    app: order
+spec:
+  host: order
+  subsets:
+    - name: stable
+      labels:
+        version: stable
+```
 
 ## 应用场景
 
