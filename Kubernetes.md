@@ -11,6 +11,8 @@ tags: ["Kubernetes", "Istio"]
 
 # Kubernetes
 
+当前Kubernetes社区对外宣传是单个集群最多支持5000个节点，Pod总数不超过150k，容器总数不超过300k，单节点Pod数量不超过100个。
+
 ## 基本
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/k8s项目架构.jpg)
@@ -18,19 +20,47 @@ tags: ["Kubernetes", "Istio"]
 **容器的本质是进程，Kubernetes相当于操作系统**，管理这些进程组。
 
 * CNI：Container Network Interface，容器网络接口规范，如 Flannel、Calico、AWS VPC CNI
-* kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口，通过Socket和容器运行时通信。
-  kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件
-  kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI
+
 * CRI：Container Runtime Interface，容器运行时的各项核心操作的接口规范，是一组gRPC接口。包含两类服务，镜像服务和运行时服务。镜像服务提供下载、检查和删除镜像的RPC接口；运行时服务包含用于管理容器生命周期，与容器交互的调用的RPC接口（exec / attach / port-forward等）。dockershim、containerd、cri-o都是遵循CRI的容器运行时，称为高层级运行时。
+
 * CSI：Container Storage Interface，容器存储的接口规范，如PV、PVC
+
 * OCI：Open Container Initiative，容器运行时和镜像操作规范，镜像规范规定高层级运行时会下载一个OCI镜像，并把它解压称OCI运行时文件系统包；运行时规范描述如何从OCI运行时文件系统包运行容器程序，并且定义其配置、运行环境和生命周期。定义新容器的namespaces、cgroups和根文件系统；它的一个参考实现是runC，称为底层级运行时。
+
 * CRD：Custom Resource Definition，自定义的资源对象，即yaml文件中的Kind，如Operator就是实现CRD的控制器，之后直接使用Operator创建的CRD声明对象即可使用
+
+  每一个对象都包含两个嵌套对象来描述规格（Spec）和状态（Status），对象的规格就算我们期望的目标状态，而状态描述了对象当前状态，这一部分由Kubernetes本身提供和管理，通过describe才能看到Status的信息。
+
+  ```go
+  type Deployment struct {
+  	metav1.TypeMeta `json:",inline"`
+  	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+  
+  	Spec DeploymentSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+  	Status DeploymentStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+  }
+  ```
+
 * Master节点作用：编排、管理、调度用户提交的作业
-  * Scheduler：编排和调度Pod，基本原理是通过监听api-server获取待调度的pod，然后基于一系列筛选和评优，为pod分配最佳的node节点。
-  * APIServer：提供集群对外访问的API接口实现对集群资源的CRUD以及watch，是集群中各个组件数据交互和通信的枢纽，当收到一个创建pod的请求时会进行认证、限速、授权、准入机制等检查后，写入etcd。
+  * Scheduler：编排和调度Pod，基本原理是通过监听api-server获取待调度的pod，然后基于一系列筛选和评优，为pod分配最佳的node节点，在每次需要调度Pod时执行。
+  * APIServer：提供集群对外访问的API接口实现对集群资源的CRUD以及watch，是集群中各个组件数据交互和通信的枢纽，当收到一个创建pod的请求时会进行认证、限速、授权、准入机制等检查后，写入etcd。唯一一个与etcd集群通信的组件。
   * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等，核心思想是监听、比较资源实际状态与期望状态是否一致，否则进行协调。
+  
 * Device Plugin：管理节点上的硬件设备，比如GPU
-* Kube-Proxy：作为daemonset部署在每个节点上，主要用于为Pod创建代理服务，从API-Server获取所有service信息，创建Endpoints，转发service到Pod间的请求，默认使用iptables模式，但当service数量变多时有性能问题，1.8版本后使用IPVS模式提升性能
+
+* Worker节点作用：运行或执行用户作业
+
+  * kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口，通过Socket和CRI通信；
+
+    周期性地从API Server接收新的或者修改的Pod规范并且保证节点傻瓜的Pod和其他容器的正常运行，保证节点会向目标状态迁移，向Master节点发送宿主机的健康状态；
+
+    kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件；
+    kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI；
+
+  * Kube-Proxy：作为daemonset部署在每个节点上，负责宿主机的子网管理，用于为Pod创建代理服务，同时也能将服务暴露给外部，其原理就是在多个隔离的网络中把请求转发给正确的Pod或容器；
+
+    从API-Server获取所有service信息，创建Endpoints，转发service到Pod间的请求，默认使用iptables模式，但当service数量变多时有性能问题，1.8版本后使用IPVS模式提升性能；
+
 * coreDNS：低版本的kubernetes使用kube-dns，1.12后默认使用coreDNS，用于实现域名查找功能
 
 ## 调度器Scheduler
@@ -210,6 +240,8 @@ Pod是最小的API对象。
 由于不同容器间可能存在依赖关系（如启动顺序的依赖），因此k8s会起一个中间容器Infra容器，来关联其他容器，infra容器一定是最先起的，其他容器通过Join Network Namespace的方式与Infa容器进行关联。
 
 一个 Pod 只有一个 IP 地址，由Pod内容器共享，Pod 的生命周期只跟 Infra 容器一致，Infra管理共享资源。
+
+kubelet会为每个节点上创建一个基本的cbr0网桥，并为每一个Pod创建veth虚拟网络设备，绑定一个IP地址，同一个Pod中的所有容器会通过这个网络设备共享网络，从而能通过localhost相互访问彼此暴露的端口和服务。
 
 对于initContainer命令的作用是按配置顺序最先执行，执行完之后才会执行container命令，例如，对war包所在容器使用initContainer命令，将war包复制到挂载的卷下后，再执行tomcat的container命令启动tomcat以此来启动web应用，这种先启动一个辅助容器来完成一些独立于主进程（主容器）之外的工作，称为sidecar，边车
 
@@ -414,12 +446,12 @@ memory.available < 100Mi；nodefs.available < 10%；nodefs.inodesFree < 5%；ima
 
 ### Pod中的健康检查
 
-对于Web应用，最简单的就是由Web应用提供健康检查的接口，我们在定义的API对象的时候设置定时请求来检查运行在容器中的web应用是否健康
+对于Web应用，最简单的就是由Web应用提供健康检查的接口，我们在定义的API对象的时候设置定时请求来检查运行在容器中的web应用是否健康，主要是为了防止服务未启动完成就被打入流量或者长时间未响应依然没有重启等问题。
 
 ```yaml
 ...
 livenessProbe:
-     httpGet:
+     httpGet: # 除此之外还有Exec、TCPSocket两种不同的probe方式
        path: /healthz
        port: 8080
        httpHeaders:
@@ -600,14 +632,22 @@ spec:
 
 * StorageClass：创建PV的模板，只有同属于一个StorageClass的PV和PVC，才可以绑定在一起，K8s内默认有一个名字为空串的DefaultStorageClass。
 
-  StorageClass用于自动创建PV，StorageClass的定义比PV更加通用，一个StorageClass可以对应多个PV，这样就无需手动创建多个PV了。
+  StorageClass用于**自动**创建PV，StorageClass的定义比PV更加通用，一个StorageClass可以对应多个PV，这样就无需手动创建多个PV了。
 
-PVC与PV的绑定条件：
+集群中的每一个卷在被Pod使用时都会经历四个操作：附着Attach、挂载Mount、卸载Unmount和分离Detach；
+
+> 如果 Pod 中使用的是 EmptyDir、HostPath 这种类型的卷，那么这些卷并不会经历附着和分离的操作，它们只会被挂载和卸载到某一个的 Pod 中； EmptyDir、HostPath、ConfigMap 和 Secret，这些卷与所属的 Pod 具有相同的生命周期，对于ConfigMap和Sercet，在挂载时会创建临时的volume，随着Pod的删除而删除，而不会影响本身的ConfigMap和Secret对象；
+>
+> 如果使用的云服务商提供的存储服务，这些持久卷只有附着到某一个节点之后才可以被挂在到相应的目录下，不过在其他节点使用这些卷时，该存储资源需要先与当前的节点分离。
+
+### PVC与PV的绑定条件
 
 1. PV和PVC的spec字段要匹配，比如存储的大小
 2. PV和PVC的storageClassName字段必须一样
 
-> 用户提交请求创建pod，Kubernetes发现这个pod声明使用了PVC，那就靠PersistentVolumeController帮它找一个PV配对。
+> Volume 的创建和管理在 Kubernetes 中主要由卷管理器 VolumeManager 和 AttachDetachController 和 PVController三个组件负责。其中VolumeManager 会负责卷的创建和管理的大部分工作，而 AttachDetachController 主要负责对集群中的卷进行 Attach 和 Detach，PVController 负责处理持久卷的变更。
+>
+> 当用户提交请求创建pod，Kubernetes发现这个pod声明使用了PVC，那就靠PersistentVolumeController帮它找一个PV配对。
 >
 > 如果没有现成的PV，就去找对应的StorageClass，帮它新创建一个PV，然后和PVC完成绑定。
 >
@@ -619,12 +659,19 @@ PVC与PV的绑定条件：
 
 ### 访问模式
 
-由卷的提供商提供，比如AWS的EBS中的GP2、GP3磁盘，是ReadWriteOnce模式，所以一个卷只能被一个pod使用，否则会出现写冲突，即使用pod的复制集只能设置为1，且更新策略为recreate，保证只有一个pod使用才行；而如果是ReadWriteMany模式，比如AWS的EFS（EFS本质上是AWS对NFS的一次封装），则允许多个pod共享同一个持久卷
+由卷的提供商提供，比如AWS的EBS中的GP2、GP3磁盘，是ReadWriteOnce模式，所以一个卷只能被一个节点使用，否则会出现写冲突，即使用pod的复制集只能设置为1，且更新策略为recreate，保证只有一个pod使用才行；而如果是ReadWriteMany模式，比如AWS的EFS（EFS本质上是AWS对NFS的一次封装），则允许多个pod共享同一个持久卷
 
 * ReadWriteOnce：卷可以被一个节点以读写方式挂载，允许同一个节点上的多个Pod访问；
 * ReadOnlyMany：卷可以被多个节点以只读方式挂载；
 * ReadWriteMany：卷可以被多个节点以读写方式挂载；
 * ReadWriteOncePod：卷可以被单个 Pod 以读写方式挂载；
+
+### 回收策略
+
+当PVC对象被删除时，kubernetes就需要对卷进行回收。
+
+* Retain：保留PV中的数据，如果PV想被重新使用，系统管理员就需要删除被使用的PV对象，并手动清除存储和相关存储上的数据。
+* Delete：PV和相关的存储会被自动删除，如果当前PV上的数据确实不再需要，使用此策略可以节省手动处理的时间并快速释放无用的资源。
 
 ```yaml
 apiVersion: apps/v1
@@ -692,7 +739,7 @@ provisioner: efs.csi.aws.com
 
 ## 控制器模型
 
-常见的控制器有Deployment、Job、CronbJob、ReplicaSet、StatefulSet、DaemonSet等
+常见的控制器有Deployment、Job、CronbJob、ReplicaSet、StatefulSet、DaemonSet等，他们是用于创建和管理Pod的实例，能够在集群层面提供复制、发布以及健康检查等功能，这些控制器都运行在Kubernetes集群的Master节点上，这些控制器会随Controller Manager的启动而运行，监听集群状态的变更来调整对应对象的状态。
 
 ### 原理
 
@@ -714,7 +761,7 @@ for {
 
 ### Deployment
 
-最基本的控制器对象，管理Pod的工具，比如管理多个相同Pod的实例，滚动更新
+最基本的控制器对象，管理Pod的工具，比如管理多个相同Pod的实例，Deployment和ReplicaSet都能控制Pod的数量，但一般我们使用的还是Deployment，因为其还有其他功能，比如滚动更新、回滚、暂停和恢复等。
 
 ```yaml
 apiVersion: apps/v1
@@ -722,6 +769,7 @@ kind: Deployment
 metadata:
   name: nginx-deployment
 spec:
+  paused: false # 暂停：false
 # 通过spec.selector.matchLabels根据Pod的标签选择Pod
   selector:
     matchLabels:
@@ -738,13 +786,21 @@ spec:
         image: nginx:1.7.9
         ports:
         - containerPort: 80
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # 可使用值也可以使用百分比，使用百分比时，与replca值相乘得到最终的值
+      maxUnavailable: 25% # 在更新过程中能够进入不可用状态的Pod的最大值
+      maxSurge: 25% # 能额外创建的Pod的个数
 ```
 
-Deployment想要实现水平扩展/收缩，实际操控的是ReplicaSet对象，而ReplicaSet管理着定义数量的Pod，所以它是一种三层结构，Deployment -> ReplicaSet -> 多个平行的Pod，Deployment是一个两层控制器，Deployment控制的是ReplocaSet的版本，ReplicaSet控制的是Pod的数量。
+Deployment想要实现水平扩展/收缩，实际操控的是ReplicaSet对象，而ReplicaSet管理着定义数量的Pod，所以它是一种三层结构，Deployment -> ReplicaSet -> 多个平行的Pod，Deployment是一个两层控制器，Deployment控制的是RepliocaSet的版本，ReplicaSet控制的是Pod的数量。
 
 ReplicaSet表示版本，比如上面那份配置，replicas:2是一个版本，replicas:3是一个版本，这里是因为数量不同产生两个版本，每一个版本对应着一个ReplicaSet，由Deployment管理。
 
 当我们修改Deployment的replicas字段时，会触发水平扩展/收缩，修改template.Image或者版本号时，就会触发滚动更新。
+
+Controller Manager中的DeploymentController作为管理Deployment资源的控制器，会在启动时通过Informer监听Pod、ReplicaSet和Deployment的变更，一旦变更就会触发DeploymentController中的回调；
 
 ```yaml
 # 设置更新策略
@@ -757,13 +813,6 @@ spec:
       maxSurge: 1  # 指定Desired数量，
       maxUnavailable: 1 # 一次更新中，可以删除的旧的Pod的数量
 ```
-
-滚动更新相关命令
-
-* 使用`kubectl describe deploy xxx -n yyy`或者`kubectl rollout status deploy xxx -n yyy`即可查看滚动更新的流程；
-* 当新的版本有问题时，使用`kubectl rollout undo deploy xxx [--to-revision=n]`回滚到上个版本；
-* 使用`kubectl rollout history`查看每次变更的版本，但最好在执行apply -f deployment.yaml后加上-record参数；
-* 如果不想每次修改都触发滚动更新，可以先使用`kubectl rollout pause deploy xx -n yy`暂停Ddeployment的行为，修改为yaml后使用`kubectl rollout resume deploy xx -n yy`恢复，让其只触发一次修改。
 
 Deployment只适合控制无状态的Pod，如果是Pod与Pod之间有依赖关系，或者有状态时，deployment就不能随便杀掉任意的Pod再起新的Pod，比如多个数据库实例，因为数据库数据是存在磁盘，如果杀掉后重建，会出现实例与数据关系丢失，因此就需要StatefulSet。
 
@@ -787,6 +836,40 @@ StatefulSet的滚动更新，会按照与Pod编号相反的顺序，逐一更新
 
 StatefulSet可用于部署有状态的应用，比如有主从节点MySQL集群，在这个case中，虽然Pod会有相同的template，但是主从Pod里的sidecar执行的动作不一样，而主从Pod可以根据编号来实现，不同类型的Pod存储通过PVC + PV实现。
 
+StatefulSet主要由StatefulSetController、StatefulSetControl和StatefulPodControl三个组件协作来完成StatefulSet的管理，StatefulSetController会同时从PodInformer和ReplicaSetInformer中接受增删查改事件并将事件推送到队列中。
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: k8s.gcr.io/nginx-slim:0.8
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+```
+
 ### DaemonSet
 
 DaemonSet 的会在Kubernetes 集群里的每个节点都运行一个 Daemon Pod，每个节点只允许一个，当有新的节点加入集群后，该Pod会在新节点上被创建出来，节点被删除，该Pod也被删除。
@@ -803,13 +886,41 @@ DaemonSet是**直接管理**Pod的，DaemonSet所管理的Pod的调度过程，�
 
 DaemonSet的应用一般是网络插件的Agent组件、存储插件的Agent组件、节点监控组件、节点日志收集等。
 
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd-elasticsearch
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: fluentd-elasticsearch
+  template:
+    metadata:
+      labels:
+        name: fluentd-elasticsearch
+    spec:
+      containers:
+      - name: fluentd-elasticsearch
+        image: k8s.gcr.io/fluentd-elasticsearch:1.20
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+          readOnly: true
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+```
+
 ### Job
 
 Job是一种特殊的Pod，即那些计算完成之后就退出的Pod，指状态变为complated
 
 Job 会使用这种携带了 UID 的 Label，为了避免不同 Job 对象所管理的 Pod 发生重合，Job是直接控制Pod的
 
-```
+```yaml
 spec:
  backoffLimit: 5 //默认是6
  activeDeadlineSeconds: 100 //单位：秒
@@ -829,13 +940,15 @@ Job Controller 在控制循环中进行的调谐（Reconcile）操作，是根�
 
 ### CronJob
 
-如果仍然使用Deployment管理，因为它会对退出的Pod进行滚动更新，所以并不合适，因此需要使用CronJob
+如果仍然使用Deployment管理，因为它会对退出的Pod进行滚动更新，所以并不合适，因此需要使用CronJob；
 
-作用类似于Job类似于Pod，CronJob类似于Deployment
+作用类似于Job类似于Pod，CronJob类似于Deployment；
+
+Cronjob会每隔10s从api-server中取出资源并进行检查是否触发调度创建新的资源，so Cronjob并不能保证在准确的目标时间执行，有一定的滞后性；
 
 CronJob使用 spec.schedule来控制，使用jobTemplate来定义job模板，spec.concurrencyPolicy来控制并行策略
 
-spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）、Forbid（新Job不会被创建）、Replace（新的Job会替换旧的，没有执行完的Job）
+spec.concurrencyPolicy=Allow（一个Job没执行完，新的Job就能产生）、Forbid（新Job不会被创建）、Replace（新的Job会替换旧的，没有执行完的Job）；
 
 ```yaml
 apiVersion: batch/v1beta1
@@ -849,8 +962,11 @@ spec:
   schedule: "*/5 * * * *"
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 1
+  completions: 1 # 当前任务要等待1个pod的成功执行
+  parallelism: 1 # 最多有1个并发执行的任务，此时所有任务会依次顺序进行，只有前一个成功才能执行下一个
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 120
+  suspend: false # 是否暂停
   jobTemplate:
     spec:
       template:
@@ -882,6 +998,8 @@ spec:
 
 * 一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
 
+* 创建一个新的Service对象需要两大模块同时协作，一个是控制器，它需要在每次客户端创建新的Service对象时，生成其他用于暴露一组Pod的对象，即Endpoint，另一个是kube-proxy，它运行在集群的每个节点上，根据Service和Endpoint的变动改变节点上iptables或者ipvs中保存的规则。
+
 * service负载分发策略有两种模式：
 
   * RoundRobin：轮询模式，即轮询将请求转发到后端的各个pod上（默认模式）
@@ -908,7 +1026,23 @@ spec:
   externalTrafficPolicy: Cluster
 ```
 
-### endpoints的作用
+### kube-proxy
+
+Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负责监听kubernetes主节点中Service的增加和删除事件并修改运行代理的配置，为节点内的客户端提供流量转发和负载均衡等功能，kube-proxy有三种模式：
+
+* userspace：运行在用户空间的代理，对于每一个Service都会在当前的节点上开启一个端口，所有连接到当前代理端口的请求都会被转发到service背后的一组pod上，本质上是在节点上添加iptable添加一条规则，通过iptables将流量转发给kube-proxy处理。
+
+  如果选择userspace模式，每当有新的service被创建时，kube-proxy就会增加一条iptables记录并启动一个goroutine，前者用于将节点中服务对外发出的流量转发给kube-proxy，再由后者一系列goroutine将流量转发到目标的pod上。
+
+* iptables：直接使用iptables转发当前节点上的全部流量，比userspace模式有更高的吞吐量。
+
+  如果选择iptables模式，所有流量会先经过PREROUTING或者OUTPUT链 ，随后进入Kubernetes自定义的链入口KUBE_SERVICES、单个Service对应的链KUBE-SVC-XXX以及每个pod对应的链KUBE-SEP-XXX，经过这些链的处理，最终才能访问一个服务真正的IP地址。
+
+* ipvs：解决在大量 Service 时，iptables 规则同步变得不可用的性能问题，ipvs 的实现虽然也基于 netfilter 的钩子函数，但是它却使用哈希表作为底层的数据结构并且工作在内核态，这也就是说 ipvs 在重定向流量和同步代理规则有着更好的性能。
+
+  除了能够提升性能之外，ipvs 也提供了多种类型的负载均衡算法，除了最常见的 Round-Robin 之外，还支持最小连接、目标哈希、最小延迟等算法，能够很好地提升负载均衡的效率。
+
+### Endpoints的作用
 
 当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址。
 
@@ -1259,7 +1393,7 @@ k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在e
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/API对象树形结构.png)
 
-```
+```yaml
 apiVersion: batch/v2alpha1
 kind: CronJob
 ...
@@ -1281,7 +1415,7 @@ CRD（ Custom Resource Definition），一种API插件机制，允许用户在k8
 
 比如有CRD为
 
-```
+```yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -1297,7 +1431,7 @@ spec:
 
 CR为
 
-```
+```yaml
 apiVersion: samplecrd.k8s.io/v1
 kind: Network
 metadata:
@@ -1457,6 +1591,17 @@ kubectl label nodes <your-node-name> disktype=ssd
 kubectl drain node名称 --delete-local-data --force --ignore-daemonsets
 2. 删除
 kubectl delete node node名称 
+
+查看滚动更新的流程
+kubectl describe deploy [deploy名称] -n [名称空间]或者kubectl rollout status deploy [deploy名称] -n [名称空间]
+
+当新的版本有问题时，回滚到上个版本
+kubectl rollout undo deploy [deploy名称] [--to-revision=n]
+
+查看每次变更的版本，但最好在执行apply -f deployment.yaml后加上-record参数；
+kubectl rollout history
+
+如果不想每次修改都触发滚动更新，可以先使用`kubectl rollout pause deploy xx -n yy`暂停Ddeployment的行为，修改为yaml后使用`kubectl rollout resume deploy xx -n yy`恢复，让其只触发一次修改。
 
 将镜像打成压缩包
 docker save -o 压缩包名字  镜像名字:标签
@@ -1705,3 +1850,19 @@ spec:
 [Service核心原理](https://www.lixueduan.com/post/kubernetes/04-service-core/)
 
 [KubeDNS和CoreDNS](https://zhuanlan.zhihu.com/p/80141656)
+
+[详解 Kubernetes Volume 的实现原理](https://draveness.me/kubernetes-volume/)
+
+[详解 Kubernetes ReplicaSet 的实现原理](https://draveness.me/kubernetes-replicaset/)
+
+[详解 Kubernetes 垃圾收集器的实现原理](https://draveness.me/kubernetes-garbage-collector/)
+
+[详解 Kubernetes DaemonSet 的实现原理](https://draveness.me/kubernetes-daemonset/)
+
+[详解 Kubernetes Deployment 的实现原理](https://draveness.me/kubernetes-deployment/)
+
+[详解 Kubernetes Service 的实现原理](https://draveness.me/kubernetes-service/)
+
+[详解 Kubernetes Pod 的实现原理](https://draveness.me/kubernetes-pod/)
+
+[谈 Kubernetes 的架构设计与实现原理](https://draveness.me/understanding-kubernetes/)
