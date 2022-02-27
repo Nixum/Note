@@ -489,3 +489,6 @@ go中使用了写屏障是在写入指针前执行的一小段代码，用以防
 [垃圾回收](https://go.xargin.com/docs/runtime/memory_management/garbage_collection/)
 
 [goroutine原理|YouSec](https://yousec995.github.io/2021/07/25/Goroutine%E5%8E%9F%E7%90%86/)
+
+[详解Go语言调度循环源码实现](https://www.luozhiyun.com/archives/448)
+
