@@ -1,13 +1,11 @@
 ---
 title: Gin框架原理
-description: Gin框架原理
+description: 标准库net/http、Gin框架原理
 date: 2021-03-22
 lastmod: 2021-08-15
 categories: ["Go"]
 tags: ["Go Gin原理", "web框架"]ne
 ---
-
-[TOC]
 
 [TOC]
 
@@ -127,7 +125,7 @@ func (mux *ServeMux) handler(host, path string) (h Handler, pattern string) {
 	}
 	return
 }
-
+// 只是做简单的路由匹配
 func (mux *ServeMux) match(path string) (h Handler, pattern string) {
 	v, ok := mux.m[path]
 	if ok {
@@ -162,25 +160,28 @@ func handlePing(c *gin.Context) {
    })
 }
 
+// gin.Default还会默认包含两个中间件Logger和Recovery，还有对404、405处理的handler
 func main() {
-    r := gin.Default()
-    r.GET("/ping", handlePing)
+    routerEngine := gin.Default()
+    // 三种注册路由的方式
+    routerEngine.GET("/ping", handlePing)
+    routerEngine.Handle(http.MethodGet, "/ping2", handlePing)
+    // 分组
+    v1 := routerEngine.Group("/v1")
+    v1.GET("/ping3", handlePing)
     // run的底层仍然是http.ListenAndServe
-    r.Run() // 默认监听 0.0.0.0:8080
-}
-// 写法有很多种，本质还是调用gin.Default()的ServeHTTP方法
-func main() {
-    router := gin.Default()
-    router.Handle(http.MethodGet, "ping", handlePing)
+    routerEngine.Run() // 默认监听 0.0.0.0:8080
+    // -----
+    // 也可以用下面这种方法启动，本质还是调用gin.Default()的ServeHTTP方法
     server := &http.Server{
     	Addr:    ":8080",
-		Handler: router,
+		Handler: routerEngine,
     }
     log.Fatal(server.ListenAndServe())
 }
 ```
 
-so，主要看gin.Default()方法返回的engin，由gin的engin来进行请求封装、路由匹配、转发到对应的handler处理。
+so，本质上也可以说gin是一个http router，主要看gin.Default()方法返回的engin，由gin的engin来进行请求封装、路由匹配、转发到对应的handler处理。
 
 ```go
 func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -190,7 +191,7 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.writermem.reset(w)
 	c.Request = req
 	c.reset()
-	// 交给engine处理请求
+	// 交给engine处理请求，进入路由树匹配
 	engine.handleHTTPRequest(c)
 	// 处理完成把context放回复用池
 	engine.pool.Put(c)
@@ -199,6 +200,89 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 # 路由
 
+> 在 Gin 框架中，路由规则被分成了最多 9 棵前缀树，每一个 HTTP Method对应一棵「前缀树」，树的节点按照 URL 中的 / 符号进行层级划分，URL 支持 :name 形式的名称匹配，还支持` *subpath` 形式的路径通配符。
+>
+> 每个节点都会挂一系列的handler组成的处理链来处理匹配到的请求。
 
+```go
+type Engine struct {
+  RouterGroup
+  ...
+}
+
+type RouterGroup struct {
+  ...
+  engine *Engine
+  ...
+}
+// 上面那三种路由注册方式，最终调用的还是RouterGroup的handle方法
+// 由这个方法生成前缀树
+func (group *RouterGroup) handle(httpMethod, relativePath string, handlers HandlersChain) IRoutes {
+    // 解析路径
+    absolutePath := group.calculateAbsolutePath(relativePath)
+    // 组装成handlers chain
+    handlers = group.combineHandlers(handlers)
+    // 构建前缀树
+    group.engine.addRoute(httpMethod, absolutePath, handlers)
+    return group.returnObj()
+}
+
+func (engine *Engine) handleHTTPRequest(c *Context) {
+	httpMethod := c.Request.Method
+	rPath := c.Request.URL.Path
+	unescape := false
+	if engine.UseRawPath && len(c.Request.URL.RawPath) > 0 {
+		rPath = c.Request.URL.RawPath
+		unescape = engine.UnescapePathValues
+	}
+	rPath = cleanPath(rPath)
+
+	// 遍历所有http method树，找到对应http method的前缀树，进行路由前缀匹配，找到对应的handler
+	t := engine.trees
+	for i, tl := 0, len(t); i < tl; i++ {
+		if t[i].method != httpMethod {
+			continue
+		}
+		root := t[i].root
+		// Find route in tree
+		value := root.getValue(rPath, c.Params, unescape)
+		if value.handlers != nil {
+			c.handlers = value.handlers
+			c.Params = value.params
+			c.fullPath = value.fullPath
+			c.Next()
+			c.writermem.WriteHeaderNow()
+			return
+		}
+		if httpMethod != "CONNECT" && rPath != "/" {
+			if value.tsr && engine.RedirectTrailingSlash {
+				redirectTrailingSlash(c)
+				return
+			}
+			if engine.RedirectFixedPath && redirectFixedPath(c, root, engine.RedirectFixedPath) {
+				return
+			}
+		}
+		break
+	}
+	// 找不到http method对应的前缀树，使用默认的405Handler
+	if engine.HandleMethodNotAllowed {
+		for _, tree := range engine.trees {
+			if tree.method == httpMethod {
+				continue
+			}
+			if value := tree.root.getValue(rPath, nil, unescape); value.handlers != nil {
+				c.handlers = engine.allNoMethod
+				serveError(c, http.StatusMethodNotAllowed, default405Body)
+				return
+			}
+		}
+	}
+    // 即找不到http method对应的前缀树或path，使用默认的404handler
+	c.handlers = engine.allNoRoute
+	serveError(c, http.StatusNotFound, default404Body)
+}
+```
 
 # 中间件
+
