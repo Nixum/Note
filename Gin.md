@@ -203,8 +203,12 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 > 在 Gin 框架中，路由规则被分成了最多 9 棵前缀树，每一个 HTTP Method对应一棵「前缀树」，树的节点按照 URL 中的 / 符号进行层级划分，URL 支持 :name 形式的名称匹配，还支持` *subpath` 形式的路径通配符。
 >
 > 每个节点都会挂一系列的handler组成的处理链来处理匹配到的请求。
+>
+> 之所以要使用前缀树，是为了支持如`/hello/:name`这种动态路由，路径上的每一段`/{名字}`作为前缀树的一个节点，通过树结构查询，如果中间某一层节点不匹配，则直接结束查询。
 
 ```go
+// engine与Route人Group相互持有的目的是为了实现分组路由时，注册到同一棵路由前缀树
+// 并且可以使得中间件既可以注册在全路径上，也可以注册在分组上
 type Engine struct {
   RouterGroup
   ...
@@ -222,11 +226,12 @@ func (group *RouterGroup) handle(httpMethod, relativePath string, handlers Handl
     absolutePath := group.calculateAbsolutePath(relativePath)
     // 组装成handlers chain
     handlers = group.combineHandlers(handlers)
-    // 构建前缀树
+    // 构建路由前缀树
     group.engine.addRoute(httpMethod, absolutePath, handlers)
     return group.returnObj()
 }
 
+// 当收到客户端请求时，在前缀树种找到对应的路由handler，处理请求
 func (engine *Engine) handleHTTPRequest(c *Context) {
 	httpMethod := c.Request.Method
 	rPath := c.Request.URL.Path
@@ -244,12 +249,13 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 			continue
 		}
 		root := t[i].root
-		// Find route in tree
+		// 获取对应的handler
 		value := root.getValue(rPath, c.Params, unescape)
 		if value.handlers != nil {
 			c.handlers = value.handlers
 			c.Params = value.params
 			c.fullPath = value.fullPath
+            // 执行handler方法
 			c.Next()
 			c.writermem.WriteHeaderNow()
 			return
@@ -285,4 +291,41 @@ func (engine *Engine) handleHTTPRequest(c *Context) {
 ```
 
 # 中间件
+
+gin的中间件指的是handler方法，所有的中间件包括请求处理的handler都要满足这种方法签名:
+
+```go
+type HandlerFunc func(*Context)
+```
+
+跟着路由一起注册后，调用`RouterGroup`的`combineHandlers`方法，将这些handler组成一个`HandlersChain`，本质上是`[]HandlerFunc`，当请求进来时，通过路径找到对应的`HandlersChain`，注入到context中，调用Next方法处理请求。
+
+```go
+// 执行HandlersChain
+func (c *Context) Next() {
+	c.index++
+	for c.index < int8(len(c.handlers)) {
+		c.handlers[c.index](c)
+		c.index++
+	}
+}
+```
+
+在gin中，context的`Next方法`是会增加`HandlersChain`索引值，执行下一个方法，而`Abort方法`是直接更新`HandlersChain`索引值到一个比较大的数字，使得循环调用结束， Abort() 方法并不是通过 panic 的方式中断执行流，执行 Abort() 方法之后，当前函数内后面的代码逻辑还会继续执行。
+
+gin就是通过context的Next方法和Abort方法，使得执行`HandlersChain`方法时可以嵌套执行：先从前往后顺序执行`HandlersChain`中在Next方法前的逻辑，直到最后一个，然后再从后往前执行Next方法后的逻辑。
+
+# gin.Context
+
+* 主要是包装请求`*http.Request`、响应`http.ResponseWriter`，让用户无需知道太多细节，比如消息头、消息体、状态码，消息类型等，直接提供现成包装好的方法比如`context.Json()`；
+* Context 会随着每一个请求的出现而产生，请求的结束而销毁，和当前请求强相关的信息都应由 Context 承载，比如动态路由`/hello/:name`中的name参数；
+* 为处理请求的handler方法提供统一的入参，使得context可以持有处理请求的一系列handler方法，实现中间件处理逻辑；
+
+# 参考
+
+[极客兔兔 - Web框架 - Gee](https://geektutu.com/post/gee.html)
+
+[轻量级 Web 框架 Gin 结构分析](https://cloud.tencent.com/developer/article/1404356)
+
+[gun源码阅读](https://cloud.tencent.com/developer/article/1877653?from=article.detail.1885821)
 

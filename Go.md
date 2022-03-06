@@ -27,9 +27,14 @@ go编译时默认会使用内联优化，使用`go build --gcflags="-l" main.go`
 
 # defer
 
-* 多个defer是栈的关系，先进后出，即在一个函数中，写在前面的defer会比写在后面的defer调用得晚；
+* **多个defer是栈的关系，先进后出**，即在一个函数中，写在前面的defer会比写在后面的defer调用得晚；
+
 * defer和return同时出现时，先return后defer，defer可以修改到return里的变量；
-* 遇到panic时，会先遍历此协程内的defer链表，并执行defer，如果在执行过程中遇到recover，则停止panic，返回recover处继续往下执行，如果没遇到recover，则遍历完本协程的defer链表后，向stderr抛出panic信息；
+
+* panic被触发时，控制权就交给了defer
+
+  遇到panic时，会先遍历此协程内的defer链表，并执行defer，如果在执行过程中遇到recover，则停止panic，返回recover处继续往下执行，如果没遇到recover，则遍历完本协程的defer链表后，向stderr抛出panic信息；
+
 * 执行defer过程中出现panic，此时的panic会覆盖它之前的panic，直至被捕获或抛出；
 
 # 内存对齐
