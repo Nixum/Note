@@ -52,12 +52,12 @@ ZooKeeper保证的是CP，不保证每次服务请求的可用性，在极端环
 
 ### 选举算法和流程
 
-ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Follower、Observer
+ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Follower、Observer；当 Leader 服务器出现网络中断、崩溃退出与重启等异常情况时，ZAB 协议就会进入恢复模式并选举产生新的Leader服务器。
 
-1. Leader选举：一个节点只要求获得半数以上投票，就可以当选为准Leader
-2. Discovery发现：准Leader收集其他节点的数据，并将最新的数据复制到自身
-3. Synchronization同步：准Leader将自身最新数据复制给其他落后节点，并告知其他节点自己正式当选为Leader
-4. Broadcast广播：Leader正式对外服务，处理client请求，对消息进行广播，当收到一个写请求后，会生成Proposal广播给各个Follower节点，一半以上Follower节点应答后，Leader再发送Commit命令给各个Follower，告知他们提交相关提案。
+1. Leader选举：节点在一开始都处于选举阶段，一个节点只要求获得半数以上投票，就可以当选为准Leader；
+2. Discovery发现：准Leader收集其他节点的数据，同步 Followers 最近接收的数据，并将最新的数据复制到自身；
+3. Synchronization同步：准Leader将自身最新数据同步给其他落后的Follower节点，同步完成后，告知其他节点自己正式当选为Leader；
+4. Broadcast广播：Leader正式对外服务，处理client请求，对消息进行广播，当收到一个写请求后，会生成Proposal广播给各个Follower节点，一半以上Follower节点应答后，Leader再发送Commit命令给各个Follower，告知他们提交相关提案。如果有新的节点加入，还需要对新节点进行同步。
 
 默认使用FastLeaderElection算法，比如现在有5台服务器，每台服务器均没有数据，它们的编号分别是1, 2, 3, 4, 5按编号依次启动，它们的选择举过程如下：
 
@@ -66,13 +66,6 @@ ZooKeeper集群机器要求至少三台机器，机器的角色分为Leader、Fo
 3. 服务器3启动，给自己投票，同时与之前启动的服务器1,2交换信息，由于服务器3的编号最大所以服务器3胜出，此时投票数正好大于半数，所以服务器3成为leader，服务器1,2成为Follower。
 4. 服务器4启动，给自己投票，同时与之前启动的服务器1,2,3交换信息，尽管服务器4的编号大，但之前服务器3已经胜出，所以服务器4只能成为Follower。
 5. 服务器5启动，后面的逻辑同服务器4成为Follower。
-
-当 Leader 服务器出现网络中断、崩溃退出与重启等异常情况时，ZAB 协议就会进入恢复模式并选举产生新的Leader服务器。
-
-1. Leader election（选举阶段）：节点在一开始都处于选举阶段，只要有一个节点得到超半数节点的票数，它就可以当选准Leader。
-2. Discovery（发现阶段）：在这个阶段，Followers 跟准 Leader 进行通信，同步 followers 最近接收的事务提议。
-3. Synchronization（同步阶段）:同步阶段主要是利用 Leader 前一阶段获得的最新提议历史，同步集群中所有的副本。同步完成之后 准 leader 才会成为真正的 Leader。
-4. Broadcast（广播阶段） 到了这个阶段，Zookeeper 集群才能正式对外提供事务服务，并且 Leader 可以进行消息广播。同时如果有新的节点加入，还需要对新节点进行同步。
 
 ## 通知机制
 
@@ -154,7 +147,7 @@ Key—Value存储上使用简单内存树，一个节点包含节点路径、父
 
 核心是内存树形索引模型treeIndex + 嵌入式KV持久化存储库boltdb组成。
 
-boltdb会对key的每一次修改，都生成一个新的版本号对象，以版本号为key，value为用户key-value等信息组成的结构体。版本号全局递增，通过treeIndex模块保存用户key和版本号的映射。查询时，先去treeIndex模块查询key对应的版本号，根据版本号到boltdb里查询对应的value信息。
+**boltdb**会对key的每一次修改，都生成一个新的版本号对象，以**版本号为key，value为用户key-value**等信息组成的结构体。版本号全局递增，通过**treeIndex模块保存用户key和版本号的映射**。查询时，先去treeIndex模块查询key对应的版本号，根据版本号到boltdb里查询对应的value信息。
 
 * treeIndex基于B树实现，只会保存用户的key和版本号的映射，具体的value信息则保存再boltdb里。
 
@@ -184,7 +177,7 @@ etcd的db文件配额只有2G，当超过时，整个集群变成只读，无法
 
 写请求在通过Raft算法实现节点间的数据复制前，由KVServer进行一系列的检查。
 
-1. 限速判断，保证集群稳定，避免雪崩。如果Raft模块已提交的日志索引(committed index)比已应用到状态机的日志索引(applied index)超过了5000。
+1. 限速判断，保证集群稳定，避免雪崩。比如Raft模块已提交的日志索引(committed index)比已应用到状态机的日志索引(applied index)超过了5000。
 2. 尝试获取请求中的鉴权信息，若使用了鉴权，则判断请求中的密码、token是否正确。
 3. 检查写入的包大小是否超过默认的1.5MB。
 4. 通过检查后，生成一个唯一的ID，并将该请求关联到一个对应的消息通知channel，向Raft模块发起一个提案，之后KV Server会等待写请求的返回，写入结果通过消息通知channel返回，或者超时，默认超时时间是7秒。
@@ -455,7 +448,7 @@ WAL日志+boltdb保证持久性；
 
 boltdb文件存放在etcd数据目录下的member/snap/db文件，etcd启动时，会通过mmap机制将db文件映射到内存，后续从内存中快速读取文件中的数据。
 
-![](https://github.com/Nixum/Java-Note/raw/master/picture/etcd boltdb文件布局.png)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/etcd_boltdb文件布局.png)
 
 开头两个是固定的db元数据meta page；freeList page记录db中哪些页是空闲的，可使用的；
 
