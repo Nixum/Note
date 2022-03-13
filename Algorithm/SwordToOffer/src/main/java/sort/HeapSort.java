@@ -79,6 +79,7 @@ public class HeapSort {
         for (int i = array.length / 2 - 1; i >= 0; i--) {
             adjust(array, i, array.length);
         }
+        System.out.println(Arrays.toString(array));
         // 根结点与最后结点交换，继续调整成满足大根堆的定义
         for (int i = array.length - 1; i > 0; i--) {
             // 将根结点与末结点交换

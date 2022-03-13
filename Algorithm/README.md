@@ -10,5 +10,7 @@
 
 [图解排序算法(五)之快速排序——三数取中法](http://www.cnblogs.com/chengxiao/p/6262208.html)
 
+[快排时间复杂度分析](https://www.cnblogs.com/fengty90/p/3768827.html)
+
 ![排序算法总结](https://github.com/Nixum/Java-Note/raw/master/picture/sort_info.jpg)
 
