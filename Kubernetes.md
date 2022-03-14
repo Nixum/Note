@@ -998,7 +998,7 @@ spec:
 
 * 一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
 
-* 创建一个新的Service对象需要两大模块同时协作，一个是控制器，它需要在每次客户端创建新的Service对象时，生成其他用于暴露一组Pod的对象，即Endpoint，另一个是kube-proxy，它运行在集群的每个节点上，根据Service和Endpoint的变动改变节点上iptables或者ipvs中保存的规则。
+* 创建一个新的Service对象需要两大模块同时协作，一个是控制器，它需要在每次客户端创建新的Service对象时，生成其他用于暴露一组Pod的对象，即Endpoint；另一个是kube-proxy，它运行在集群的每个节点上，根据Service和Endpoint的变动改变节点上iptables或者ipvs中保存的规则。
 
 * service负载分发策略有两种模式：
 
@@ -1030,11 +1030,11 @@ spec:
 
 Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负责监听kubernetes主节点中Service的增加和删除事件并修改运行代理的配置，为节点内的客户端提供流量转发和负载均衡等功能，kube-proxy有三种模式：
 
-* userspace：运行在用户空间的代理，对于每一个Service都会在当前的节点上开启一个端口，所有连接到当前代理端口的请求都会被转发到service背后的一组pod上，本质上是在节点上添加iptable添加一条规则，通过iptables将流量转发给kube-proxy处理。
+* userspace：运行在用户空间的代理，对于每一个Service都会在当前的节点上开启一个端口，所有连接到当前代理端口的请求都会被转发到service背后的一组pod上，本质上是在节点的iptable上添加一条规则，通过iptables将流量转发给kube-proxy处理。
 
   如果选择userspace模式，每当有新的service被创建时，kube-proxy就会增加一条iptables记录并启动一个goroutine，前者用于将节点中服务对外发出的流量转发给kube-proxy，再由后者一系列goroutine将流量转发到目标的pod上。
 
-* iptables：直接使用iptables转发当前节点上的全部流量，比userspace模式有更高的吞吐量。
+* iptables：（默认）直接使用iptables转发当前节点上的全部流量，比userspace模式有更高的吞吐量。
 
   如果选择iptables模式，所有流量会先经过PREROUTING或者OUTPUT链 ，随后进入Kubernetes自定义的链入口KUBE_SERVICES、单个Service对应的链KUBE-SVC-XXX以及每个pod对应的链KUBE-SEP-XXX，经过这些链的处理，最终才能访问一个服务真正的IP地址。
 
@@ -1044,9 +1044,11 @@ Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负
 
 ### Endpoints的作用
 
-当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址。
+当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址；
 
-endpoints controller的作用
+说白了，因为pod ip比较容易变化，而endpoint的作用就是维护service和一组pod的映射。
+
+endpoints controller的作用：
 
 * 负责生成和维护所有endpoint对象的控制器；
 * 负责监听service和对应pod的变化；
@@ -1113,7 +1115,11 @@ Headless模型下的A记录
 
 Service的本质是通过kube-proxy在宿主机上设置iptables规则、DNS映射，工作在第四层传输层。
 
-* type=NodePort，暴露virtual IP，访问这个virtual IP的时候，会将请求转发到对应的Pod，默认下nodePort会使用主机的端口范围：30000 - 32767。
+* type=ClusterIP，此时该service只能在集群内部被访问，如果集群外想访问，只能通过kubernetes的proxy模式来访问，比如先开启`kubectl proxy --port=8080`在本机打开集群访问的代理，然后通过该端口进行访问，kubernetes会帮我们转发到对应的pod上：`curl http://localhost:8080/api/v1/proxy/namespaces/{名称空间}/services/{service名称}/{path}`
+
+* type=NodePort，集群外部使用 `{任何一个节点的IP}:{nodePort}` 访问这个service，会将请求转发到对应的Pod，本质上是kube-proxy为该模式配置一条iptables规则；
+
+  默认下nodePort会使用主机的端口范围：30000 - 32767；
 
   在这里，请求可能会经过SNAT操作，因为当client通过node2的地址访问一个Service，node2可能会负载均衡将请求转发给node1，node1处理完，经过SNAT，将响应返回给node2，再由node2响应回client，保证了client请求node2后得到的响应也是node2的，此时Pod只知道请求的来源，并不知道真正的发起方；
 
