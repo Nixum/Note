@@ -82,7 +82,7 @@ $facet/$bucket: 分面搜索，根据不同范围条件，多个维度一次性�
 
 * 实体间的关系，一对一使用嵌套map来表示；一对多使用嵌套数组表示；多对多使用嵌套数组+冗余字段来表示；此外，也可以通过嵌套数组存id + 另一张表来表示实体间的关系，通过id来进行联表（使用aggregate + $lookup）
 
-  **注意**：嵌套时要注意整个文档大小，限制是16M，读写比列，也要注意数组长度大小，一般会使用id引用模式来解决；$lookup只支持left outer join，不支持分片表
+  **注意**：嵌套时要注意整个文档大小，限制是16M，读写比列，也要注意数组长度大小，一般会使用id引用模式来解决；**$lookup只支持left outer join**，不支持分片表
 
 * 模式套用：
 
@@ -332,7 +332,7 @@ WiredTiger有一个块设备管理的模块，用来为page分配block。如果�
 
 每个checkpoint包含一个root page、三个指向磁盘具体位置上pages的列表以及磁盘上文件的大小，采用copy on write的方式管理增删改，增删改操作会先缓冲在cache里，持久化时，不会在原来的叶子结点上进行，而是写入新分配的page，每次checkpoint都会产生一个新的root page。
 
-![](https://github.com/Nixum/Java-Note/raw/master/picture/MongoDB_checkpoint.jpg)
+![](https://github.com/Nixum/Java-Note/raw/master/picture/MongoDB_checkpoint.png)
 
 1. 上排他锁，打开集合文件，读取最新的checkpoint数据；
 
@@ -383,7 +383,9 @@ WiredTiger有一个块设备管理的模块，用来为page分配block。如果�
 
 * Read-Uncommited：未提交读，事务开启时，可以读到别的事务最新修改但还未提交的值，会出现脏读；
 
-* Read-Commited：提交读，默认，事务开启时，只能读到别的事务最新修改且已提交的值，这种隔离级别下可能在一个长事务多次读取一个值时前后读取不一致，出现不可重复读现象；WT引擎会在当前事务下，执行每一个操作前都对系统中的事务做一次snapshot，然后在这个snapshot上读写；
+* Read-Commited：提交读，默认，事务开启时，只能读到别的事务最新修改且已提交的值，这种隔离级别下可能在一个长事务多次读取一个值时前后读取不一致，出现不可重复读现象；
+
+  WT引擎会在当前事务下，执行每一个操作前都对系统中的事务做一次snapshot，然后在这个snapshot上读写；
 
 * Snapshot-Isolation：快照隔离，事务开启时，只能读到当前事务前最后提交的值，整个事务期间只能看到这个版本的snapshot，不管这个值在此期间被其他事务修改了多少次，防止不可重复读；
 
@@ -427,7 +429,7 @@ redo log以WAL的方式写入日志，即事务过程中所有的修改在提交
 
 ### 缓存实现
 
-WT引擎内部使用LRU cache作为缓存模型，采用分段扫描和hazardpointer的淘汰机制，充分利用现代计算机超大内存容量的特性来提高事务读写并发。再高速不间断写入内存操作非常快，但是由于内存中的数据最终需要写入磁盘，因为写内存的速度远高于写磁盘，最终可能导致间歇性写挂起的现象出现。
+WT引擎内部使用LRU cache作为缓存模型，采用分段扫描和hazardpointer的淘汰机制，充分利用现代计算机超大内存容量的特性来提高事务读写并发。在高速不间断写入内存操作非常快，但是由于内存中的数据最终需要写入磁盘，因为写内存的速度远高于写磁盘，最终可能导致间歇性写挂起的现象出现。
 
 缓解读写挂起的方法：
 
@@ -498,11 +500,11 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 ### readConcern参数
 
-读操作时，决定这个节点的数据哪些是可读的，**类似MySQL中的隔离性**
+读操作时，决定这个节点的数据哪些是可读的，**类似MySQL中的隔离**
 
 使用：需要在mongo的配置文件的server参数中，增加`enableMajorityReadConcern: true`，
 
-对于值枚举未available、local、majority、linearizable，需要在查询语句后 + .readConcern("local或者其他枚举")开启使用；
+对于值枚举为available、local、majority、linearizable，需要在查询语句后 + .readConcern("local或者其他枚举")开启使用；
 
 对于snapshot，则是在开启事务时指定，`var session = db.getMongo().startSession(); session.startTransaction({readConcern: {level: "snapshot"}, writeConcern: {w: "majority"}});`  session作为事务对象，配合snapshot快照、MVCC、redo log来实现事务。
 
@@ -551,7 +553,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 * Priority0从节点：一般作为备用节点，当无法在合理时间内添加新成员节点时，实现替换作为过渡；priority0节点的选举优先级为0，表示不会被选举成主节点；
 
-* hidden从节点：隐藏节点不会收到任何读请求，即使设置为复制集读选项，一般用于报表节点、备份节点进行数据备份、离线计算等任务，不影响复制集的其他服务；
+* hidden从节点：隐藏节点不会收到任何写请求，即使设置为复制集读选项，一般用于报表节点、备份节点进行数据备份、离线计算等任务，不影响复制集的其他服务；
 
   hidden节点的priority也是0，无法被选为主节点，对driver不可见。
 
