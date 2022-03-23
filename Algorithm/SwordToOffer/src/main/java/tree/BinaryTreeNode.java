@@ -137,6 +137,30 @@ public class BinaryTreeNode {
         }
     }
 
+    // 统一风格写法，先序遍历
+    public static void preOrderTraverseNoRecursion2(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        stack.push(root);
+        while(!stack.empty()) {
+            BinaryTreeNode n = stack.pop();
+            if (n != null) {
+                if (n.rightNode != null) {
+                    stack.push(n.rightNode);
+                }
+                if (n.leftNode != null) {
+                    stack.push(n.leftNode);
+                }
+                stack.push(n);
+                stack.push(null);
+            } else {
+                BinaryTreeNode r = stack.pop();
+                System.out.print(r.value + " ");
+            }
+        }
+    }
+
     /**
      * 非递归，中序遍历
      * 循环，左结点不断进栈，null时，出栈打印，更换成右结点，继续循环
@@ -154,6 +178,30 @@ public class BinaryTreeNode {
                 root = stack.pop();
                 System.out.print(root.value + " ");
                 root = root.rightNode;
+            }
+        }
+    }
+
+    // 统一风格写法，中序遍历
+    public static void inOrderTraverseNoRecursion2(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        stack.push(root);
+        while (!stack.isEmpty()) {
+            BinaryTreeNode cur = stack.pop();
+            if (cur != null) {
+                if (cur.rightNode != null) {
+                    stack.push(cur.rightNode);
+                }
+                stack.push(cur);
+                stack.push(null);
+                if (cur.leftNode != null) {
+                    stack.push(cur.leftNode);
+                }
+            } else {
+                BinaryTreeNode r = stack.pop();
+                System.out.print(r.value + " ");
             }
         }
     }
@@ -186,6 +234,30 @@ public class BinaryTreeNode {
                 }
                 if (stack.isEmpty())
                     return ;
+            }
+        }
+    }
+
+    // 统一风格写法，后序遍历
+    public static void postOrderTraverseNoRecursion2(BinaryTreeNode root) {
+        if (root == null)
+            return ;
+        Stack<BinaryTreeNode> stack = new Stack<>();
+        stack.push(root);
+        while (!stack.isEmpty()) {
+            BinaryTreeNode cur = stack.pop();
+            if (cur != null) {
+                stack.push(cur);
+                stack.push(null);
+                if (cur.rightNode != null) {
+                    stack.push(cur.rightNode);
+                }
+                if (cur.leftNode != null) {
+                    stack.push(cur.leftNode);
+                }
+            } else {
+                BinaryTreeNode r = stack.pop();
+                System.out.print(r.value + " ");
             }
         }
     }
@@ -243,6 +315,13 @@ public class BinaryTreeNode {
         System.out.print("中序非递归："); inOrderTraverseNoRecursion(root);
         System.out.println();
         System.out.print("后序非递归："); postOrderTraverseNoRecursion(root);
+        System.out.println();
+
+        System.out.print("先序非递归2："); preOrderTraverseNoRecursion2(root);
+        System.out.println();
+        System.out.print("中序非递归2："); inOrderTraverseNoRecursion2(root);
+        System.out.println();
+        System.out.print("后序非递归2："); postOrderTraverseNoRecursion2(root);
         System.out.println();
 
         System.out.println("深度：" + getTreeDepth(root));
