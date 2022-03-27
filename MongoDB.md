@@ -314,6 +314,8 @@ WiredTiger有一个块设备管理的模块，用来为page分配block。如果�
 
 ### checkpoint机制
 
+checkpoint 相当于一个日志，记录上次checkpoint后相关数据文件的变化。
+
 #### 作用
 
 * 将内存里面发生修改的数据写到数据文件进行持久化保存，确保数据一致性；
@@ -333,6 +335,8 @@ WiredTiger有一个块设备管理的模块，用来为page分配block。如果�
 每个checkpoint包含一个root page、三个指向磁盘具体位置上pages的列表以及磁盘上文件的大小，采用copy on write的方式管理增删改，增删改操作会先缓冲在cache里，持久化时，不会在原来的叶子结点上进行，而是写入新分配的page，每次checkpoint都会产生一个新的root page。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/MongoDB_checkpoint.png)
+
+![](https://github.com/Nixum/Java-Note/raw/master/picture/MongoDB_checkpoint_process.png)
 
 1. 上排他锁，打开集合文件，读取最新的checkpoint数据；
 
@@ -469,7 +473,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 ### journal日志与oplog日志的区别
 
-* **journal日志**：即redo log，由MongoDB引擎层使用，**主要用于控制写操作是否立即持久化**，因为如果发生写操作，mongo一般是先将写操作写入内存，在定时（默认是1分钟）将内存里的数据刷盘持久化。
+* **journal日志**：即redo log，由MongoDB引擎层使用，**主要用于控制写操作是否立即持久化**，因为如果发生写操作，mongo一般是先将写操作写入内存，在定时（默认是1分钟）通过check point机制将内存里的数据刷盘持久化。
 
   如果写操作的成功判定出现在写完内存后，如果此时宕机，将会丢失写操作的记录，如果判定发生在写完journal日志之后，如果宕机可以利用journal日志进行恢复。
 

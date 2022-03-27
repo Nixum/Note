@@ -28,33 +28,39 @@ tags: ["MySQL", "数据库", "数据库-锁", "数据库事务", "索引", "主�
 
 比如一个page页中一个数据从 1 改到 2 ，再改到 3，物理日志记录最后一个值是 3 ，逻辑日志记录 1 -> 2, 2->3 的过程。
 
-* **redo log重做日志**：InnoDB独有，物理日志，**记录这个页做了什么改动**，使用**二阶段提交**保证两份日志逻辑一致。当有日志要写入时，先写到redo log buffer后状态是prepare，binlog写入磁盘，事务提交，redo log改为commit状态，commit后才写进redo log(磁盘)，此时事务就算完成，即WAL机制。
+* **redo log重做日志**：InnoDB独有，物理日志，**记录这个页做了什么改动**，使用**二阶段提交**保证两份日志逻辑一致。当有日志要写入时，先写到redo log buffer后状态是prepare，binlog写入磁盘，事务提交，redo log改为commit状态，commit后才写进redo log，此时事务就算完成。
 
-  **WAL机制**：执行事务时，将操作记录写入内存和日志，事务就完成了，此时数据可能还没写入磁盘，InnoDB会在合适的时机将内存里的数据刷入磁盘。
+  **WAL机制**：执行事务时，将表数据写入内存和日志，事务就完成了，此时表数据可能还没写入磁盘，InnoDB会在合适的时机将内存里的数据刷入磁盘。WAL机制主要是解决CPU和磁盘速度的差异问题，也因为是先把数据写进内存，再写入磁盘，才需要redo log + 二阶段提交来解决崩溃数据丢失的问题，redo log同时也实现了事务的持久化。
 
 结合redo log的二阶段提交和WAL机制，整个流程就是：
 
-1. 当有记录要更新时，先写进redo log buffer，状态是prepare，然后是bin log写入磁盘，事务提交，redo log更新为commit状态，并更新内存后，整个更新操作就算完成。
+1. 当有记录要更新时，数据修改前，先把老版本的数据写入undo log，然后先写进redo log buffer，状态是prepare，然后是bin log写入磁盘，事务提交，redo log更新为commit状态，并更新内存里的数据后，整个更新操作就算完成。
 
-2. InnoDB在空闲的时候才真正的将内存中已更新的数据刷新到对应的page页，写入磁盘中。
+   建议设置`innodb_flush_log_at_trx_commit=1`，表示每次事务的redo log会写入buffer中，立即调一次 fsync 方法持久化到磁盘；所以一次更新操作之后，redo log文件就有两条日志，一条prepare，一条commit。
 
-   因为更新redo log日志中的内容到真正的表数据对应的page页，涉及到分页或合并等操作，属于随机IO写入，比较费时，所以才先写redo log日志，再写磁盘，当数据写入磁盘后，对应的redo log日志文件里的内容才允许被覆盖。
+   其他参数：`=0`，表示每秒将redo log写入到buffer中，然后调用 fsync 方法将数据持久化到磁盘，但可能会丢失一秒的数据；`=2`，表示每次事务的redo log会写入buffer，然后每秒调一次 fsync 方法持久化到硬盘。
 
-InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环形队列”，一个文件写完就写下一个，4个轮转；首位指针表示当前记录的位置和当前擦除位置，擦除前会把记录更新到磁盘，这种能力也称为crash-safe；
+2. InnoDB在空闲的时候才真正的将内存中已更新的表数据刷新到对应的page页，写入磁盘中，此时数据才真正落盘。
 
-建议设置`innodb_flush_log_at_trx_commit=1`，表示每次事务的redo log会写入buffer中，立即调一次 fsync 方法持久化到磁盘；
+   因为redo log格式固定，可以通过redo log buffer实现顺序写入磁盘，顺序IO写入速度快，而将表数据写入磁盘，需要更新redo log日志中的内容到表数据对应的page页，涉及到分页或合并等操作，属于随机IO写入，比较费时，所以才先写redo log日志，再把表数据写磁盘，当表数据写入磁盘后。
 
-其他参数：`=0`，表示每秒将redo log写入到buffer中，然后调用 fsync 方法，将数据持久化到磁盘，但可能会丢失一秒的数据；`=2`，表示每次事务的redo log会写入buffer，然后每秒调一次 fsync 方法持久化到硬盘。
+   redo log里有一个叫LSN（log sequence number）作为检查点，表示在LSN之前的数据（缓冲池里的数据页、索引页）都已经持久化到磁盘了，redo log文件里在LSN检查点之前的内容才允许被覆盖。
 
-* **bin log归档日志**：属于server层的日志，逻辑日志，**记录所有逻辑操作**，追加写入，不会覆盖以前的日志，bin log有两种模式，statement 格式的话是记sql语句， row格式会记录行的内容，一般使用row，记录行变化前和变化后的数据，缺点是日志变大。从库是使用bin log进行备份的；
+InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环形队列”，一个文件写完就写下一个，4个轮转；首位指针表示当前记录的位置和当前擦除位置，擦除前会把记录更新到磁盘；
 
-  建议设置`sync_binlog=1`，表示每次事务的bin log都会持久化到磁盘；
+* **bin log归档日志**：属于server层的日志，逻辑日志，**记录所有逻辑操作**，追加写入，不会覆盖以前的日志，bin log有两种模式，statement 格式的话是记sql语句， row格式会记录行的内容，一般使用row，记录行变化前和变化后的数据，缺点是日志变大。用于主从复制和数据备份恢复；
+
+  bin log也是先写buff再写磁盘，建议设置`sync_binlog=1`，表示每次事务的bin log都会持久化到磁盘；
+  
+  其他参数：`=0`，表示由系统判断何时刷盘，`=N`，表示每N个事务完成才会刷盘；
   
   redo log prepare、commit 的XID与bin log的XID实现关联，通过XID的关联，就能知道两份日志是否完整，从而实现crash-safe。
 
-可以**只使用redo log来实现崩溃恢复**，由MySQL内部实现，但无法只使用bin log，原因是 InnoDB使用WAL机制，如果此时数据库崩溃，要依赖日志来恢复数据页，但是bin log并没有记录数据页的更新细节，而redo log因为环形写入的问题，无法对所有记录进行归档，仅仅只能实现崩溃恢复；
+只有当`innodb_flush_log_at_trx_commit=1`和`sync_binlog=1`，数据库才具备crash-safe的能力。
 
-正常运行的情况下，数据页被修改到落盘，从头到尾操作的都是内存中的数据，操作记录只是顺带记录在redo log文件中，只有在奔溃恢复的场景下，如果InnoDB判断数据丢失了更新，就会从redo log文件中将数据恢复到内存，再从内存中将数据刷盘。redo log只是用于记录，真正刷盘的数据来自其他buffer。
+可以**只使用redo log来实现崩溃恢复**，保证恢复后不会出现主从不一致的情况，由MySQL内部实现，但无法只使用bin log，原因是 InnoDB使用WAL机制，如果此时数据库崩溃，要依赖日志来恢复数据页，但是bin log并没有记录数据页的更新细节，而redo log因为环形写入的问题，无法对所有记录进行归档，仅仅只能实现崩溃恢复；InnoDB通过redo log的状态和比较与bin log的数据，来判断哪些数据需要进行崩溃恢复。
+
+正常运行的情况下，数据页被修改到落盘，从头到尾操作的都是内存中的数据，操作记录只是顺带记录在redo log文件中，只有在奔溃恢复的场景下，如果InnoDB判断数据丢失了更新，才会从redo log文件中将数据恢复到内存，再从内存中将数据刷盘。redo log只是用于记录，真正刷盘的数据来自其他buffer。
 
 备份时间的长短会影响日志文件的大小，文件的完整性，从而影响到恢复速度和恢复效果；
 
@@ -993,6 +999,14 @@ ResultSet下标从1开始
 [Innodb中的事务隔离级别和锁的关系](https://tech.meituan.com/2014/08/20/innodb-lock.html)
 
 [极客时间 - MySQL实战45讲]()
+
+[MySQL中的 redo 日志文件 ](https://www.cnblogs.com/hapjin/p/11521506.html)
+
+[MySQL的日志 - redo log](https://blog.csdn.net/javaanddonet/article/details/112596210)
+
+[MySQL日志15问](https://www.cnblogs.com/lemon-flm/p/15307313.html)
+
+[MySQL 中的WAL机制](https://www.cnblogs.com/mengxinJ/p/14211427.html)
 
 后记
 
