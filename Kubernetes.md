@@ -1658,6 +1658,10 @@ Service Mesh本质上是分布式的微服务**网络控制的代理**，以side
 1. 部署复杂，比如跨集群、跨机房等一些复杂环境覆盖不易
 2. 每次网络请求会多一跳，带来一定的资源消耗和延时
 
+在没有Service Mesh的情况下，Kubernetes仅依靠kube-proxy + iptable + service + ingress来实现对流量的管理，管理的是进出集群的流量，而Service Mersh通过iptables + sidecar的方式控制的是进出pod的流量，控制的粒度会更细。
+
+kube-proxy的设置是全局的，如果转发的pod不能正常服务，它不会自动尝试其他pod；另外，kube-proxy实现的是集群内多个pod实例之间的流量负载均衡，但无法对服务之间流量的精细化控制，比如灰度发布、蓝绿发布等。
+
 # Istio
 
 upstream和downstream是针对Envoy而言的，
@@ -1683,19 +1687,44 @@ Istio分为控制平面control plane和数据平面data plane，控制面主要�
 
 在低版本中分为Pilot、Mixer、Citadel；
 
-Pilot负责配置下发，将配置文件转化为Istio可识别的配置项，分发给各个sidecar代理(piloy-agent)；
+* Pilot负责配置下发，将配置文件转化为Istio可识别的配置项，分发给各个sidecar代理(piloy-agent)；Pilot能为sidecar提供服务发现、智能路由、流量管理、超时、重试、熔断灯功能，原理是将这些功能转化为路由规则配置，下发到各个sidecar中；
 
-Citadel负责安全、授权认证，比如证书的分发和轮换，让sidecar代理两端实现双向TLS认证、访问授权；
+  pilot有两个子组件：
 
-Mixer负责从数据平面收集数据指标以及流量策略，是一种插件组件，插件提供了很好的扩展性，独立部署，但每次修改需要重新部署，之后1.1版本将插件模块独立一个adaptor和Gallery，但是Mixer由于需要频繁的与sidecar进行通信，又是部署在应用进程外的，因此性能不高。
+  * pilot-discovery：是控制面与数据面的桥梁，从kubernetes中获取服务信息，如service、endpoint、pod、node的资源信息；监控istio控制面的信息，如vs、gw、dr等，将服务信息和流量规则信息转化为数据面可以理解的格式，通过xDS下发到各个sidecar中；
+  * pilot-agent：根据API-Server中配置的信息生成sidecar配置文件，负责启动、监控sidecar进程，是istio-proxy的一部分，注入到pod中；
+  * pilot-proxy：即pod中的sidecar-istio-proxy，负责流量代理，直接连接pilot-discovery，间接获取集群中各个微服务的注册情况；
 
-Gallery负责对配置信息格式和正确性校验，将配置信息提供pilot使用。
+* Citadel负责安全、授权认证，比如证书的分发和轮换，让sidecar代理两端实现双向TLS认证、访问授权；
 
-高版本1.5后中分为将Pilot、Citadel、Gallery整合为istiod，同时istiod里也包含了CA、API-Server，配合ingressgateway、egressgateway
+* Gallery负责配置管理，负责将istio组件与底层平台如Kubernetes获取用户配置的细节隔离开，对配置信息格式和正确性校验，将配置信息提供pilot使用，只与控制面的其他组件打交道，实现与底层平台解耦；
+* sidecar injector：在为配置了istio自动注入的pod自动注入istio-proxy；
+* Mixer负责从数据平面收集数据指标以及流量策略，是一种插件组件，插件提供了很好的扩展性，独立部署，但每次修改需要重新部署，之后1.1版本将插件模块独立一个adaptor和Gallery，但是Mixer由于需要频繁的与sidecar进行通信，又是部署在应用进程外的，因此性能不高。
+
+高版本1.5后中分为将Pilot、Citadel、Gallery整合为istiod，同时istiod里也包含了CA、API-Server，配合ingressgateway、egressgateway管理流量。
 
 **数据平面**：Pod中的每个Envoy容器，即istio-proxy；Envoy会以side car的方式运行在Pod中，利用Pod中的所有容器共享同一个Network Namespace的特性，通过配置Pod里的iptables规则，管理进出Pod的流量。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/Istio-架构.png)
+
+istio-proxy的作用：
+
+>  客户端功能：
+>
+> * 发现和负载平衡。代理可以使用几个标准的服务发现和负载平衡API，以有效地将流量分配给服务。
+>
+> * 凭证注入。代理可以通过连接隧道或特定于协议的机制（例如HTTP请求的JWT令牌）注入客户端身份。
+>
+> * 连接管理。代理管理与服务的连接，处理运行状况检查，重试，故障转移和流控制。
+>
+> * 监控和记录。代理可以报告客户端指标并记录到混合器。
+>
+> 服务器端功能：
+>
+> * 速率限制和流量控制。代理可以防止后端系统过载，并提供客户端感知的速率限制。
+> * 协议翻译。代理是gRPC网关，提供JSON-REST和gRPC之间的转换。
+> * 认证与授权。代理支持多种身份验证机制，并且可以使用客户端身份通过混合器执行授权检查。
+> * 监控和记录。代理可以报告服务器端指标并记录到混合器。
 
 ## 自动注入实现
 

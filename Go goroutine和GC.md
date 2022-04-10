@@ -48,6 +48,26 @@ pprof提供应用运行的过程中分析当前应用的各项指标来辅助进
 
 参考：https://strikefreedom.top/go-netpoll-io-multiplexing-reactor，讲得足够详细了
 
+https://www.luozhiyun.com/archives/439
+
+https://zhuanlan.zhihu.com/p/272891398
+
+netpoller本质上是利用操作系统本身的非阻塞IO模型 + IO多路复用的封装，从而实现`goroutine-per-connection`模式，使用同步编程模式达到异步执行的效果。
+
+netpoller算是运行在go scheduler中的一个子系统，但它主要是处理网络请求的，使其不阻塞整个调度。
+
+netpoller中的几个方法：`对epoll的封装 netpollinit、netpollopen、netpoll`、`net.listen`、`Listener.Accept`、`Conn.Read / Conn.Write`。
+
+这里记一下Go网络相关的goroutine是如何被规划调度的：
+
+> 首先，client 连接 server 的时候，listener 通过 accept 调用接收新 connection，每一个新 connection 都启动一个 goroutine 处理，accept 调用会把该 connection 的 fd 连带所在的 goroutine 上下文信息封装注册到 epoll 的监听列表里去，当 goroutine 调用 `conn.Read` 或者 `conn.Write` 等需要阻塞等待的函数时，会被 `gopark` 给封存起来并使之休眠，让 P 去执行本地调度队列里的下一个可执行的 goroutine，往后 Go scheduler 会在循环调度的 `runtime.schedule()` 函数以及 sysmon 监控线程中调用 `runtime.netpoll` 以获取可运行的 goroutine 列表并通过调用 injectglist 把剩下的 g 放入全局调度队列或者当前 P 本地调度队列去重新执行。
+>
+> 当IO事件发生之后，netpooler通过 `runtime.netpoll` 即可在epoll监听列表获取到已就绪的fd列表对应的goroutine，具体：`runtime.netpoll`会调用 `epollwait` 等待发生了可读/可写事件的fd，循环 `epollwait` 返回的事件列表，处理对应的事件类型，组装可运行的goroutine链表并返回。
+>
+> `sysmon监控线程`会在循环过程中检查距离上一次 `runtime.netpoll` 被调用是否超过10ms，若是则回去调用它拿到可运行的goroutine列表并调用 injectglist 把 g 列表放入全局调度队列或者当前 P 本地调度队列等待被执行。
+
+即当处理网络IO的goroutine被阻塞住时，通过netpoll + 非阻塞IO，让G不会因为系统调用而陷入内核态，只是被runtime调用gopark住，此时G会被放置到某个wait queue中...  ；当IO可用时，在 epoll 的 `eventpoll.rdr` 中等待的 G 会被放到 `eventpoll.rdllist` 链表里并通过 `netpoll` 中的 `epoll_wait` 系统调用返回放置到GRQ或者 P 的LRQ，标记为 `_Grunnable` ，等待 P 绑定 M 恢复执行。
+
 # Goroutine
 
 ## 基本
@@ -119,7 +139,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
   * M被创建的时机：当没有足够的M来关联P，并运行P中LRQ的G，或者所有的M都被阻塞住时，就回去空闲M链表中查找M，如果还没有，就会创建新的M；
 
-* P：即processor，处理器的抽象，运行在线程上的本地调度器，用来管理和执行goroutine，使得goroutine在一个线程上跑，提供了线程需要的上下文，（局部计算资源，用于在同一线程写多个goroutine的切换），负责调度线程上的LRQ，是实现从N：1到N：M映射的关键。存在的意义在于工作窃取算法。
+* P：即processor，处理器的抽象，运行在线程上的本地调度器，用来管理和执行goroutine，使得goroutine在一个线程上跑，提供了线程需要的上下文，（局部计算资源，用于在同一线程写多个goroutine的切换），负责调度线程上的LRQ，是实现从N：1到N：M映射的关键，存在的意义在于工作窃取算法，同时也是为了保证在发生系统调用时，M阻塞，此时P就可以交给其他M继续执行。
 
   * P的个数取决于**GOMAXPROCS**，默认使用CPU的个数，这些P会绑定到不同内核线程，尽量提升性能，让每个核都有代码在跑。在确定了P的最大数量n后，当程序运行时，创建n个P，P代表代表并发度；
 
@@ -182,6 +202,12 @@ GRQ、空闲M链表、空闲P链表、复用G列表等都存放在schedt结构�
   阻塞结束后，该M和G会尝试找回原来的P（有利于数据局部性），如果原来的P没空，则获取其他空闲的P，放入其LRQ，等待执行；如果没有空闲的P，则G放入GRQ，M继续休眠；（**hand off策略**）
 
 * 运行时的G会尝试唤醒其他空闲的M和P进行组合，由于M和P由于刚被唤醒，进入自旋状态，G0发现P的本地队列没有G，则先去GRQ里进行working stealing，如果GRQ里没有，则去其他P的LRQ里working stealing；
+
+通过netpoller进行网络系统调用，调度器可以防止G在进行这些系统调用时阻塞M，使得M可以执行P的LRQ中的其他G，而不需要使用新的M，该G在netpoller执行完后，会重新回到之前P的LRQ中，等待调用。执行网络系统调用不需要额外的M，netpoller使用系统线程时刻处理一个有效的事件循环（通过linux上的epoll实现），即在这种场景下，G会和MP分离，G挂在了netpoller下。
+
+如果是其他系统调用，如读取文件导致G被阻塞，此时不关netpoller什么事，这种阻塞使得G阻塞M，调度器会使得GM与P分离，而P使用新的M继续执行。
+
+如果是让G执行一个sleep操作，导致M被阻塞，则由sysmon监控线程来监控那些长时间运行的G，然后设置可以抢占的标识符，别的G就可以抢占来执行。
 
 这里有一个有趣的例子
 
@@ -254,6 +280,8 @@ func main() {
 ## sysmon协程
 
 **由sysmon协程进行协作式抢占**，对goroutine进行标记，执行goroutine时如果有标记就会让出CPU，对于syscall过久的P，会进行M和P的分配，防止P被占用过久影响调度。
+
+sysmon协程运行在M上，且不需要P，它会每隔一段时间检查runtime，确保没有出现异常状态，也会触发调度、GC、检查死锁、获取下一个需要被触发的计时器、定时从netpoll中获取ready的G、打印调度和内存信息。
 
 ![go sysmon goroutine](https://github.com/Nixum/Java-Note/raw/master/picture/go_sysmon_goroutine.png)
 
@@ -522,3 +550,5 @@ go中使用了写屏障是在写入指针前执行的一小段代码，用以防
 [详解Go语言调度循环源码实现](https://www.luozhiyun.com/archives/448)
 
 [GC模式图文全分析](https://mp.weixin.qq.com/s?__biz=MzAxMTA4Njc0OQ==&mid=2651439356&idx=2&sn=264a3141ea9a4b29fe67ec06a17aeb99&chksm=80bb1e0eb7cc97181b81ae731d0d425dda1e9a8d503ff75f217a0d77bd9d0eb451555cb584a0&scene=21#wechat_redirect)
+
+[Golang 系统调用与阻塞处理](https://jishuin.proginn.com/p/763bfbd5f194)
