@@ -967,7 +967,29 @@ MySQL的高可用（通过主库发生故障时切到从库），是依赖主备
 
 由于每个执行请求都有可能获得IO资源，所以有时检测请求执行成功了，但是此时系统资源即将被耗尽了，已经可以进行主备切换了，但是仍然要在下次检测才能知道，因此需要判断多每次IO请求的时间，通常是检测(select)performance_schema表的信息
 
-# 其他
+## 高可用方案MHA
+
+MHA是一套保证MySQL实现故障切换和主从提升的高可用解决方案，故障切换时能在30s内自动完成，最大程度的保证数据一致，支持跨存储引擎，对原有MySQL库无性能影响，整个故障转移过程对应用程序完全透明。
+
+MHA里有两个角色一个是MHA Node（数据节点）另一个是MHA Manager（管理节点）。
+
+* MHA Manager可以单独部署在一台独立的机器上管理多个master-slave集群，也可以部署在一台slave节点上。
+* MHA Node运行在每台MySQL服务器上，MHA Manager会定时探测集群中的master节点，当master出现故障时，它可以自动将最新数据的slave提升为新的master，然后将所有其他的slave重新指向新的master。
+
+![MHA架构](https://github.com/Nixum/Java-Note/raw/master/picture/MySQL_MHA_架构.png)
+
+MHA方案采用半同步复制的方式，所以MySQL的版本要求至少是5.5，半同步复制机制保证master出问题的时候，至少有一台slave的数据是完整的，但在超时的情况下也会临时切换异步复制，保障业务的正常使用，直到一台slave追上同步进度，再继续切换成半同步复制模式。
+
+MHA还可以修复多个slave之间的日志差异，使得所有salve的数据保证数据最终一致性，保证至少可以从中选出一个master。
+
+流程：
+
+1. 从宕机的master中保存 bin log
+2. 识别含有最新更新的slave
+3. 应用差异的relay log到其他slave
+4. 从master中保存 bin log
+5. 提升一个slave为新master
+6. 使得其他的slave连接到新的master进行复制
 
 ## 自增主键
 
