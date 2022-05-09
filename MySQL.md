@@ -28,29 +28,17 @@ tags: ["MySQL", "数据库", "数据库-锁", "数据库事务", "索引", "主�
 
 比如一个page页中一个数据从 1 改到 2 ，再改到 3，物理日志记录最后一个值是 3 ，逻辑日志记录 1 -> 2, 2->3 的过程。
 
-* **redo log重做日志**：InnoDB独有，物理日志，**记录这个页做了什么改动**，使用**二阶段提交**保证两份日志逻辑一致。当有日志要写入时，先写到redo log buffer后状态是prepare，binlog写入磁盘，事务提交，redo log改为commit状态，commit后才写进redo log，此时事务就算完成。
+* **redo log重做日志**：InnoDB独有，物理日志，**记录这个页做了什么改动**，使用**二阶段提交**保证两份日志逻辑一致。当有日志要写入时，先写到redo log buffer后状态是prepare，开始写bin log cache，bin log 写完后，事务提交，redo log 改为commit状态，redo log写完，此时事务就算完成；这里描述的写redo log和bin log都只写在了缓冲区，何时写进磁盘，是根据`innodb_flush_log_at_trx_commit`和`sync_binlog`配置决定。**用于实现数据持久化，以及宕机恢复数据。**
 
-  **WAL机制**：执行事务时，将表数据写入内存和日志，事务就完成了，此时表数据可能还没写入磁盘，InnoDB会在合适的时机将内存里的数据刷入磁盘。WAL机制主要是解决CPU和磁盘速度的差异问题，也因为是先把数据写进内存，再写入磁盘，才需要redo log + 二阶段提交来解决崩溃数据丢失的问题，redo log同时也实现了事务的持久化。
+  redo log 本质上记录了对某个表空间的某个数据页的某个偏移量修改了哪几个字节的值，具体修改的值是什么，一条redo log也就几个字节到十几个字节，格式是 `日志类型，表空间ID，数据页号，数据页偏移量，具体修改的数据`。redo log buffer默认是16MB，redo log 数据内容是记在 redo log block 里的，写满一个就存到redo log buffer里，然后写下一个，直到 buffer 满了，此时会强制刷盘。
 
-结合redo log的二阶段提交和WAL机制，整个流程就是：
+  redo log  是固定大小的，比如有一组4个文件组成的“环形队列”，环形写入，一个文件写完就写下一个，4个轮转，作用是redo log刷盘完成之后这部分内存就能重新利用；首位指针表示当前记录的位置和当前擦除位置，是一个叫 LSN（log sequence number）的检查点，表示在LSN之前的数据（缓冲池里的数据页、索引页）都已经持久化到磁盘了，redo log文件里在LSN检查点之前的内容才允许被覆盖，擦除或覆盖之前记一定会刷到磁盘。
 
-1. 当有记录要更新时，数据修改前，先把老版本的数据写入undo log，然后先写进redo log buffer，状态是prepare，然后是bin log写入磁盘，事务提交，redo log更新为commit状态，并更新内存里的数据后，整个更新操作就算完成。
+* **WAL机制**：执行事务时，将表数据写入内存和日志(redo log)，事务就完成了，此时表数据可能还没写入磁盘，InnoDB会在合适的时机将内存里的数据刷入磁盘。WAL机制主要是解决表数据写入时，CPU和磁盘速度的差异问题，也因为是先把数据写进内存，再写入磁盘，才需要redo log + 二阶段提交来解决崩溃数据丢失的问题。
 
-   建议设置`innodb_flush_log_at_trx_commit=1`，表示每次事务的redo log会写入buffer中，立即调一次 fsync 方法持久化到磁盘；所以一次更新操作之后，redo log文件就有两条日志，一条prepare，一条commit。
+* **bin log归档日志**：属于server层的日志，逻辑日志，**记录所有逻辑操作**，追加写入，不会覆盖以前的日志，bin log有两种模式，statement 格式的话是记sql语句， row格式会记录行的内容，一般使用row，记录行变化前和变化后的数据，缺点是日志变大。**用于主从复制和数据备份恢复**；
 
-   其他参数：`=0`，表示每秒将redo log写入到buffer中，然后调用 fsync 方法将数据持久化到磁盘，但可能会丢失一秒的数据；`=2`，表示每次事务的redo log会写入buffer，然后每秒调一次 fsync 方法持久化到硬盘。
-
-2. InnoDB在空闲的时候才真正的将内存中已更新的表数据刷新到对应的page页，写入磁盘中，此时数据才真正落盘。
-
-   因为redo log格式固定，可以通过redo log buffer实现顺序写入磁盘，顺序IO写入速度快，而将表数据写入磁盘，需要更新redo log日志中的内容到表数据对应的page页，涉及到分页或合并等操作，属于随机IO写入，比较费时，所以才先写redo log日志，再把表数据写磁盘，当表数据写入磁盘后。
-
-   redo log里有一个叫LSN（log sequence number）作为检查点，表示在LSN之前的数据（缓冲池里的数据页、索引页）都已经持久化到磁盘了，redo log文件里在LSN检查点之前的内容才允许被覆盖。
-
-InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环形队列”，一个文件写完就写下一个，4个轮转；首位指针表示当前记录的位置和当前擦除位置，擦除前会把记录更新到磁盘；
-
-* **bin log归档日志**：属于server层的日志，逻辑日志，**记录所有逻辑操作**，追加写入，不会覆盖以前的日志，bin log有两种模式，statement 格式的话是记sql语句， row格式会记录行的内容，一般使用row，记录行变化前和变化后的数据，缺点是日志变大。用于主从复制和数据备份恢复；
-
-  bin log也是先写buff再写磁盘，建议设置`sync_binlog=1`，表示每次事务的bin log都会持久化到磁盘；
+  bin log也是先写buff再写磁盘，建议设置`sync_binlog=1`，表示每次事务提交后bin log都会持久化到磁盘；
   
   其他参数：`=0`，表示由系统判断何时刷盘，`=N`，表示每N个事务完成才会刷盘；
   
@@ -58,13 +46,27 @@ InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环�
 
 只有当`innodb_flush_log_at_trx_commit=1`和`sync_binlog=1`，数据库才具备crash-safe的能力。
 
+结合redo log的二阶段提交和WAL机制，整个流程就是：
+
+1. 当有记录要更新时，数据修改前，先把老版本的数据写入undo log，然后把新数据先写进redo log buffer，状态是prepare，然后是bin log写入cache，事务提交，redo log更新为commit状态，并更新内存里的数据后，整个更新操作就算完成。当两个参数都 `=1` 时，事务完整提交前，需要刷两次盘，一次 redo log，一次 bin log。
+
+   建议设置`innodb_flush_log_at_trx_commit=1`，表示每次事务完成后，立即调一次 fsync 方法将redo log buffer 中的数据持久化到磁盘的cache，再调用一次flush 方法持久化到硬盘。
+
+   其他参数：`=0`，表示每秒调用 fsync 方法将 redo log buffer 中的数据持久化到磁盘cache，再调用 flush 刷盘，机器停电或崩溃可能会丢失一秒的数据；`=2`，表示每次事务完成后，立即调一次 fsync 方法将 redo log buffer 中的数据写到磁盘cache，然后每秒调一次 flush 方法持久化到硬盘，机器停电或操作系统崩溃可能会丢失一秒的数据。
+
+   除此之后还有几种场景会强制写磁盘：redo log buffer满了、正常关闭服务器、redo log环形写入到达check point时。
+
+2. InnoDB在空闲的时候才真正的将内存中已更新的表数据刷新到对应的page页，写入磁盘中，此时数据才真正落盘。
+
+   因为redo log格式固定，可以通过redo log buffer实现顺序写入磁盘，顺序IO写入速度快，而将表数据写入磁盘，需要更新redo log日志中的内容到表数据对应的page页，涉及到分页或合并等操作，属于随机IO写入，比较费时，所以才先写redo log日志，再把表数据写入磁盘。
+
 可以**只使用redo log来实现崩溃恢复**，保证恢复后不会出现主从不一致的情况，由MySQL内部实现，但无法只使用bin log，原因是 InnoDB使用WAL机制，如果此时数据库崩溃，要依赖日志来恢复数据页，但是bin log并没有记录数据页的更新细节，而redo log因为环形写入的问题，无法对所有记录进行归档，仅仅只能实现崩溃恢复；InnoDB通过redo log的状态和比较与bin log的数据，来判断哪些数据需要进行崩溃恢复。
 
 正常运行的情况下，数据页被修改到落盘，从头到尾操作的都是内存中的数据，操作记录只是顺带记录在redo log文件中，只有在奔溃恢复的场景下，如果InnoDB判断数据丢失了更新，才会从redo log文件中将数据恢复到内存，再从内存中将数据刷盘。redo log只是用于记录，真正刷盘的数据来自其他buffer。
 
 备份时间的长短会影响日志文件的大小，文件的完整性，从而影响到恢复速度和恢复效果；
 
-* **undo log回滚日志**：InnoDB独有，逻辑日志，主要用于事务失败时的回滚，以及MVCC中版本数据查看。当事务被提交后，并不会马上被删除，而是放到待清理链中，=到没有事务用到该版本信息时才可以清理。
+* **undo log回滚日志**：InnoDB独有，逻辑日志，主要用于**事务失败时的回滚**，以及MVC**C中版本数据查看**。当事务被提交后，并不会马上被删除，而是放到待清理链中，=到没有事务用到该版本信息时才可以清理。
 
 参考：[MySQL中的日志机制](https://zhuanlan.zhihu.com/p/133994414)
 
@@ -110,19 +112,21 @@ InnoDB的redo log是固定大小的，比如有一组4个文件组成的“环�
 
 查询 除了D网站外 各个网站的点击数 大于100 的 网站名称 和 点击数 并 降序 表示
 
-select 网站名称, **SUM(点击数)**   
-from Log where 网站名称!='D'   
-group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)  
+```sql
+select 网站名称, SUM(点击数)
+	from Log where 网站名称!='D'   
+group by 网站名称 having SUM(点击数) >100 order by SUM(点击数)  
+```
 
 ## order by
 
-* 全字段排序：查询条件是索引，但是order by 条件不是，会先遍历索引，再回表取值，每次取到数据就丢sort_buffer，完了之后在sort_buffer里根据order by条件排序 （利用sort_buffer + 临时表），会根据数据量采用内存排序或者外部归并排序，
-* rowId排序：如果select的字段太多，超过设置的最大长度```max_length_for_sort_data```，就会只取主键和order by的条件丢进去sort_buffer里进行排序，最后再回表根据主键取出其他select的字段
-* 如果order by的条件正好是索引顺序，就不需要使用sort_buffer进行排序了，直接使用索引顺序即可
-* order by rand()，随机排序，使用内存临时表，使用rowId + 随机数进行排序
-* 不带查询条件进行order by，就算order by条件是索引，是不一定会走索引进行排序，原因是如果MySQL优化器判断走索引后要去回表数量太大，就不会走
-* 带limit的order by，mysql会采用堆排
-* 默认的临时内存表是16M，由```tmp_table_size```设置
+* 全字段排序：查询条件是索引，但是order by 条件不是，会先遍历索引，再回表取值，每次取到数据就丢sort_buffer，完了之后在sort_buffer里根据order by条件排序 （利用sort_buffer + 临时表），会根据数据量采用内存排序或者外部归并排序；
+* rowId排序：如果select的字段太多，超过设置的最大长度```max_length_for_sort_data```，就会只取主键和order by的条件丢进去sort_buffer里进行排序，最后再回表根据主键取出其他select的字段；
+* 如果order by的条件正好是索引顺序，就不需要使用sort_buffer进行排序了，直接使用索引顺序即可；
+* order by rand()，随机排序，使用内存临时表，使用rowId + 随机数进行排序；
+* 不带查询条件进行order by，就算order by条件是索引，是不一定会走索引进行排序，原因是如果MySQL优化器判断走索引后要去回表数量太大，就不会走；
+* 带limit的order by，mysql会采用堆排；
+* 默认的临时内存表是16M，由`tmp_table_size`设置；
 
 ## group by
 
@@ -133,12 +137,14 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
 ## distinct
 
+`select distinct colA, colB from table`
+
 * distinct 接多个列，会对多个列的不同组合都列出来
 * 无法这样使用select a, distinct b from table
 
 ## join
 
-- 由于有时优化器会选择错误的驱动表，使用 **straight_join** 则可以让MySQL默认使用左边的表作为驱动表
+- 由于有时优化器会选择错误的驱动表，使用 **straight_join** 则可以让MySQL默认使用左边的表作为驱动表；
 
 - 当有A、B两表，是一个1对1的关系，逻辑外键在B表带有索引，使用join进行关联查询，小表驱动大表(这样扫描的行数较少)，每扫一行，通过外键索引，在另一个表找对应的行数据，总共执行1条语句，扫描len(A) + len(B) 行，但是如果不使用join查，而是先查出A表所有数据，再根据A的id查回B的数据，虽然扫描的行数一样，但是却执行了len(B) + 1条SQL语句，显然是使用了join的方式性能强，前提是B上带了索引（NLJ算法）。
 
@@ -148,13 +154,13 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
 - 如果B上关联键没有使用索引，则算法是这样的，先对A表进行全表扫描存进内存，再对B表进行全表扫描存进内存，然后在内存(join buffer)里进行匹配，如果内存太小，则分块加载，匹配后将结果集返回，清空内存，再分配加载这样循环处理（BNL算法）
 
-  对BNL的优化，一种是在业务端查回两张表的数据，在通过hash匹配组合，另一种是查join查询前，先创建临时表，创建索引，查询被驱动表的数据，插入临时表中，与临时表进行join操作，将BNL转为NLJ
+  对BNL的优化，一种是在业务端查回两张表的数据，在通过hash匹配组合，另一种是查join查询前，先创建临时表，创建索引，查询被驱动表的数据，插入临时表中，与临时表进行join操作，将BNL转为NLJ；
 
-  小表驱动，小表指的是行数相对少，或者select时表的数据量相对少的表
+  小表驱动，小表指的是行数相对少，或者select时表的数据量相对少的表；
 
 - 驱动表走全表扫描，被驱动表最好走索引扫描，使用NLJ算法，如果被驱动表是全表扫描，则使用(S)BNL算法
 
-- left join，使用left join时，左边的表不一定是驱动表，如果要使用left join语义，不能把被驱动表的字段放在where条件里做等值和不等值判断，必须放在on里，原因是MySQL会先用on作为条件进行过滤，完了才使用where进行过滤，放在on里能让过滤出来的条数少，要注意两者表达的语义还是有些不同的
+- left join，使用left join时，左边的表不一定是驱动表，如果要使用left join语义，不能把被驱动表的字段放在where条件里做等值和不等值判断，必须放在on里，原因是MySQL会先用on作为条件进行过滤，完了才使用where进行过滤，放在on里能让过滤出来的条数少，要注意两者表达的语义还是有些不同的；
 
 ## drop、delete与truncate
 
@@ -165,7 +171,7 @@ group by 网站名称 **having** **SUM(点击数)**>100 order by SUM(点击数)
 
 ## Limit
 
-* limt M offset N，从第N条记录开始，返回M条记录，比如`limit 5, 10`，表示返回6-15行
+* `limt M [offset N]`，从第N条记录开始，返回M条记录，比如`limit 5, 10`，表示返回6-15行
 * 当limit后面只跟一个参数时，表示返回最大的记录行数目，比如`limit 5`，表示只返回前5行
 * 初始偏移量是0
 
