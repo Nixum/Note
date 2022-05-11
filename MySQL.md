@@ -404,26 +404,26 @@ B类树都是为了磁盘或其他辅助存储设备而设计的一种数据结�
     
     * index： 只遍历索引树，通常比 All 快。因为索引文件通常比数据文件小，即 all 和 index 都是读全表，但 index 是从索引中读取的，而 all 是从硬盘读的。
     
-    * **possible_keys**：能使用哪个索引找到行，查询涉及到字段上若存在索引，则该索引将被列出，但不一定被查询使用；
+   * **possible_keys**：能使用哪个索引找到行，查询涉及到字段上若存在索引，则该索引将被列出，但不一定被查询使用；
+    
+  * **key**：索引列的名称，如果没有使用索引，显示为NULL；
   
-    * **key**：索引列的名称，如果没有使用索引，显示为NULL；
+  * **ref**：表示上述表的连接匹配条件，即哪些列或常量被用于查找索引列上的值
   
-    * **ref**：表示上述表的连接匹配条件，即哪些列或常量被用于查找索引列上的值
+  * **rows**：扫描的行数
   
-    * **rows**：扫描的行数
+  * **filtered**：查询出的行数占表的百分比
   
-    * **filtered**：查询出的行数占表的百分比
+  * **extra**：额外信息说明
   
-    * **extra**：额外信息说明
-  
-        * using index：使用到了覆盖索引；
-        * using temporary：MySQL对查询结果排序时使用了临时表，查询效率比filesort还低，常见于order by和group by
-        * using filesort：使用外部排序，通过磁盘和内存交换数据来排序，查询效率不高；
-        * using index condition：使用了索引下推；
-        * using join buffer（block nested loop）：使用join连表，并使用了缓冲区；
-        * using union：使用索引并取并集；
-        * using sort_union ：先对取出的数据按rowid排序，然后再取并集；
-        * using intersect ：索引取交集；
+      * using index：使用到了覆盖索引；
+      * using temporary：MySQL对查询结果排序时使用了临时表，查询效率比filesort还低，常见于order by和group by
+      * using filesort：使用外部排序，通过磁盘和内存交换数据来排序，查询效率不高；
+      * using index condition：使用了索引下推；
+      * using join buffer（block nested loop）：使用join连表，并使用了缓冲区；
+      * using union：使用索引并取并集；
+      * using sort_union ：先对取出的数据按rowid排序，然后再取并集；
+      * using intersect ：索引取交集；
   
 * `show processlist`，此命令用于查看目前执行的sql语句执行的状态，比如当CPU使用率飙升时，可通过该命令查看哪些SQL语句在执行
 
@@ -585,27 +585,27 @@ B类树都是为了磁盘或其他辅助存储设备而设计的一种数据结�
 
 隔离级别就是为了解决上述并发时候带来的问题
 
-* DEFAULT：默认隔离级别，即使用底层数据库默认的隔离级别；
+* **DEFAULT**：默认隔离级别，即使用底层数据库默认的隔离级别；
 
-* READ_UNCOMMITTED：未提交读，一个事务未提交时，它的变更可以被其他事务看到
+* **READ_UNCOMMITTED**：未提交读，一个事务未提交时，它的变更可以被其他事务看到；
 
   可能出现 脏读、不可重复读、丢失更新、幻读；
 
-* READ_COMMITTED：提交读，一个事务提交之后，它做的变更才会被其他事务看到，保证了一个事务不会 读 到另一个并行事务已修改但未提交的数据
+* **READ_COMMITTED**：提交读，一个事务提交之后，它做的变更才会被其他事务看到，保证了一个事务不会 读 到另一个并行事务已修改但未提交的数据；
 
   避免了“脏读”，可能出现不可重复读、丢失更新；
 
-  Oracle默认隔离级别
+  Oracle默认隔离级别；
 
-* REPEATABLE_READ：可重复读，一个事务在执行中看到的数据，总是跟这个事务在启动时看到的数据一致，保证了一个事务不会 修改 已经由另一个事务读取但未提交（回滚）的数据。
+* **REPEATABLE_READ**：可重复读，一个事务在执行中看到的数据，总是跟这个事务在启动时看到的数据一致，保证了一个事务不会 修改 已经由另一个事务读取但未提交（回滚）的数据。
 
   避免了脏读、不可重复读取、丢失更新，可能存在幻读；
 
-  mysql默认是此隔离级别；MySQL使用MVCC和间隙锁来防止 幻读
+  MySQL默认是此隔离级别；但MySQL在此隔离级别下会使用MVCC和间隙锁来防止 幻读；
 
-* SERIALIZABLE：序列化,最严格的级别，事务串行执行,即一个事务要等待另一个事务完成才可进行
+* **SERIALIZABLE**：序列化,最严格的级别，事务串行执行,即一个事务要等待另一个事务完成才可进行
 
-  效率最差，但也解决了并发带来的那4种问题
+  效率最差，但也解决了并发带来的那4种问题；
 
 例子：
 
@@ -634,9 +634,9 @@ B类树都是为了磁盘或其他辅助存储设备而设计的一种数据结�
 
 ## 4.事务相关命令
 
-1. 显式启动事务，使用begin或strart transaction启动事务，commit提交事务，rollback回滚
-2. set autocommit=0，关掉自动提交，任何语句执行都需要显式的提交(主动commit或rollback)才算执行完成
-3. set autocommit=1，执行任意一条语句都会默认开启单次事务执行完成后隐式提交，事务也可以显式开启，直到显示使用commit、rollback或断开连接。一般是使用set autocommit=1，开启事务，再commit提交事务，执行commit work and chain则提交事务并开启下一次事务
+1. 显式启动事务，使用begin或strart transaction启动事务，commit提交事务，rollback回滚；
+2. set autocommit=0，关掉自动提交，任何语句执行都需要显式的提交(主动commit或rollback)才算执行完成；
+3. set autocommit=1，执行任意一条语句都会默认开启单次事务执行完成后隐式提交，事务也可以显式开启，直到显示使用commit、rollback或断开连接。一般是使用set autocommit=1，开启事务，再commit提交事务，执行commit work and chain则提交事务并开启下一次事务；
 
 # 锁
 
@@ -704,21 +704,21 @@ B类树都是为了磁盘或其他辅助存储设备而设计的一种数据结�
 
 ## 可重复读隔离级别时的加锁规则
 
-1. 查询过程中扫描到的行才会加锁，锁的基本单位是next-key lock（左开右闭）
+1. 查询过程中扫描到的行才会加锁，锁的基本单位是next-key lock（左开右闭）；
 
-2. 如果等值查询的对象不存在，会在该等值的 前后 遇到的第一个存在的数据的这段范围加上间隙锁（左开右开）
+2. 如果等值查询的对象不存在，会在该等值的 前后 遇到的第一个存在的数据的这段范围加上间隙锁（左开右开）；
 
-3. 索引上的等值查询，如果是唯一索引，加的是行锁；如果非唯一索引，需要访问该等值的左边到右边第一个不满足条件的值，这个范围加上间隙锁（左开右开，中间包含该等值）
+3. 索引上的等值查询，如果是唯一索引，加的是行锁；如果非唯一索引，需要访问该等值的左边到右边第一个不满足条件的值，这个范围加上间隙锁（左开右开，中间包含该等值）；
 
-   可以理解为，等值查询的加锁范围是从该等值左边第一个不满足条件的值开始到该等值的右边第一个值不满足条件的值的左开右开区间，同时包含该等值，如果是唯一索引，则退化成行锁
+   可以理解为，等值查询的加锁范围是从该等值左边第一个不满足条件的值开始到该等值的右边第一个值不满足条件的值的左开右开区间，同时包含该等值，如果是唯一索引，则退化成行锁；
 
-4. 不带等值的范围查询上，无论是否是唯一索引，范围查询都需要访问到第一个不满足条件的值为止，在这个范围加间隙锁（左开右闭），带等值的范围查询时，规则还是同上
+4. 不带等值的范围查询上，无论是否是唯一索引，范围查询都需要访问到第一个不满足条件的值为止，在这个范围加间隙锁（左开右闭），带等值的范围查询时，规则还是同上；
 
-5. 锁是加在索引上的，根据where条件依次加上，比如有表A，索引为id、a、b，当update时的条件是where a=xx时，会对索引a、id、b的顺序加锁；间隙锁只会加在where条件中的索引上，对于该索引定位到的行加的是行锁
+5. 锁是加在索引上的，根据where条件依次加上，比如有表A，索引为id、a、b，当update时的条件是where a=xx时，会对索引a、id、b的顺序加锁；间隙锁只会加在where条件中的索引上，对于该索引定位到的行加的是行锁；
 
-6. select加的锁，如果查询的列刚好是满足覆盖索引，且覆盖索引不包括其他索引，则只会锁where条件上的索引
+6. select加的锁，如果查询的列刚好是满足覆盖索引，且覆盖索引不包括其他索引，则只会锁where条件上的索引；
 
-以上规则需要组合起来使用，InnoDB会对扫描过的行都加上行锁和间隙锁，所以如果查询条件不是索引，就会全表扫描，并对扫到的行主键上锁，表现出来就是锁表了。
+以上规则需要组合起来使用，**InnoDB会对扫描过的行都加上行锁和间隙锁，所以如果查询条件不是索引，就会全表扫描，并对扫到的行主键上锁，表现出来就是锁表了**。
 
 在InnoDB中，一般设置```innodb_thread_concurrency```的值在64~128之间，=0表示不限制并发线程数量，这里的并发线程数量指的是并发查询数量，并发连接数量可以有上千个，但是并发查询数量不能太多，否则太耗CPU资源，另外，在查询进入锁等待时，并发查询数量会减一，不计入并发查询数量里，select sleep(秒)则会计入。
 
@@ -831,21 +831,21 @@ MySQL一般的集群架构是 有两台MySQL实行双Master部署，进行主备
 
 * bin log的写入机制：事务执行过程中，先把日志写进bin log cache，事务提交时，再把bin log cache写进bin log文件（先写到文件系统的page cache，再进行持久化）中，然后把bin log cache清空。
 
-  bin log cache每个线程自己维护，bin log的写入是一个顺序操作
+  bin log cache每个线程自己维护，bin log的写入是一个顺序操作；
 
-  bin log cache的大小通过```binlog_cache_size```控制，如果超过就暂存到磁盘
+  bin log cache的大小通过```binlog_cache_size```控制，如果超过就暂存到磁盘；
 
-  ```sync_binlog=x```表示每次事务提交都会write到磁盘page cahce，但是会累计提交x个事务后才把bin log的数据持久化到磁盘，一般设置范围是100~1000，对应的风险是，如果机器宕机，会丢失最近N个事务的bin log日志
+  ```sync_binlog=x```表示每次事务提交都会write到磁盘page cahce，但是会累计提交x个事务后才把bin log的数据持久化到磁盘，一般设置范围是100~1000，对应的风险是，如果机器宕机，会丢失最近N个事务的bin log日志；
 
-* redo log写入机制：原理与bin log类似，但是它是二阶段提交，有状态，事务执行过程中，redo log先是prepare状态，写入redo log buffer，再写bin log，提交事务，变为redo log commit状态（即WAL机制）
+* redo log写入机制：原理与bin log类似，但是它是二阶段提交，有状态，事务执行过程中，redo log先是prepare状态，写入redo log buffer，再写bin log，提交事务，变为redo log commit状态；
 
-  redo log buffer全局共用，与bin log cache不同
+  redo log buffer全局共用，与bin log cache不同；
 
-  ```innodb_flush_log_at_trx_commit```=0，表示每次事务提交只是把redo log写入redo log buffer，=1 表示每次事务提交会持久化redo log到硬盘中，=2 表示每次事务提交会把redo log写到page cache，innodb后台有进程每秒钟将redo log buffer中的日志写进page cache，再持久化到磁盘，所以有可能会把事务未提交的redo log持久化到硬盘
+  ```innodb_flush_log_at_trx_commit```=0，表示每次事务提交只是把redo log写入redo log buffer，=1 表示每次事务提交会持久化redo log到硬盘中，=2 表示每次事务提交会把redo log写到page cache，innodb后台有进程每秒钟将redo log buffer中的日志写进page cache，再持久化到磁盘，所以有可能会把事务未提交的redo log持久化到硬盘；
 
-一般会把```sync_binlog```和```innodb_flush_log_at_trx_commit```都设置为1，即一个事务完整提交前，会刷两次盘。另一种设置是让```sync_binlog=1000```和```innodb_flush_log_at_trx_commit=2```，一般是在主备复制存在很大延迟时，为了让从库的备份速度跟上主库
+一般会把```sync_binlog```和```innodb_flush_log_at_trx_commit```都设置为1，即一个事务完整提交前，会刷两次盘。另一种设置是让```sync_binlog=1000```和```innodb_flush_log_at_trx_commit=2```，一般是在主备复制存在很大延迟时，为了让从库的备份速度跟上主库；
 
-为了提高刷盘效率，MySQL一般会让多个事务在一段时间内完成，或尽量让page cache里的redo log和bin log组合在一起提交，减少刷盘次数
+为了提高刷盘效率，MySQL一般会让多个事务在一段时间内完成，或尽量让page cache里的redo log和bin log组合在一起提交，减少刷盘次数；
 
 ## 主从复制
 
