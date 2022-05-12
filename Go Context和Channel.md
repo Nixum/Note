@@ -130,7 +130,7 @@ func TODO() Context {
 有两种方式可触发取消：
 
 1. 返回的CancelFunc被调用，此时会取消当前context和其所有的子context
-2. Done这个chan被close了，此时会从当前context和其所有的子context
+2. Done这个chan被close了，此时会取消当前context和其所有的子context
 
 ```go
 type CancelFunc func()

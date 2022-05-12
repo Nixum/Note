@@ -988,14 +988,25 @@ MHA方案采用半同步复制的方式，所以MySQL的版本要求至少是5.5
 
 MHA还可以修复多个slave之间的日志差异，使得所有salve的数据保证数据最终一致性，保证至少可以从中选出一个master。
 
-流程：
+### 故障转移流程
 
-1. 从宕机的master中保存 bin log
-2. 识别含有最新更新的slave
-3. 应用差异的relay log到其他slave
-4. 从master中保存 bin log
-5. 提升一个slave为新master
-6. 使得其他的slave连接到新的master进行复制
+1. MHA验证复制设置以及确认当前master状态
+2. 监控master，检测到master宕机
+3. 再次验证slave的配置
+4. 开始恢复一台新master
+5. 从宕机的master节点上通过SSH保存其bin log到Manager
+6. 根据配置文件来选举出新的master，或者将含有数据同步最新位点的slave提升为master
+7. 根据老master bin log生成差异日志，应用到新master上
+8. 将其他的slave连接到新的master进行复制
+
+### 快速切换master流程
+
+1. MHA验证复制设置以及确认当前master状态
+2. 确认新的master
+3. 停止当前master的写操作
+4. 等待其他slave追上当前master，直到数据复制进度无延迟
+5. 确保新master可写
+6. 让其他slave指向新master
 
 # 其他
 
