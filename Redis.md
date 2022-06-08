@@ -711,6 +711,10 @@ redis-cli --eval visit_restrict.script keys , args
   * List类型有提供BRPOP供消费者阻塞读取，避免循环读取带来的消耗；
   * List类型有提供BRPOPLPUSH命令，让消费者读取时会把数据存入另一备份List中，用于避免消费者从List中移除消息读取时宕机，重启后可重新读取消息。
   * List不支持消费组实现，无法避免生产速度大于消费速度的场景。
+  * 通过 BLPOP 命令，在没有消息的时候，它会一直阻塞，直至有消息到来。
+
+* 实现延迟队列：
+  * 使用ZSet，拿时间戳当score，调用ZADD命令生产消息，ZRANGEBYSOCRE命令获取N秒前的数据进行轮询处理。
 
 * 使用Stream类型，解决多端消费问题。
 
@@ -718,7 +722,7 @@ redis-cli --eval visit_restrict.script keys , args
 * 读取时使用命令XRead，可支持指定ID读取，也支持超时阻塞读取。
   * 命令XGroup创建消费组，XREADGROUP指定组内哪个消费者进行消费。
 * Streams 会自动使用内部队列（也称为 PENDING List）留存消费组里每个消费者读取的消息，直到消费者使用 XACK 命令进行回复。如果消费不成功，它就不会给 Streams 发送 XACK 命令，消息仍然会留存。当消费者重启后，用 XPENDING 命令查看已读取、但尚未确认处理完成的消息。
-  
+
   * Stream是Redis5.0以后才有的专门用来处理消息队列的。
 
 # 缓存可能引发的问题以及应对方法

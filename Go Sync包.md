@@ -112,9 +112,9 @@ type Mutex struct {
 	sema  uint32  // 信号量变量，用来控制等待goroutine的阻塞休眠和唤醒
 }
 const (
-	mutexLocked = 1 << iota // 持有锁的标记
-	mutexWoken  // 唤醒标记
-	mutexStarving // 饥饿标记
+	mutexLocked = 1 << iota // 持有锁的标记，此时被锁定
+	mutexWoken  // 唤醒标记，从普通模式被唤醒
+	mutexStarving // 饥饿标记，进入饥饿模式
 	mutexWaiterShift = iota  // 阻塞等待的waiter数量
     starvationThresholdNs = 1e6
 }
