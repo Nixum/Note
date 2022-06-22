@@ -66,7 +66,7 @@ netpoller中的几个方法：`对epoll的封装 netpollinit、netpollopen、net
 >
 > `sysmon监控线程`会在循环过程中检查距离上一次 `runtime.netpoll` 被调用是否超过10ms，若是则回去调用它拿到可运行的goroutine列表并调用 injectglist 把 g 列表放入全局调度队列或者当前 P 本地调度队列等待被执行。
 
-即当处理网络IO的goroutine被阻塞住时，通过netpoll + 非阻塞IO，让G不会因为系统调用而陷入内核态，只是被runtime调用gopark住，此时G会被放置到某个wait queue中...  ；当IO可用时，在 epoll 的 `eventpoll.rdr` 中等待的 G 会被放到 `eventpoll.rdllist` 链表里并通过 `netpoll` 中的 `epoll_wait` 系统调用返回放置到GRQ或者 P 的LRQ，标记为 `_Grunnable` ，等待 P 绑定 M 恢复执行。
+即当处理网络IO的goroutine被阻塞住时，通过netpoll + 非阻塞IO，让G不会因为系统调用而陷入内核态，只是被runtime调用gopark住，此时G会被放置到某个wait queue中...  ；当IO可用时，在 epoll 的 `eventpoll.rdr` 中等待的 G 会被放到 `eventpoll.rdllist` 链表里并通过 `netpoll` 中的 `epoll_wait` 系统调用**返回放置到GRQ或者 P 的LRQ**，标记为 `_Grunnable` ，等待 P 绑定 M 恢复执行。
 
 # Goroutine
 
@@ -143,7 +143,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
   * P的个数取决于**GOMAXPROCS**，默认使用CPU的个数，这些P会绑定到不同内核线程，尽量提升性能，让每个核都有代码在跑。在确定了P的最大数量n后，当程序运行时，创建n个P，P代表代表并发度；
 
-  * P包含一个LRQ（Local Run Queue本地运行队列），保存P需要执行的goroutine的队列。**LRQ是一个长度为256的环形数组**，有head和tail两个序号，当数量达到256时，新创建的goroutine会保存在GRQ中，LRQ中随机一半G也放到GRQ中；
+  * P包含一个LRQ（Local Run Queue本地运行队列），保存P需要执行的goroutine的队列。**LRQ是一个长度为256的环形数组**，有head和tail两个序号，当数量达到256时，新创建的goroutine会保存在GRQ中，LRQ中前一半G打乱顺序后也放到GRQ中；
 
     当在G0中产生G1，此时会G1会优先加入当前的LRQ队列，保证其在同一个M上执行；
     
@@ -177,19 +177,19 @@ GRQ、空闲M链表、空闲P链表、复用G列表等都存放在schedt结构�
 
 * 持有P的M会执行G，执行完G后会先判断是否满足61次调用，如果是，则先从GRQ中获取，否则继续从P的LRQ中继续获取G进行消费；之所以先有次数判断，是为了防止GRQ里的G被饿死；
 
-  当发现P的LRQ中没有其他G可执行时，则会从GRQ里获取G放入本地队列，获取数量`n = min(len(GQ)/GOMAXPROCS + 1, len(GQ/2))`，一次不会获取太多，保证其他M在GRQ中有G可拿，**获取时会加锁**；
+  当发现P的LRQ中没有其他G可执行时，则会从GRQ的队首里获取G放入本地队列，获取数量`n = min(len(GQ)/GOMAXPROCS + 1, len(GQ/2))`，一次不会获取太多，保证其他M在GRQ中有G可拿，**获取时会加锁**；
 
-  当P发现自己的LRQ、GRQ都没有G了，则会随机从其他P的LRQ尾部中窃取一半的G放到自己的LRQ，通过CAS获取；（**work stealing 工作窃取**）
+  当P发现自己的LRQ、GRQ都没有G了，会从netpoller(网络轮询器)上获取G来执行；
 
-  如果LRQ、GRQ、其他P的LRQ都没有G时，会从netpoller(网络轮询器)上进行work stealing；
+  如果LRQ、GRQ、netpooler上都没有G时，则会随机从其他P的**LRQ尾部中窃取一半的G**放到自己的LRQ，通过CAS获取；（**work stealing 工作窃取**）
 
-* 当P的LRQ满时，会把当前P的LRQ前一半的G打乱顺序后转移到GRQ；
+* 当P的LRQ满时，会把当前P的LRQ前一半的G打乱顺序后转移到GRQ，此时新创建的G也会放到GRQ；
 
 * 当P的LRQ和调度器的GRQ都没有可执行的G时，M进入自旋状态；
 
   M进入自旋，是为了避免频繁的休眠和唤醒产生大量的开销，当其他G准备就绪时，首先被调度到自旋的M上，其次才是去创建新线程；
 
-  自旋只会持续一段时间，如果自旋期间没有G需要调度，则之后会进入休眠状态，等待被唤醒；
+  自旋只会持续一段时间，如果自旋期间没有G需要调度，则之后会进入休眠状态，加入空闲M链表，等待被唤醒；
 
   M自旋时会调用G0协程，G0协程主要负责调度时协程的切换；
 
@@ -201,11 +201,11 @@ GRQ、空闲M链表、空闲P链表、复用G列表等都存放在schedt结构�
 
   阻塞结束后，该M和G会尝试找回原来的P（有利于数据局部性），如果原来的P没空，则获取其他空闲的P，放入其LRQ，等待执行；如果没有空闲的P，则G放入GRQ，M继续休眠；（**hand off策略**）
 
-* 运行时的G会尝试唤醒其他空闲的M和P进行组合，由于M和P由于刚被唤醒，进入自旋状态，G0发现P的本地队列没有G，则先去GRQ里进行working stealing，如果GRQ里没有，则去其他P的LRQ里working stealing；
+* G被调用运行时，会尝试唤醒其他空闲的M和P进行组合，由于M和P由于刚被唤醒，进入自旋状态，G0发现P的本地队列没有G，则先去GRQ里进行working stealing，如果GRQ里没有，则去其他P的LRQ里working stealing；
 
-通过netpoller进行网络系统调用，调度器可以防止G在进行这些系统调用时阻塞M，使得M可以执行P的LRQ中的其他G，而不需要使用新的M，该G在netpoller执行完后，会重新回到之前P的LRQ中，等待调用。执行网络系统调用不需要额外的M，netpoller使用系统线程时刻处理一个有效的事件循环（通过linux上的epoll实现），即在这种场景下，G会和MP分离，G挂在了netpoller下。
+通过netpoller进行网络系统调用，调度器可以防止G在进行这些系统调用时阻塞M，使得M可以执行P的LRQ中的其他G，而不需要使用新的M，该G在netpoller执行完后，会重新回到之前P的LRQ中（或者被放到GRQ），等待调用。执行网络系统调用不需要额外的M，netpoller使用系统线程时刻处理一个有效的事件循环（通过linux上的epoll实现，网络相关fd与G绑定），即在这种场景下，G会和M、P分离，G挂在了netpoller下。（网络调用导致G阻塞，会由netpoller接管，此时M可以继续执行下一个G）
 
-如果是其他系统调用，如读取文件导致G被阻塞，此时不关netpoller什么事，这种阻塞使得G阻塞M，调度器会使得GM与P分离，而P使用新的M继续执行。
+如果是其他系统调用，如读取文件导致G被阻塞，此时不关netpoller什么事，这种阻塞使得G阻塞M，调度器会使得GM与P分离，而P使用新的M继续执行。（G阻塞导致M阻塞，P寻找新M来执行G）
 
 如果是让G执行一个sleep操作，导致M被阻塞，则由sysmon监控线程来监控那些长时间运行的G，然后设置可以抢占的标识符，别的G就可以抢占来执行。
 
@@ -526,7 +526,7 @@ go中使用了写屏障是在写入指针前执行的一小段代码，用以防
 >    2. 恢复用户程序，所有新创建的对象会标记成白色；
 >    3. 后台并发清理所有的内存管理单元，当 Goroutine 申请新的内存管理单元时就会触发清理；
 >
-> 并发垃圾回收是先STW找到所有的Root对象，然后结束STW，让垃圾标记线程和用户线程并发执行，垃圾标记完成后，再次开启STW，再次扫描和标记，以免释放使用中的内存。
+> 并发垃圾回收是先STW找到所有的Root对象，开启写屏障，然后结束STW，让垃圾标记线程和用户线程并发执行，垃圾标记完成后，再次开启STW，停止写屏障，清理内存。
 
 ## 关注的指标
 

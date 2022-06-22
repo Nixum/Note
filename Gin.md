@@ -81,6 +81,7 @@ func (srv *Server) Serve(l net.Listener) error {
 		tempDelay = 0
 		c := srv.newConn(rw)
 		c.setState(c.rwc, StateNew) // before Serve can return
+        // 每次有连接进来都会起一个协程来处理
 		go c.serve(connCtx)
 	}
 }
@@ -89,10 +90,51 @@ func (c *conn) serve(ctx context.Context) {
 	...
  	// 处理连接、tls处理之类的，从连接中读取数据，封装成request、response，交给serverHandler处理
     ...
+    if requestBodyRemains(req.Body) {
+		registerOnHitEOF(req.Body, w.conn.r.startBackgroundRead)
+	} else {
+        // 该方法会起一个新协程在后台读取连接，就靠它来实现请求还没处理完就能进行取消的功能
+        // 实际上，取消后，只是连接被中断了，业务代码该执行还是在执行，执行完才能收到cancel信号
+		w.conn.r.startBackgroundRead()
+	}
     // 默认的serverHandler.ServeHTTP方法会进行判断:
     // 如果handler为空就会使用默认的DefaultServeMux，否则就用用户定义的ServeHTTP来处理请求
     serverHandler{c.server}.ServeHTTP(w, w.req)
     ...
+    // 请求结束之后cancel掉context
+    w.cancelCtx()
+}
+
+// 处理连接时，处理会把连接交给serverHandler，还会起一个协程监控连接的状态
+func (cr *connReader) startBackgroundRead() {
+	cr.lock()
+	defer cr.unlock()
+	...
+	cr.inRead = true
+	cr.conn.rwc.SetReadDeadline(time.Time{})
+	go cr.backgroundRead()
+}
+
+// 如果连接有问题，就会cancel掉
+func (cr *connReader) backgroundRead() {
+	n, err := cr.conn.rwc.Read(cr.byteBuf[:])
+	cr.lock()
+	if n == 1 {
+		cr.hasByte = true
+	}
+    // 如果连接超时了，就会收到EOF的错误
+	if ne, ok := err.(net.Error); ok && cr.aborted && ne.Timeout() {
+	} else if err != nil {
+        // 出错时就会触发cancel，从而结束掉请求
+		cr.handleReadError(err)
+        // handleReadError方法内就是下面这两句
+        // cr.conn.cancelCtx()
+	    // cr.closeNotify()
+	}
+	cr.aborted = false
+	cr.inRead = false
+	cr.unlock()
+	cr.cond.Broadcast()
 }
 
 // DefaultServeMux的ServeHTTP方法，对请求进行路由匹配，用的就是http.HandleFunc里的map
