@@ -451,17 +451,17 @@ func makechan(t *chantype, size int) *hchan {
 
 3. 上锁，保证线程安全，再次检查chan是否被close，如果被close，再往里发数据会触发 解锁，panic；
 
-4. 同步发送 - **优先发送等待接收的G**
+4. 同步发送 - **优先发送给等待接收的G**
 
    如果**没被close，当recvq存在等待的接收者时**，通过`send()`函数，取出第一个等待的goroutine，直接发送数据，不需要先放到buf中；
 
    `send()`函数将因为等待数据的接收而阻塞的goroutine的状态从Gwaiting或者Gscanwaiting改为Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度**时会立即执行这个等待发送数据的goroutine；
 
-5. 异步发送 - **其次是buf区**
+5. 异步发送 - **其次是发送到buf区**
 
    **当recvq中没有等待的接收者，且buf区存在空余空间时**，会使用`chanbuf()`函数获取sendx索引值，计算出下一个可以存储数据的位置，然后调用`typedmemmove()`函数将要发送的数据拷贝到buff区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
 
-6. 阻塞发送 - **最后才是待发送队列**
+6. 阻塞发送 - **最后才是保存在待发送队列，阻塞**
 
    **当recvq中没有等待的接收者，且buf区已满或不存在buf区时**，会先调用`getg()`函数获取正在发送者的goroutine，执行`acquireSudog()`函数获取sudoG对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine）
 
@@ -599,23 +599,23 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
 3. 上锁检查buf区大小：上锁，如果chan已经被close，且buf区没有数据，清除ep指针中的数据，解锁，返回selected为true，received为false；
 
-4. 同步接收
+4. 同步接收 - **如果无buf，消费发送等待队列中G的数据，如果buf满，先拿buf区的，发送的再加入**
 
    **当chan的sendq队列存在等待状态的goroutine时**（能拿到就说明要不就是buf区为0，要不就是buf区已满）
 
-   如果是无buf区的chan，直接使用`recv()`函数从阻塞的发送者中获取数据；
+   **如果是无buf区的chan**，直接使用`recv()`函数从阻塞的发送者中获取数据；
 
-   如果是有buf区的chan，说明此时buf区已满，则先从buf区中获取可接收的数据（从buf区中copy到接收者的内存），然后从sendq队列的队首中读取待发送的数据，加入到buf区中（将发送者的数据copy到buf区），更新可接收和可发送的下标chan.recvx和sendx的值；
+   **如果是有buf区的chan**，说明此时buf区已满，则先从buf区中获取可接收的数据（从buf区中copy到接收者的内存），然后从sendq队列的队首中读取待发送的数据，加入到buf区中（将发送者的数据copy到buf区），更新可接收和可发送的下标chan.recvx和sendx的值；
 
    最后调用`goready()`函数将等待发送数据而阻塞gorouotine的状态从Gwaiting 或者 Gscanwaiting 改变成 Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度时**立即释放这个等待发送数据的goroutine；
 
-5. 异步接收
+5. 异步接收 - **其次是消费buf区中的数据**
 
    **当channel的sendq队列没有等待状态的goroutine，且buf区存在数据时**，从channel的buf区中的recvx的索引位置接收数据，如果接收数据的内存地址不为空，会直接将缓冲区里的数据拷贝到内存中，清除buf区中的数据，递增recvx，递减qcount，完成数据接收；
 
    这个和chansend共用一把锁，所以不会有并发问题；
 
-6. 阻塞接收
+6. 阻塞接收 - **最后才是保存在接收等待队列，阻塞**
 
    **当channel的sendq队列没有等待状态的goroutine，且buf区不存在数据时**，执行`acquireSudog()`函数获取sudoG对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine）
 
@@ -792,11 +792,11 @@ func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
 
    否则的话，如果 chan 不为 nil，chan 也没有 closed，设置chan的标记为close；
 
-3. 释放所有的接收者：
+3. **优先释放所有的接收者**：
 
    将接收者等待队列中的sudoG对象加入到待清除队列glist中，这里会优先回收接收者，这样即使从close中的chan读取数据，也不会panic，最多读到默认值；
 
-4. 释放所有发送者：
+4. **其次是释放所有发送者**：
    将发送者等待队列中的sudoG对象加入到待清除队列glist中，这里可能会发生panic，因为往一个close的chan中发送数据会panic；
 
 5. 解锁
@@ -895,7 +895,7 @@ func process(timeout time.Duration) bool {
         ch <- true // block
         fmt.Println("exit goroutine")
     }()
-    // 如果上面的协程任务处理的时间过长，触发下面select的超时机制，此时process函数返回，之后当上面的协程任务执行完之后，由于process已经执行完，下面result接收chan的值被回收，导致没有接收者，导致上面的协程任务一直卡在 ch <- true，进而导致goroutine泄漏。解决方案就是使用容量为1的ch即可。
+    // 如果上面的协程任务处理的时间过长，触发下面select的超时机制，此时process函数返回，之后当上面的协程任务执行完之后，由于process已经执行完，下面result接收chan的值被回收，所以没有接收者，导致上面的协程任务一直卡在 ch <- true，进而导致goroutine泄漏。解决方案就是使用容量为1的ch即可。
     select {
     case result := <-ch:
         return result

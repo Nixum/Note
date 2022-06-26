@@ -37,11 +37,11 @@ go func() {
 
 * init函数：同一个包下可以有多个init函数，多个签名相同的init函数；main函数一定在导入的包的init函数执行之后执行；当有多个init函数时，从main文件出发，递归找到对应的包 - 包内文件名顺序 - 一个文件内init函数顺序执行init函数。
 
-* 全局变量：包级别的变量在同一个文件中是按照声明顺序逐个初始化的；当该变量在初始化时依赖其它的变量时，则会先初始化该依赖的变量。同一个包下的多个文件，会按照文件名的排列顺序进行初始化。
+* 全局变量：包级别的变量在**同一个文件中是按照声明顺序逐个初始化**的；当该变量在初始化时**依赖其它的变量时，则会先初始化该依赖的变量**。**同一个包下的多个文件，会按照文件名的排列顺序进行初始化**。
 
   init函数也是如此，当init函数引用了全局变量a，运行main函数时，肯定是先初始化a，再执行init函数。
 
-  当init函数和全局变量无引用关系时，先初始化全局变量，再执行init函数
+  当init函数和全局变量**无引用关系时，先初始化全局变量，再执行init函数**
 
 ```go
 var (
@@ -113,7 +113,7 @@ type Mutex struct {
 }
 const (
 	mutexLocked = 1 << iota // 持有锁的标记，此时被锁定
-	mutexWoken  // 唤醒标记，从普通模式被唤醒
+	mutexWoken  // 唤醒标记，从正常模式被唤醒
 	mutexStarving // 饥饿标记，进入饥饿模式
 	mutexWaiterShift = iota  // 阻塞等待的waiter数量
     starvationThresholdNs = 1e6
@@ -134,15 +134,15 @@ const (
 
 * Mutex的零值是没有goroutine等待的未加锁状态，不会因为没有初始化而出现空指针或者无法获取到锁的情况，so无需额外的初始化，直接声明变量即可使用`var lock sync.Mutex`，或者是在结构体里的属性，均无需初始化
 
-* 锁有两种模式：普通模式和饥饿模式
+* 锁有两种模式：正常模式和饥饿模式
 
-  普通模式下，如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；
+  正常模式下，如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；
 
   如果此时有新的goroutine也在获取锁，会参与到获取锁的竞争中，这是非公平的，因为新请求锁的goroutine是在CPU上被运行，并且数量也可能很多，所以被唤醒的goroutine获取锁的概率并不大，所以，如果等待队列中的goroutine等待超过1ms，则会优先加入到队列的头部，如果超过1ms都没有获取到锁，则进入饥饿模式；
 
   饥饿模式下，锁的所有权会直接从释放锁的goroutine转交给队首的goroutine，新请求锁的goroutine就算锁的空闲状态也不会去获取锁，也不会自旋，直接加入等待队列的队尾，以此解决等待的goroutine的饥饿问题；
 
-  恢复为正常模式的条件：一个goroutine获取锁后，当前goroutine是队列的最后一个，拿锁的耗时小于1ms；
+  恢复为正常模式的条件：一个goroutine获取锁后，当前goroutine是队列的最后一个，退出饥饿模式；
 
 * Unlock方法可以被任意goroutine调用，释放锁，即使它本身没有持有这个锁，so写的时候要牢记，谁申请锁，就该谁释放锁，保证在一个方法内被调用
 
@@ -170,31 +170,30 @@ const (
 
    goroutine本身进入自旋的条件比较苛刻：
 
-   * 互斥锁只有在普通模式才能进入自旋；
+   * 互斥锁只有在正常模式才能进入自旋；
 
    * `runtime.sync_runtime_canSpin`需要返回true：
-
    	1. 运行在多 CPU 的机器上；
    	2. 当前 Goroutine 为了获取该锁进入自旋的次数小于四次；
    	3. 当前机器上至少存在一个正在运行的处理器 P 并且处理的运行队列为空；
+   
+3. 在lockSlow方法内，意味着锁已经被持有，当前调用Lock方法的goroutine正在等待，且非饥饿状态，其首先会自旋，尝试获取锁，无需休眠，否则进入 4
 
-3. 在lockSlow方法内，意味着锁已经被持有，当前调用Lock方法的goroutine正在等待，且非饥饿状态，其首先会自旋，尝试获取锁，无需休眠，否则进入 3
-
-4. 不满足自旋时，当前锁可能有如下几种状态：
+   不满足自旋时，当前锁可能有如下几种状态：
 
    - 锁还没有被释放，锁处于正常状态
    - 锁还没有被释放， 锁处于饥饿状态
    - 锁已经被释放， 锁处于正常状态
    - 锁已经被释放， 锁处于饥饿状态
 
-5. 由于lock方法会被多个goroutine执行，所以锁的状态会不断变化，此时会生成当前goroutine的 new state，期望状态
+5. 由于lock方法会被多个goroutine执行，所以锁的状态会不断变化，此时会生成当前goroutine的 new state 作为期望状态
 
    * 如果是非饥饿状态，锁的new state设置为已持有锁
    * 如果已经持有锁，或者是饥饿状态，waiter数量 + 1
    * 如果已经持有锁，且是饥饿状态，锁的new state设置为饥饿状态
    * 如果当前goroutine被唤醒，锁的new state设置为唤醒状态
 
-6. CAS**更新当前锁的状态**为new state，如果更新成功
+6. **CAS更新当前锁的状态**为new state，如果更新成功
 
    5.1. 如果锁的原状态old state是未被锁，且非饥饿状态，表明当前goroutine获取到了锁，**退出结束**
    5.2. 判断当前goroutine是新加入的还是被唤醒的，新加入的放到等待队列的尾部，刚被唤醒的加入等待队列的头部，通过信号量阻塞，直到当前goroutine被唤醒
@@ -308,9 +307,9 @@ func (m *Mutex) lockSlow() {
 
 ## Unlock方法
 
-1. 将state的锁位-1，如果state=0，即此时没有加锁，且没有正在等待获取锁的goroutine，则直接结束方法，如果state != 0，执行unlockSlow方法，唤醒等待的goroutine
-2. 如果Mutex处于饥饿状态，直接唤醒等待队列中的waiter
-3. 如果Mutex处于正常状态，如果没有waiter，或者已经有在处理的waiter的情况，则直接释放锁，state锁位-1，返回；否则，waiter数-1，设置唤醒标记，通过CAS解锁，唤醒在等待锁的goroutine，此时新老goroutine一起竞争锁
+1. 将state的锁位-1，如果state=0，即此时没有加锁，且没有正在等待获取锁的goroutine，则直接结束方法，如果state != 0，执行unlockSlow方法，唤醒等待的goroutine；
+2. 如果Mutex处于饥饿状态，当前goroutine不更新锁状态，直接唤醒等待队列中的waiter，继续执行，相当于解锁了，然后由等待队列中的队首goroutine获得锁；
+3. 如果Mutex处于正常状态，如果没有waiter，或者已经有在处理的waiter的情况，则直接释放锁，state锁位-1，返回；否则，waiter数-1，设置唤醒标记，通过CAS解锁，唤醒在等待锁的goroutine，此时新老goroutine一起竞争锁；
 
 ```go
 func (m *Mutex) Unlock() {
@@ -430,15 +429,16 @@ type Map struct {
 	mu Mutex
 	// 存读的数据，只读，由dirty提升得到
 	read atomic.Value
-	// 包含最新写入的数据，并且在写的时候，会把read中未被删除的数据拷贝到该dirty中，
+	// 包含最新写入的数据，并且在写的时候，如果dirty是nil，会把read中未被删除的数据拷贝到该dirty中
 	dirty map[interface{}]*entry
-    // 从read中读数据时该值+1, 当len(dirty) == misses时，将dirty拷贝到read中
+    // 当从read中读不到数据，但在dirty中读到数据时该值+1, 当len(dirty) == misses时，将dirty拷贝到read中，此动作会发生在get和delete的操作中
 	misses int
 }
 
 type readOnly struct {
 	m       map[interface{}]*entry
-	amended bool // true表明dirty中存在read中没有的键值对
+    // true表明dirty中存在read中没有的键值对，有两种情况：1.被删除的key，只能在read中找到；2.新增加的key，只能在dirty中找到
+	amended bool
 }
 
 // read和dirty都包含了*entry，里面的p是一个指针，read和dirty各自维护了一套key，但他们都指向同一个value
@@ -491,6 +491,8 @@ type entry struct {
 
 7. 解锁；
 
+总结：如果是新key，则加锁，优先put到dirty中，如果是dirty为空，则创建新dirty，将read中非删除键值对赋值给新dirty，将read标记为有key在dirty中但不存在在read中，解锁；如果是已存在的key，由于read和dirty的value是同一个引用，直接cas更新read即可。
+
 ## Load方法
 
 将dirty提升为read这个操作在load方法中执行。
@@ -502,9 +504,18 @@ type entry struct {
 5. 同时增加miss的值(miss表示读取穿透的次数)，当miss的值等于dirty的长度时，就会将dirty提升为read，只需简单的赋值即可，然后将dirty置为null，重置miss数，避免总是从dirty中加锁读取；
 6. 解锁，将dirty中的查询结果返回；
 
+总结：优先读read中的key，判断read的标记，加锁，判断dirty是否包含read中不存在的key，如果是，才会去读dirty，同时miss值+1，当miss值=dirty长度时，将dirty中非删除的键值对赋值给read，解锁。
+
 ## Delete方法
 
-删除key时，自旋，只是对该key打上一个expunged标记，真正的删除只有在将dirty提升为read时才会清理删除的数据；
+将dirty提升为read这个操作也会在delete方法中执行。
+
+1. 判断read中是否存在该key；
+2. 如果read中不存在，且dirty中包含了read中不存在的key，加锁；
+3. 如果read中真的不存在，且dirty中包含了read中不存在的key，删除dirty中该key和value，此时miss也会 + 1，当miss值=dirty长度时，将dirty中非删除的键值对赋值给read；
+4. 如果存在该key（此时该键值对只会在read中存在），自旋，直接在该key对应的entry打上expunged标记，表示删除；
+
+总结：如果dirty中存在该key，dirty中该键值对会被真正的删除，但此时read中的键值对还没被删除，只是其key对应的value被打上一个expunged标记，表示删除，使其在被get的时候能分辨出来，read中该key真正的删除只有在将dirty提升为read的时候；
 
 ## LoadOrStore方法
 

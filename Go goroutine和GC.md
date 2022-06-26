@@ -56,13 +56,13 @@ netpoller本质上是利用操作系统本身的非阻塞IO模型 + IO多路复�
 
 netpoller算是运行在go scheduler中的一个子系统，但它主要是处理网络请求的，使其不阻塞整个调度。
 
-netpoller中的几个方法：`对epoll的封装 netpollinit、netpollopen、netpoll`、`net.listen`、`Listener.Accept`、`Conn.Read / Conn.Write`。
+netpoller中的几个方法：`对epoll的封装 netpollinit、netpollopen、netpoll`、`net.listen`、`Listener.Accept`、`Conn.Read / Conn.Write`，对网络的fd会设置成NonBlocking模式，根据不同的返回值设置G的状态，在M的调度、sysmon、gc STW结束等阶段会poll出ready的G进行运行或者添加到GRQ中。
 
 这里记一下Go网络相关的goroutine是如何被规划调度的：
 
 > 首先，client 连接 server 的时候，listener 通过 accept 调用接收新 connection，每一个新 connection 都启动一个 goroutine 处理，accept 调用会把该 connection 的 fd 连带所在的 goroutine 上下文信息封装注册到 epoll 的监听列表里去，当 goroutine 调用 `conn.Read` 或者 `conn.Write` 等需要阻塞等待的函数时，会被 `gopark` 给封存起来并使之休眠，让 P 去执行本地调度队列里的下一个可执行的 goroutine，往后 Go scheduler 会在循环调度的 `runtime.schedule()` 函数以及 sysmon 监控线程中调用 `runtime.netpoll` 以获取可运行的 goroutine 列表并通过调用 injectglist 把剩下的 g 放入全局调度队列或者当前 P 本地调度队列去重新执行。
 >
-> 当IO事件发生之后，netpooler通过 `runtime.netpoll` 即可在epoll监听列表获取到已就绪的fd列表对应的goroutine，具体：`runtime.netpoll`会调用 `epollwait` 等待发生了可读/可写事件的fd，循环 `epollwait` 返回的事件列表，处理对应的事件类型，组装可运行的goroutine链表并返回。
+> 当IO事件发生之后，netpoller通过 `runtime.netpoll` 即可在epoll监听列表获取到已就绪的fd列表对应的goroutine，具体：`runtime.netpoll`会调用 `epollwait` 等待发生了可读/可写事件的fd，循环 `epollwait` 返回的事件列表，处理对应的事件类型，组装可运行的goroutine链表并返回。
 >
 > `sysmon监控线程`会在循环过程中检查距离上一次 `runtime.netpoll` 被调用是否超过10ms，若是则回去调用它拿到可运行的goroutine列表并调用 injectglist 把 g 列表放入全局调度队列或者当前 P 本地调度队列等待被执行。
 
@@ -139,7 +139,7 @@ goroutine完全运行在用户态，借鉴M：N线程映射关系，采用GPM模
 
   * M被创建的时机：当没有足够的M来关联P，并运行P中LRQ的G，或者所有的M都被阻塞住时，就回去空闲M链表中查找M，如果还没有，就会创建新的M；
 
-* P：即processor，处理器的抽象，运行在线程上的本地调度器，用来管理和执行goroutine，使得goroutine在一个线程上跑，提供了线程需要的上下文，（局部计算资源，用于在同一线程写多个goroutine的切换），负责调度线程上的LRQ，是实现从N：1到N：M映射的关键，存在的意义在于工作窃取算法，同时也是为了保证在发生系统调用时，M阻塞，此时P就可以交给其他M继续执行。
+* P：即processor，处理器的抽象，运行在线程上的本地调度器，用来管理和执行goroutine，使得goroutine在一个线程上跑，提供了线程M需要的上下文（局部计算资源，用于在同一线程写多个goroutine的切换），负责调度线程上的LRQ，是实现从N：1到N：M映射的关键，存在的意义在于工作窃取算法，同时也是为了保证在发生系统调用时，M阻塞，此时P就可以交给其他M继续执行。
 
   * P的个数取决于**GOMAXPROCS**，默认使用CPU的个数，这些P会绑定到不同内核线程，尽量提升性能，让每个核都有代码在跑。在确定了P的最大数量n后，当程序运行时，创建n个P，P代表代表并发度；
 
@@ -181,7 +181,9 @@ GRQ、空闲M链表、空闲P链表、复用G列表等都存放在schedt结构�
 
   当P发现自己的LRQ、GRQ都没有G了，会从netpoller(网络轮询器)上获取G来执行；
 
-  如果LRQ、GRQ、netpooler上都没有G时，则会随机从其他P的**LRQ尾部中窃取一半的G**放到自己的LRQ，通过CAS获取；（**work stealing 工作窃取**）
+  如果LRQ、GRQ、netpoller上都没有G时，则会随机从其他P的**LRQ尾部中窃取一半的G**放到自己的LRQ，通过CAS获取；（**work stealing 工作窃取**）
+
+  以上过程由M执行 runtime.schedule 函数来执行调度。
 
 * 当P的LRQ满时，会把当前P的LRQ前一半的G打乱顺序后转移到GRQ，此时新创建的G也会放到GRQ；
 
@@ -205,9 +207,9 @@ GRQ、空闲M链表、空闲P链表、复用G列表等都存放在schedt结构�
 
 通过netpoller进行网络系统调用，调度器可以防止G在进行这些系统调用时阻塞M，使得M可以执行P的LRQ中的其他G，而不需要使用新的M，该G在netpoller执行完后，会重新回到之前P的LRQ中（或者被放到GRQ），等待调用。执行网络系统调用不需要额外的M，netpoller使用系统线程时刻处理一个有效的事件循环（通过linux上的epoll实现，网络相关fd与G绑定），即在这种场景下，G会和M、P分离，G挂在了netpoller下。（网络调用导致G阻塞，会由netpoller接管，此时M可以继续执行下一个G）
 
-如果是其他系统调用，如读取文件导致G被阻塞，此时不关netpoller什么事，这种阻塞使得G阻塞M，调度器会使得GM与P分离，而P使用新的M继续执行。（G阻塞导致M阻塞，P寻找新M来执行G）
+如果是系统调用，如读取文件导致G被阻塞，此时不关netpoller什么事，这种阻塞使得G阻塞M，调度器会使得GM与P分离，而P使用新的M继续执行。（G阻塞导致M阻塞，P寻找新M来执行G）
 
-如果是让G执行一个sleep操作，导致M被阻塞，则由sysmon监控线程来监控那些长时间运行的G，然后设置可以抢占的标识符，别的G就可以抢占来执行。
+如果是让G执行一个sleep、原子、互斥量或者chan操作，导致M被阻塞，则由sysmon监控线程来监控那些长时间运行的G，然后设置可以抢占的标识符，别的G就可以抢占来执行。（阻塞的G被切换出去，M不阻塞，转而执行其他空闲的G）
 
 这里有一个有趣的例子
 

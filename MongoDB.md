@@ -68,11 +68,11 @@ db.user.aggregate([
 
 几个比较特别的运算符
 
-$unwind：将查询到的数组展开
+`$unwind`：将查询到的数组展开
 
-$grouphLookup：图搜索
+`$grouphLookup`：图搜索
 
-$facet/$bucket: 分面搜索，根据不同范围条件，多个维度一次性进行分组输出
+`$facet/$bucket`：分面搜索，根据不同范围条件，多个维度一次性进行分组输出
 
 # 文档模型设计原则
 
@@ -80,9 +80,9 @@ $facet/$bucket: 分面搜索，根据不同范围条件，多个维度一次性�
 
   对于文档模型，一般对应关系型数据库设计的逻辑模型阶段，通过嵌套实体数组，map或者引用字段来处理实体间的关系，字段冗余限制宽松
 
-* 实体间的关系，一对一使用嵌套map来表示；一对多使用嵌套数组表示；多对多使用嵌套数组+冗余字段来表示；此外，也可以通过嵌套数组存id + 另一张表来表示实体间的关系，通过id来进行联表（使用aggregate + $lookup）
+* 实体间的关系，一对一使用嵌套map来表示；一对多使用嵌套数组表示；多对多使用嵌套数组+冗余字段来表示；此外，也可以通过嵌套数组存id + 另一张表来表示实体间的关系，通过id来进行联表（使用`aggregate + $lookup`）
 
-  **注意**：嵌套时要注意整个文档大小，限制是16M，读写比列，也要注意数组长度大小，一般会使用id引用模式来解决；**$lookup只支持left outer join**，不支持分片表
+  **注意**：嵌套时要注意整个文档大小，限制是16M，读写比例，也要注意数组长度大小，一般会使用id引用模式来解决；**$lookup只支持left outer join**，不支持分片表
 
 * 模式套用：
 
@@ -262,7 +262,7 @@ PROJECTION：限定返回字段时候stage的返回
 
 * 将所有数据都存在内存中，只有少量的元数据和诊断日志、临时数据存储到磁盘文件；
 * 文档级别的锁，同一时刻多个写操作可以修改同一个集合中的不同文档，修改同一文档时会上锁；
-* 将数据库的数据、索引和操作日志等内容存储到内存中。可以通过参数--inMemorySizeGB设置它占用的内存大小，默认为：50% of RAM - 1GB；
+* 将数据库的数据、索引和操作日志等内容存储到内存中。可以通过参数`--inMemorySizeGB`设置它占用的内存大小，默认为：50% of RAM - 1GB；
 * 不需要单独的日志文件，不存在记录日志和等待数据持久化的问题。so宕机时，所有存储在内存中的数据都将会丢失；
 * 数据虽然不会写入磁盘，但是会记录oplog；
 
@@ -302,15 +302,15 @@ WiredTiger有一个块设备管理的模块，用来为page分配block。如果�
 
 ### 数据在内存上的数据结构
 
-按需将磁盘上的数据以Page为单位加载到内存
+按需将磁盘上的数据以Page为单位加载到内存，一个page树就是一个checkpoint
 
-> 内存里面B-Tree包含三种类型的page，即rootpage（根结点）、internal page（非叶子结点）和leaf page（叶子结点），前两者包含指向其子页的page index指针，不包含集合中的真正数据，leaf page包含集合中的真正数据即keys/values和指向父页的home指针；
+> 内存里面B+Tree包含三种类型的page，即rootpage（根结点）、internal page（非叶子结点）和leaf page（叶子结点），前两者包含指向其子页的page index指针，不包含集合中的真正数据，leaf page包含集合中的真正数据即keys/values和指向父页的home指针；
 >
-> * 内存上的leaf page会维护一个`WT_ROW`结构的数组变量，将保存从磁盘leaf page读取的keys/values值，每一条记录还有一个cell_offset变量，表示这条记录在page上的偏移量；
+> leaf page还维护了三个数组：
 >
-> * 内存上的leaf page会维护一个`WT_UPDATE`结构的数组变量，每条被修改的记录都会有一个数组元素与之对应，如果某条记录被多次修改，则会将所有修改值以链表形式保存。（MVCC）
->
-> * 内存上的leaf page会维护一个`WT_INSERT_HEAD`结构的数组变量，具体插入的data会保存在`WT_INSERT_HEAD`结构中的`WT_UPDATE`属性上，且通过key属性的offset和size可以计算出此条记录待插入的位置；同时，为了提高寻找待插入位置的效率，每个`WT_INSERT_HEAD`变量以**跳转链表**的形式构成。
+> * WT_ROW数组，表示从磁盘加载进来的数据数组，每条记录还有一个cell_offset变量，表示这条记录在page上的偏移量
+> * WT_UPDATE数组，记录数据加载之后到下一个checkpoint间被修改的数据，每条被修改的记录都有一个数组元素对应，多次修改时，所有修改值以链表的形式保存（MVCC，相当于内存级别的oplog）
+> * WT_INSERT_HEAD数组，表示数据加载之后到下一个checkpoint间新增的数据，每个插入的数据以跳表的形式组成，提高插入效率。
 
 ### checkpoint机制
 
@@ -318,13 +318,15 @@ checkpoint 相当于一个日志，记录上次checkpoint后相关数据文件�
 
 #### 作用
 
-* 将内存里面发生修改的数据写到数据文件进行持久化保存，确保数据一致性；
+* 发生写操作时，只是将数据写入内存和journal日志，然后再通过check point机制将内存里面发生修改的数据写到数据文件进行持久化保存，确保数据一致性；
 
 * 实现数据库在某个时刻意外发生故障，再次启动时，缩短数据库的恢复时间；
 
+有点像MySQL中的change buffer + 持久化，优化写操作的速度和数据持久化的保证。
+
 #### 触发时机
 
-* 按一定时间周期：默认60s，执行一次checkpoint；
+* 按一定时间周期：默认60s，执行一次checkpoint，所以DB宕机重启后可以快速恢复60s之前的数据，配合redo log(journal日志)恢复60s之后的数据；
 
 * 按一定日志文件大小：当 journal日志文件大小达到2GB（如果已开启），执行一次checkpoint；
 
@@ -340,7 +342,7 @@ checkpoint 相当于一个日志，记录上次checkpoint后相关数据文件�
 
 1. 上排他锁，打开集合文件，读取最新的checkpoint数据；
 
-   集合文件会按checkponit指定的大小被截取，so如果此时发生系统故障，恢复时可能会丢失checkpoint之后的数据（如果没有开启journal）；
+   集合文件会按checkponit指定的大小被截取，so如果此时发生系统故障，恢复时可能会丢失checkpoint之后的数据（如果没有开启journal，如果有，是就会通过journal日志来重放）；
 
 2. 在内存构造一棵包含root page的live tree，表示当前可修改的checkpoint结构，用来跟踪后面写操作引起的文件变化，其他历史的checkpoint信息只能进行读或删除；
 
@@ -362,10 +364,10 @@ checkpoint 相当于一个日志，记录上次checkpoint后相关数据文件�
 
 另外，Spring 5.1.1 / SpringBoot 2.x 以上 @Transactional可以支持Mongo，需要为TransactionManager注入MongoDBFactory
 
-* MVCC：以本次trancsaction_id+本次修改后的value组成一个结点，每次修改都会追加到链表的头部，每次读取时根据trancsaction_id和本次事务的snapshot来找到对应的历史版本，该链表挂在叶子结点的WT_UPDATE字段中
+* MVCC：以本次trancsaction_id + 本次修改后的value组成一个结点，每次修改都会追加到链表的头部，每次读取时根据trancsaction_id和本次事务的snapshot来找到对应的历史版本，该链表挂在叶子结点的WT_UPDATE字段中
 * snapshot：拉取当前事务之前的数据快照，确定当前事务哪些数据可见，哪些不可见，确定事务状态
 * operation_array：本次事务中已执行的操作列表，用于事务回滚，类似MySQL的undo log
-* redo log：记录当前操作
+* redo log，即journal日志：记录当前操作
 * trancsaction_id：全局唯一事务id，通过cas自增生成
 * 全局事务管理器：管理系统所有事务，用数组保存所有历史事务对象transaction_array，用于snapshot的创建，扫描transaction_array时使用cas保证并发安全
 
@@ -433,11 +435,19 @@ redo log以WAL的方式写入日志，即事务过程中所有的修改在提交
 
 ### 缓存实现
 
-WT引擎内部使用LRU cache作为缓存模型，采用分段扫描和hazardpointer的淘汰机制，充分利用现代计算机超大内存容量的特性来提高事务读写并发。在高速不间断写入内存操作非常快，但是由于内存中的数据最终需要写入磁盘，因为写内存的速度远高于写磁盘，最终可能导致间歇性写挂起的现象出现。
+WT引擎内部使用**LRU cache作为缓存模型**，采用分段扫描和hazardpointer的淘汰机制，充分利用现代计算机超大内存容量的特性来提高事务读写并发。在高速不间断写入内存操作非常快，但是由于内存中的数据最终需要写入磁盘，因为写内存的速度远高于写磁盘，最终可能导致间歇性写挂起的现象出现。
+
+WT内部将内存划分为3块：
+
+* 存储引擎内部的cache，默认大小是`MAX((RAM - 1G)/2, 256M)`，即如果16G，就会有7.5G给WT内部当cache；
+* 索引cache，默认500M；
+* 文件系统cache，利用的是操作系统的文件系统缓存，目的是减少内存与磁盘的交互；
+
+当cache空间不足时，会进行淘汰，淘汰的时机由`eviction_target：内存使用量`和`eviction_dirty_target：内存脏数据量`来控制，超过一定的阈值后触发。
 
 缓解读写挂起的方法：
 
-* WT 2.8版本不在分为预前刷盘和checkpoint刷盘，而是采用逐个对B+树直接做checkpoint刷盘，避免evict page的拥堵，缓解OS cache缓冲太多的文件脏数据问题
+* WT 2.8版本不再分为预前刷盘和checkpoint刷盘，而是采用逐个对B+树直接做checkpoint刷盘，避免evict page的拥堵，缓解OS cache缓冲太多的文件脏数据问题
 * 使用direct IO
 * 多个磁盘存储，redo log文件单独放在一个磁盘上，数据放在另外的磁盘上，避免redo log和checkpoint发生刷盘竞争
 * 使用SSD
@@ -464,7 +474,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 ### journal参数
 
-写操作时，会先写到内存，在写入磁盘（journal日志文件和数据文件），参数journal字段来保证达到哪步操作才算成功，由配置文件里`storage.journal.enabled`控制是否开启，`storage.journal.commitInternalMs`决定刷盘时间间隔
+写操作时，会先写到内存，再写入磁盘（journal日志文件和数据文件），参数journal字段来保证达到哪步操作才算成功，由配置文件里`storage.journal.enabled`控制是否开启，`storage.journal.commitInternalMs`决定刷盘时间间隔
 
 使用：nosql语句里包含 {journal: {j: true}} 会保证每次写入都会进行刷盘
 
@@ -473,15 +483,15 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 ### journal日志与oplog日志的区别
 
-* **journal日志**：即redo log，由MongoDB引擎层使用，**主要用于控制写操作是否立即持久化**，因为如果发生写操作，mongo一般是先将写操作写入内存，在定时（默认是1分钟）通过check point机制将内存里的数据刷盘持久化。
+* **journal日志：即redo log **，由MongoDB引擎层使用，**主要用于控制写操作是否立即持久化**，因为如果发生写操作，mongo一般是先将写操作写入内存，在**定时（默认是1分钟）通过check point机制将内存里的数据刷盘持久化**。
 
   如果写操作的成功判定出现在写完内存后，如果此时宕机，将会丢失写操作的记录，如果判定发生在写完journal日志之后，如果宕机可以利用journal日志进行恢复。
 
-  写入journal日志时，也是先写入内存，再定时（默认是100ms）写入磁盘
+  **写入journal日志时，也是先写入内存，再定时（默认是100ms）写入磁盘**
 
-* **oplog日志**：只用在主从复制集的使用，通过oplog来**实现节点间的数据同步**，从节点获取主节点的oplog日志后进行重放，同步数据。oplog本身在MongoDB里是一个集合(表)
+* **oplog日志**：只用在主从复制集的使用，通过**oplog来实现节点间的数据同步**，从节点获取主节点的oplog日志后进行重放，同步数据。oplog本身在MongoDB里是一个集合
 
-  mongo的一次写操作，包括 1.将文档数据写进集合 2.更新集合的索引信息 3.写入oplog日志，（此时只是写入内存），这三个步骤是原子性的，要么成功要么失败。一次写操作可以是批量的也可以是单条，一次写操作对应一条journal日志。
+  mongo的一次写操作，包括 1.将文档数据写进集合； 2.更新集合的索引信息； 3.写入oplog日志，（此时只是写入内存），这三个步骤是原子性的，要么成功要么失败。一次写操作可以是批量的也可以是单条，一次写操作对应一条journal日志。
   
 * **开启jourbal和writeConcern后的数据写入顺序**：
 
@@ -525,7 +535,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
   作用：
 
   1. 主要是防止分布式数据库脏读，这里脏读指的是，在一次写操作到达多数节点前读取了这个写操作，又由于故障之类的导致写操作回滚了，此时读到的数据就算脏读。
-  2. 配合writeConcern=mahority来实现读写分离，向主节点写入数据，从节点也能读到数据
+  2. 配合writeConcern=majority来实现读写分离，向主节点写入数据，从节点也能读到数据
 
 * =linearizable：线性读取文档，性能较差，**作用类似MySQL中的serializable(串行化)隔离级别**。
 
@@ -607,7 +617,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
 * 数据存储时会自动均衡，当mongo发现数据存储分布不均衡时，会做chunk迁移，chunk的概念类似MySQL中的页，一个chunk包含多个文档 = 一页中包含多行记录
 
-  * chunk的大小默认是64M，如果超过，chunk会进行分裂，如果单位时间存储需求很大，设置更大的chunk。chunk的大小会影响迁移的速度，小的chunk迁移速度快，数据分别均匀，但是数据分裂频繁，路由节点消耗资源更多；大的chunk分裂少，但是迁移时更耗资源。
+  * chunk的大小默认是64M，如果超过，chunk会进行分裂，如果单位时间存储需求很大，就设置更大的chunk。chunk的大小会影响迁移的速度，小的chunk迁移速度快，数据分配均匀，但是数据分裂频繁，路由节点消耗资源更多；大的chunk分裂少，但是迁移时更耗资源。
   * chunk的分裂和迁移非常消耗IO资源；
   * chunk在插入和更新时进行分裂，读数据不会分裂
 
