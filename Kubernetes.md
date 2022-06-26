@@ -63,6 +63,15 @@ tags: ["Kubernetes", "Istio"]
 
 * coreDNS：低版本的kubernetes使用kube-dns，1.12后默认使用coreDNS，用于实现域名查找功能
 
+### 核心组件的协作流程
+
+1. 以创建Deployment为例，用户或控制器通过kubectl、RestAPI或者其他客户端向API-Server发起创建deployment的请求；
+2. API-Server收到创建请求后，经过认证、鉴权、准入三个环节后，将deployment对象保存到etcd中；
+3. ControllerManager中的DeploymentController会监听API-Server中所有Deployment的事件变更，当收到该deployment对象的创建事件后，就会检查当前namespace中所有的ReplicaSet对象，判断其属性是否存在该deployment对象，如果没有，DeploymentController会向API-Server发起创建ReplicaSet对象的请求，经过API-Server的检查后，将该ReplicaSet对象保存在etcd中；
+4. 同上，会触发ReplicaSet Controller的检查，最后创建一个Pod对象，保存在etcd中；
+5. Scheduler监听到API-Server中有新的Pod对象被创建，就会查看Pod是否被调度，如果没有，Scheduler就会给它分配一个最优节点，并更新Pod对象的spec.nodeName属性，随后该Pod对象被同步回API-Server里，并保存在etcd中；
+6. 最后，节点的kubelet会一直监听API-Server的Pod资源变化，当发现有新的Pod对象分配到自己所在的节点时，kubelet就会通过gRPC通信，通过CRI向容器运行时创建容器，运行起来。
+
 ## 调度器Scheduler
 
 主要职责就是为新创建的Pod寻找合适的节点，默认调度器会先调用一组叫Predicate的调度算法检查每个Node，再调用一组叫Priority的调度算法为上一步结果里的每个Node打分，将新创建的Pod调度到得分最高的Node上。
