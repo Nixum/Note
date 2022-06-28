@@ -52,7 +52,7 @@ tags: ["Kubernetes", "Istio"]
 
   * kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口，通过Socket和CRI通信；
 
-    周期性地从API Server接收新的或者修改的Pod规范并且保证节点傻瓜的Pod和其他容器的正常运行，保证节点会向目标状态迁移，向Master节点发送宿主机的健康状态；
+    周期性地从API Server接收新的或者修改的Pod规范并且保证节点上的Pod和其他容器的正常运行，保证节点会向目标状态迁移，向Master节点发送宿主机的健康状态；
 
     kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件；
     kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI；
@@ -66,8 +66,8 @@ tags: ["Kubernetes", "Istio"]
 ### 核心组件的协作流程
 
 1. 以创建Deployment为例，用户或控制器通过kubectl、RestAPI或者其他客户端向API-Server发起创建deployment的请求；
-2. API-Server收到创建请求后，经过认证、鉴权、准入三个环节后，将deployment对象保存到etcd中；
-3. ControllerManager中的DeploymentController会监听API-Server中所有Deployment的事件变更，当收到该deployment对象的创建事件后，就会检查当前namespace中所有的ReplicaSet对象，判断其属性是否存在该deployment对象，如果没有，DeploymentController会向API-Server发起创建ReplicaSet对象的请求，经过API-Server的检查后，将该ReplicaSet对象保存在etcd中；
+2. API-Server收到创建请求后，经过认证、鉴权、准入三个环节后，将deployment对象保存到etcd中，触发watch机制，通知API-Server，API-Server再调用ControllerManager对应的deployment控制器进行操作；
+3. ControllerManager中的DeploymentController会监听API-Server中所有Deployment的事件变更，当收到该deployment对象的创建事件后，就会检查当前namespace中所有的ReplicaSet对象，判断其属性是否存在该deployment对象，如果没有，DeploymentController会向API-Server发起创建ReplicaSet对象的请求，经过API-Server的检查后，将该ReplicaSet对象保存在etcd中，触发watch机制通知API-Server调用控制器...；
 4. 同上，会触发ReplicaSet Controller的检查，最后创建一个Pod对象，保存在etcd中；
 5. Scheduler监听到API-Server中有新的Pod对象被创建，就会查看Pod是否被调度，如果没有，Scheduler就会给它分配一个最优节点，并更新Pod对象的spec.nodeName属性，随后该Pod对象被同步回API-Server里，并保存在etcd中；
 6. 最后，节点的kubelet会一直监听API-Server的Pod资源变化，当发现有新的Pod对象分配到自己所在的节点时，kubelet就会通过gRPC通信，通过CRI向容器运行时创建容器，运行起来。
@@ -88,7 +88,7 @@ tags: ["Kubernetes", "Istio"]
 
   然后调用Priorities算法为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
 
-* 得到可调度的Node后，调度器就会将Pod对象的nodeName字段的值，修改为Node的名字，实现绑定，此时修改的是Cache里的值，只会才会创建一个goroutine异步向API Server发起更新Pod的请求，完成真正的绑定工作；这个过程称为乐观绑定。
+* 得到可调度的Node后，调度器就会将Pod对象的nodeName字段的值，修改为Node的名字，实现绑定，此时修改的是Cache里的值，之后才会创建一个goroutine异步向API Server发起更新Pod的请求，完成真正的绑定工作；这个过程称为乐观绑定。
 
 * Pod在Node上运行起来之前，还会有一个叫Admit的操作，调用一组GeneralPredicates的调度算法验证Pod是否真的能够在该节点上运行，比如资源是否可用，端口是否占用之类的问题。
 
@@ -252,7 +252,7 @@ Pod是最小的API对象。
 
 kubelet会为每个节点上创建一个基本的cbr0网桥，并为每一个Pod创建veth虚拟网络设备，绑定一个IP地址，同一个Pod中的所有容器会通过这个网络设备共享网络，从而能通过localhost相互访问彼此暴露的端口和服务。
 
-对于initContainer命令的作用是按配置顺序最先执行，执行完之后才会执行container命令，例如，对war包所在容器使用initContainer命令，将war包复制到挂载的卷下后，再执行tomcat的container命令启动tomcat以此来启动web应用，这种先启动一个辅助容器来完成一些独立于主进程（主容器）之外的工作，称为sidecar，边车
+对于initContainer命令的作用是按配置顺序最先执行，执行完之后才会执行container命令，例如，对war包所在容器使用initContainer命令，将war包复制到挂载的卷下后，再执行tomcat的container命令启动tomcat以此来启动web应用，这种先启动一个辅助容器来完成一些独立于主进程（主容器）之外的工作，称为sidecar，边车。
 
 Pod可以理解为一个机器，容器是里面的进程，凡是调度、网络、储存、安全相关、跟namespace相关的属性，都是Pod级别的
 
@@ -272,7 +272,7 @@ Pod可以理解为一个机器，容器是里面的进程，凡是调度、网�
 
 在声明容器时，使用initContainers声明，用法同containers，initContainers作为辅助容器，必定比containers先启动，如果声明了多个initContainers，则会按顺序先启动，之后再启动containers。
 
-因为Pod内所有容器共享同一个Network Namespace的特性i，nitContainers辅助容器常用于与Pod网络相关的配置和管理，比如常见的实现是Istio。
+因为Pod内所有容器共享同一个Network Namespace的特性，initContainers辅助容器常用于与Pod网络相关的配置和管理，比如常见的实现是Istio。
 
 ### Pod中的Projected Volume(投射数据卷)
 
@@ -370,7 +370,7 @@ spec:
 
 #### serviceAccountToken
 
-serviceAccountToken是一种特殊的Secret，一般用于访问Kubernetes API Server时提供token作为验证的凭证。Kubernets提供了一个默认的default Service Account，任何运行在Kubernets中的Pod都可以使用，无需显示声明挂载了它。
+serviceAccountToken是一种特殊的Secret，一般用于访问Kubernetes API Server时提供token作为验证的凭证。Kubernets提供了一个默认的default Service Account，任何运行在Kubernets中的Pod都可以使用，无需显式声明挂载了它。
 
 默认挂载路径：/var/run/secrets/kubernetes.io/serviceaccount，里面包含了ca.crt，namespace，token三个文件，用于授权当前Pod访问API Server。
 
@@ -456,6 +456,10 @@ memory.available < 100Mi；nodefs.available < 10%；nodefs.inodesFree < 5%；ima
 ### Pod中的健康检查
 
 对于Web应用，最简单的就是由Web应用提供健康检查的接口，我们在定义的API对象的时候设置定时请求来检查运行在容器中的web应用是否健康，主要是为了防止服务未启动完成就被打入流量或者长时间未响应依然没有重启等问题。
+
+livenessProbe：保活探针，当不满足检查规则时，直接重启Pod
+
+readnessProbe：只读探针，当不满足检查规则时，不放流量进Pod
 
 ```yaml
 ...
@@ -554,7 +558,7 @@ Pod内部容器是共享一个网络命名空间的。
 
 flanneld通过为各个宿主机建立子网，知道了各个宿主机能处理的IP范围，子网与宿主机的对应关系，都会保存在etcd中，flanneld将原数据包再次封装成一个UDP包，同时带上目标节点的真实IP，发往对应节点。
 
-在由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
+再由fannel管理的容器网络里，一个节点上的所有容器，都属于该宿主机被分配的一个子网。flannel会在宿主机上注册一个flannel0设备，保存各个节点的容器子网信息，flanneld进程会处理由flannel0传入的IP包，匹配到对应的子网，从etcd中找到该子网对应的宿主机的IP，封装成一个UDP包，交由flannel0，接着就跟节点间的网络通信一样，发送给目标节点了。因为多了一步flanneld的处理，涉及到了多次用户态与内核态间的数据拷贝，导致性能问题，优化的原则是减少切换次数，所以有了VXLAN模式、host-gw模式。
 
 > UDP模式下，在发送IP包的过程，经过三次用户态与内核态的数据拷贝
 >
@@ -1077,9 +1081,9 @@ Service由kube-proxy组件 + kube-dns组件(coreDNS) + iptables或IPVS共同实�
 
 kube-proxy只是controller，对iptables进行更新，基于iptables的kube-proxy的主要职责包括两大块：
 
-* 侦听service更新事件，并更新service相关的iptables规则；
+* 监听service更新事件，并更新service相关的iptables规则；
 
-* 侦听endpoint更新事件，更新endpoint相关的iptables规则，然后将包请求转入endpoint对应的Pod；
+* 监听endpoint更新事件，更新endpoint相关的iptables规则，然后将包请求转入endpoint对应的Pod；
 
   如果某个service尚没有Pod创建，那么针对此service的请求将会被丢弃。
 
@@ -1156,7 +1160,7 @@ Kubernetes支持两种服务发现：环境变量和DNS服务
 
 创建Service时，会在Service selector的Pod中的容器注入同一namespace下所有service的IP和端口作为环境变量，该环境变量会随着Service的IP和端口的改变而改变，但设置到容器里的环境变量不会。
 
-可以使用`kubectl exec -it {pod名字} -n {名称空间 env}`查看，HOST为service的cluster-IP
+可以使用`kubectl exec -it {pod名字} -n {名称空间} env`查看，HOST为service的cluster-IP
 
 Kubernetes会设置两类环境变量：
 
@@ -1824,9 +1828,9 @@ spec:
 
 1. VirtualService和DestinationRule：按服务版本路由、按比例切分流量、根据匹配规则进行路由(比如请求头必须包含xx)、路由策略(如负载均衡，连接池)
 
-   蓝绿部署：同时准备两套环境，控制流量流向不同环境或版本
+   蓝绿部署：同时准备两套环境，控制流量流向不同环境或版本：两套集群，一套是现有在使用的集群（蓝色），另一套用于上线前的测试和验证后进行切换的集群（绿色），都可以接受流量，先放少量流量到绿色集群，没问题之后再把蓝色集群的所有流量切到绿色集群，蓝色集群再进行升级；
 
-   灰度发布(金丝雀发布)：小范围测试和发布，即按比例切分流量
+   灰度发布(金丝雀发布)：小范围测试和发布，即按比例切分流量；让一部分用户先用老服务A，一部分用新服务B，后面再根据具体情况，全部迁移到B；
 
    A/B测试：类似灰度发布，只是侧重点不同，灰度发布最终流量会流向最新版本，而A/B测试只是用于测试A、B两个环境带来的影响。
 
