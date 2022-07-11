@@ -324,6 +324,8 @@ CSP模型（Communicating Sequential Process，通信顺序进程），允许使
 
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
+* `len()`方法会输出chan中存在的数据数量，`cap()`方法是输出buff的长度
+
 * 带有 <- 的chan是有方向的，不带 <- 的chan是双向的，比如
 
 ```go
