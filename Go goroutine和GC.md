@@ -66,7 +66,7 @@ netpoller中的几个方法：`对epoll的封装 netpollinit、netpollopen、net
 >
 > `sysmon监控线程`会在循环过程中检查距离上一次 `runtime.netpoll` 被调用是否超过10ms，若是则回去调用它拿到可运行的goroutine列表并调用 injectglist 把 g 列表放入全局调度队列或者当前 P 本地调度队列等待被执行。
 
-即当处理网络IO的goroutine被阻塞住时，通过netpoll + 非阻塞IO，让G不会因为系统调用而陷入内核态，只是被runtime调用gopark住，此时G会被放置到某个wait queue中...  ；当IO可用时，在 epoll 的 `eventpoll.rdr` 中等待的 G 会被放到 `eventpoll.rdllist` 链表里并通过 `netpoll` 中的 `epoll_wait` 系统调用**返回放置到GRQ或者 P 的LRQ**，标记为 `_Grunnable` ，等待 P 绑定 M 恢复执行。
+即当处理网络IO的goroutine被阻塞住时，通过netpoll + 非阻塞IO，让G不会因为系统调用而陷入内核态，只是被runtime调用gopark住，此时G会被放置到某个wait queue中；当IO可用时，在 epoll 的 `eventpoll.rdr` 中等待的 G 会被放到 `eventpoll.rdllist` 链表里并通过 `netpoll` 中的 `epoll_wait` 系统调用**返回放置到GRQ或者 P 的LRQ**，标记为 `_Grunnable` ，等待 P 绑定 M 恢复执行。
 
 # Goroutine
 
