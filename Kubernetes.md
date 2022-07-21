@@ -52,7 +52,9 @@ tags: ["Kubernetes", "Istio"]
 
   * kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口，通过Socket和CRI通信；
 
-    周期性地从API Server接收新的或者修改的Pod规范并且保证节点上的Pod和其他容器的正常运行，保证节点会向目标状态迁移，向Master节点发送宿主机的健康状态；
+    周期性地从API Server接收新的或者修改的Pod规范并且保证节点上的Pod和其他容器的正常运行，保证节点会向目标状态迁移，向Master节点发送宿主机的健康状态；（处理Master下发到本节点的任务，管理Pod和Pod中的容器）
+
+    kubelet 使用cAdvisor对worker节点资源进行监控。在 Kubernetes 系统中，cAdvisor 已被默认集成到 kubelet 组件内，当 kubelet 服务启动时，它会自动启动 cAdvisor 服务，然后 cAdvisor 会实时采集所在节点的性能指标及在节点上运行的容器的性能指标。（监控和定期向Master汇报节点资源使用率）
 
     kubelet 还通过 gRPC 协议同一个叫作 Device Plugin 的插件进行交互。这个插件，是 Kubernetes 项目用来管理 GPU 等宿主机物理设备的主要组件；
     kubelet 的另一个重要功能，则是调用网络插件和存储插件为容器配置网络和持久化存储，交互的接口是CNI和CSI；
@@ -84,9 +86,9 @@ tags: ["Kubernetes", "Istio"]
 
   此外，还会对调度器缓存进行更新，因为需要尽最大可能将集群信息Cache化，以提高两个调度算法组的执行效率，调度器只有在操作Cache时，才会加锁。
 
-* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用Predicate算法进行过滤，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
+* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用**Predicate算法**进行过滤，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
 
-  然后调用Priorities算法为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
+  然后调用**Priorities算法**为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
 
 * 得到可调度的Node后，调度器就会将Pod对象的nodeName字段的值，修改为Node的名字，实现绑定，此时修改的是Cache里的值，之后才会创建一个goroutine异步向API Server发起更新Pod的请求，完成真正的绑定工作；这个过程称为乐观绑定。
 
@@ -125,6 +127,24 @@ Priorities阶段(打分规则)：
 * BalancedResourceAllocation：调度完成后，节点各种资源分配最均衡的节点，避免出现有些节点资源被大量分配，有些节点则很空闲。
 
   `score = 10 - variance(cpuFraction, memoryFraction, volumeFraction) * 10，Fraction=Pod请求资源 / 节点上可用资源，variance=计算每两种Faction资源差最小的节点`
+
+### 常见的调度方式
+
+* Deployment或RC：该调度策略主要功能就是自动部署一个容器应用的多份副本，以及持续监控副本的数量，在集群内始终维持用户指定的副本数量。
+
+* NodeSelector：定向调度，当需要手动指定将Pod调度到特定Node上，可以通过Node的标签（Label）和Pod的nodeSelector属性相匹配。
+
+* NodeAffinity亲和性调度：
+
+  * requiredDuringSchedulingIgnoredDuringExecution：硬规则，必须满足指定的规则，调度器才可以调度Pod至Node上（类似nodeSelector，语法不同）。
+
+  * preferredDuringSchedulingIgnoredDuringExecution：软规则，优先调度至满足的Node的节点，但不强求，多个优先级规则还可以设置权重值。
+
+* Taints和Tolerations（污点和容忍）：
+
+  * Taint：使Node拒绝特定Pod运行；
+
+  * Toleration：为Pod的属性，表示Pod能容忍（运行）标注了Taint的Node。
 
 ### 优先级与抢占机制
 
@@ -244,6 +264,10 @@ Pod是最小的API对象。
 
 这种把多个容器组合打包在一起管理的模式也称为容器设计模式。
 
+另外还有静态Pod：
+
+> 静态pod是由kubelet进行管理的仅存在于特定Node的Pod上，他们不能通过API Server进行管理，无法与ReplicationController、Deployment或者DaemonSet进行关联，并且kubelet无法对他们进行健康检查。静态Pod总是由kubelet进行创建，并且总是在kubelet所在的Node上运行。
+
 ### 原理
 
 由于不同容器间可能存在依赖关系（如启动顺序的依赖），因此k8s会起一个中间容器Infra容器，来关联其他容器，infra容器一定是最先起的，其他容器通过Join Network Namespace的方式与Infa容器进行关联。
@@ -270,7 +294,7 @@ Pod可以理解为一个机器，容器是里面的进程，凡是调度、网�
 
 ### Side Car
 
-在声明容器时，使用initContainers声明，用法同containers，initContainers作为辅助容器，必定比containers先启动，如果声明了多个initContainers，则会按顺序先启动，之后再启动containers。
+在声明容器时，使用initContainers声明，用法同containers，initContainers作为辅助容器，必定比containers先启动，如果声明了多个initContainers，则会按顺序先启动，当所有initContainers都运行成功后，才会开始初始化Pod的各自信，并创建和启动containers。
 
 因为Pod内所有容器共享同一个Network Namespace的特性，initContainers辅助容器常用于与Pod网络相关的配置和管理，比如常见的实现是Istio。
 
@@ -457,9 +481,11 @@ memory.available < 100Mi；nodefs.available < 10%；nodefs.inodesFree < 5%；ima
 
 对于Web应用，最简单的就是由Web应用提供健康检查的接口，我们在定义的API对象的时候设置定时请求来检查运行在容器中的web应用是否健康，主要是为了防止服务未启动完成就被打入流量或者长时间未响应依然没有重启等问题。
 
-livenessProbe：保活探针，当不满足检查规则时，直接重启Pod
+livenessProbe：保活探针，当不满足检查规则时，直接重启Pod；
 
-readnessProbe：只读探针，当不满足检查规则时，不放流量进Pod
+readnessProbe：只读探针，当不满足检查规则时，不放流量进Pod；
+
+startupProbe：启动检查探针，应用一些启动缓慢的业务，避免业务长时间启动而被上面两类探针kill掉；
 
 ```yaml
 ...
@@ -811,9 +837,13 @@ Deployment想要实现水平扩展/收缩，实际操控的是ReplicaSet对象�
 
 ReplicaSet表示版本，比如上面那份配置，replicas:2是一个版本，replicas:3是一个版本，这里是因为数量不同产生两个版本，每一个版本对应着一个ReplicaSet，由Deployment管理。
 
-当我们修改Deployment的replicas字段时，会触发水平扩展/收缩，修改template.Image或者版本号时，就会触发滚动更新。
+ReplicaSet是ReplicationController的升级版，都用于确保运行指定数量的Pod副本（像滚动更新、回滚、启动、暂停之类的功能则由Deployment提供），ReplicationController只支持基于等式的selector，比如`xxx = yyy或xxx != yyy`，而ReplicaSet支持基于集合的selector，比如 `matchExpressions: {key: tier, operator: In, values: [frontend]}`。
+
+当我们修改Deployment的replicas字段时，会触发水平扩展/收缩，修改template.Image或者版本号时，就会触发滚动更新，默认是滚动更新RollingUpdate，另外还能设置成重建Recreate，表示Deployment在更新Pod时，先kill掉所有在运行的Pod，然后创建新的Pod。
 
 Controller Manager中的DeploymentController作为管理Deployment资源的控制器，会在启动时通过Informer监听Pod、ReplicaSet和Deployment的变更，一旦变更就会触发DeploymentController中的回调；
+
+初始化创建Deployment时，Kubernetes会创建了一个ReplicaSet，并按用户的需求创建了对应数量的Pod副本，当Deployment更新时，Kubernetes会再创建一个新的ReplicaSet，然后按照相同的更新策略逐个调整，将老的ReplicaSet的副本数-1，新ReplicaSet的副本数+1，直到新的ReplicaSet的副本数符合预期，老的ReplicaSet副本数缩减为0。
 
 ```yaml
 # 设置更新策略
@@ -1051,7 +1081,7 @@ Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负
 
   如果选择iptables模式，所有流量会先经过PREROUTING或者OUTPUT链 ，随后进入Kubernetes自定义的链入口KUBE_SERVICES、单个Service对应的链KUBE-SVC-XXX以及每个pod对应的链KUBE-SEP-XXX，经过这些链的处理，最终才能访问一个服务真正的IP地址。
 
-* ipvs：解决在大量 Service 时，iptables 规则同步变得不可用的性能问题，ipvs 的实现虽然也基于 netfilter 的钩子函数，但是它却使用哈希表作为底层的数据结构并且工作在内核态，这也就是说 ipvs 在重定向流量和同步代理规则有着更好的性能。
+* ipvs：解决在大量 Service 时，iptables 规则同步变得不可用的性能问题，ipvs 的实现虽然也基于 netfilter 的钩子函数，但是它却使用哈希表作为底层的数据结构，使用ipset来生成规则链（ipset可以理解为一个IP段的集合，这个集合可以是IP地址、网段、端口等，可以动态修改），并且工作在内核态，而iptables规则链是一个线性的数据结构，查找是需要遍历查找，这也就是说 ipvs 在重定向流量和同步代理规则有着更好的性能。
 
   除了能够提升性能之外，ipvs 也提供了多种类型的负载均衡算法，除了最常见的 Round-Robin 之外，还支持最小连接、目标哈希、最小延迟等算法，能够很好地提升负载均衡的效率。
 
