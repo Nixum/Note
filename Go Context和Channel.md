@@ -318,13 +318,15 @@ CSP模型（Communicating Sequential Process，通信顺序进程），允许使
 
   `ch := make(chan string, 10)`，创建一个能处理string的缓冲区大小为10的channel，效果相当于异步队列，除非缓冲区用完，否则不会阻塞；
 
-  `ch := make(chan string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，即如果连续发送两次数据，第一次如果没有被接收的话，第二次就会被阻塞；
+  `ch := make(chan string)`，则创建了一个不存在缓冲区的channel，效果相当于同步阻塞队列，len永远返回0。
+
+  即 假如没有接收者，同一个方法内，连续发送两次数据，第一次如果没有被接收的话，此时就阻塞了，轮不到第二次发送，但如果size = 1，第一次发送的数据就会进入buf数组，不阻塞，到了第二次发送才阻塞；
 
   `var ch chan int`表示创建了一个nil channel；
 
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
-* `len()`方法会输出chan中存在的数据数量，`cap()`方法是输出buff的长度
+* `len()`方法会输出chan中存在的数据数量，`cap()`方法是输出buff数组的长度
 
 * 带有 <- 的chan是有方向的，不带 <- 的chan是双向的，比如
 
@@ -469,6 +471,8 @@ func makechan(t *chantype, size int) *hchan {
 
    然后将该sudoG对象加入sendq队列，调用`goparkunlock()`函数让当前发送者的goroutine进入等待状态，表示当前goroutine正在等待其他goroutine从channel中接收数据，等待调度器唤醒；
 
+   此时len()返回值为0，数据的发送是阻塞在方法中的。
+   
    调度器唤醒后，将一些属性值设置为零，并释放sudog对象，表示向channel发送数据结束；
 
 **channel发送数据时涉及两次goroutine的调度**：
@@ -623,6 +627,8 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
    然后将该sudoG对象加入待发送recvq队列，调用`goparkunlock()`函数让当前接收者的goroutine进入等待状态，表示当前goroutine正在等待其他goroutine从channel中发送数据，等待调度器唤醒；
 
+   此时方法会阻塞在ch的接收中，len()返回值为0；
+   
    goroutine被唤醒后，chan完成阻塞数据的接收，接收完成后进行基本的参数检查，解除chan的绑定，释放sudoG，表示接收数据完成；
 
 **channel 接收过程中包含 2 次有关 goroutine 调度过程**：

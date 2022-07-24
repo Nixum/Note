@@ -18,7 +18,9 @@ tags: ["Goroutine", "Go GC"]
 
 # pprof
 
-pprof提供应用运行的过程中分析当前应用的各项指标来辅助进行性能优化以及问题排查功能，提供以下功能
+使用`net/http/pprof`库，进行HTTP服务进行分析，需要主动开启，比如`import _ "net/http/pprof"`，使用默认的`http.DefaultServeMux`，默认端口是6060；也可自定义Mux，手动注册路由。
+
+pprof提供应用运行的过程中分析当前应用的各项指标来辅助进行性能优化以及问题排查功能，提供以下功能：
 
 | 类型         | 描述                                                         |
 | ------------ | ------------------------------------------------------------ |
@@ -30,19 +32,45 @@ pprof提供应用运行的过程中分析当前应用的各项指标来辅助进
 | mutex        | 锁持有的堆栈，次数(采样)的信息                               |
 | profile      | CPU占用情况采样，启动后会对runtime产生压力，runtime每10ms会STW，记录当前运行的 goroutine 的调用堆栈及相关数据 |
 | threadcreate | 系统线程创建情况的采样信息，不会STW                          |
-| trace        | 程序运行跟踪信息                                             |
+| trace        | 程序运行跟踪信息，跟踪GC和G调度                              |
 
-* `curl  http://ip:port/debug/pprof/{上面列表的功能} > profile文件名` 把此时的统计下载下来；
+* `curl  http://ip:port/debug/pprof/{上面列表的功能} > profile文件名` 把此时的统计下载下来；像trace、profile 默认采集时间是30s，可以使用参数 seconds=xx 来调整采样时间；
 
-* `go tool pprof -http=:8080 profile文件名`，打开web终端，左上角view里就有各种视图；
+* 除了trace使用`go tool trace 文件名`打开外，其他都是使用`go tool pprof -http=:8080 profile文件名`，打开web终端，左上角view里就有各种视图；
 
 * 关于火焰图
 
-  Y轴表示调用栈，每一层都是一个函数，调用栈越深火焰就越高，最底部是正在执行的函数，上面是它的父函数；
+  Y轴表示调用栈，从上到下每一层都是一个函数，调用栈越深火焰就越高，最底部是正在执行的函数，上面是它的父函数；
   
-  X轴表示这个函数的抽样数，如果一个函数在X轴占的越宽，代表抽样数越高，执行CPU的时间越长，注意，X轴不代表时间,而是所有的调用栈合并后，按字母顺序排列的；
+  X轴表示这个函数的抽样数，如果一个函数在X轴占的越宽，代表抽样数越高，CPU占用的时间越长；注意，X轴不代表时间，而是所有的调用栈合并后，按字母顺序排列的；
   
   火焰图就是看顶层的哪个函数占据的宽度最大。只要有"平顶"（plateaus），就表示该函数可能存在性能问题。
+  
+* debug包下有几个可以读取运行时指标的方法，但需要手动编写输出
+  
+  `debug.ReadGCStatus()`，具体的指标可以看`debug.GCStats{}`里的字段
+  
+  `runtime.ReadMemStats()`，具体的指标可以看`runtime.MemStats`里的字段
+  
+  ```go
+  func printGCStats() {
+      // 每隔一秒钟监控一次 GC 的状态
+      t := time.NewTicker(time.Second)
+      s := debug.GCStats{}
+      for {
+          select {
+          case <-t.C:
+              debug.ReadGCStats(&s)
+              fmt.Printf("gc %d last@%v, PauseTotal %v\n", s.NumGC, s.LastGC, s.PauseTotal)
+          }
+      }
+  }
+  func main() {
+      go printGCStats()
+      (...)
+  }
+  ```
+
 
 # netpoller
 
@@ -540,11 +568,44 @@ go中使用了写屏障是在写入指针前执行的一小段代码，用以防
 ## GC性能优化技巧
 
 * slice预先分配内存，因为slice扩容时会返回新的slice，如果频繁扩容会增加GC压力；
+
 * map的key和value使用值类型，而不是指针类型，利用map中extra中的特性；
+
 * go中，string底层也是指针，如果string不可变，可以在转成 byte数组，这样就不会生成原有变量的副本，新的变量共享底层的数据指针。此特性也可用在把字符串转成[]byte，再作为map的key或value；
+
 * 对于占用空间少，频繁分配的函数，函数返回值使用值类型，不使用指针类型，因为返回指针类型会带来指针逃逸，使得原来可以分配在栈上的内存分配在堆上。在栈上进行小对象拷贝的性能会比对象在堆上分配好得多；
+
+* 将多个小对象合并成一个大对象，减少对象分配，比如在局部变量逃逸时，聚集起来
+
+```go
+for k, v := range m {
+   k, v := k, v   // copy for capturing by the goroutine
+   go func() {
+       // use k and v
+   }()
+}
+```
+
+可以修改为下面这种，修改后，逃逸的对象变为了 x，将 k，v2 个对象减少为 1 个对象。
+
+```go
+for k, v := range m {
+   x := struct{ k, v string }{k, v}   // copy for capturing by the goroutine
+   go func() {
+       // use x.k and x.v
+   }()
+}
+```
+
 * 对象如果包含了指针，则需要递归进行扫描，大量使用对象真正会使垃圾回收耗时变长；
-* 减少频繁创建goroutine，可以的话是一批一批的创建
+
+* 减少频繁创建goroutine，可以的话是一批一批的创建；
+
+* 使用`sync.Pool`来缓存常用对象；
+
+* 尽可能使用字节数少的类型，比如当我们知道某些数字的使用只会在一定范围内，直接使用int8类型
+
+* 切片或map提前预分配
 
 # 参考
 
@@ -573,3 +634,5 @@ go中使用了写屏障是在写入指针前执行的一小段代码，用以防
 [GC模式图文全分析](https://mp.weixin.qq.com/s?__biz=MzAxMTA4Njc0OQ==&mid=2651439356&idx=2&sn=264a3141ea9a4b29fe67ec06a17aeb99&chksm=80bb1e0eb7cc97181b81ae731d0d425dda1e9a8d503ff75f217a0d77bd9d0eb451555cb584a0&scene=21#wechat_redirect)
 
 [Golang 系统调用与阻塞处理](https://jishuin.proginn.com/p/763bfbd5f194)
+
+[go pprof 实战](https://zhuanlan.zhihu.com/p/373874739)
