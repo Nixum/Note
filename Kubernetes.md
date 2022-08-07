@@ -43,7 +43,7 @@ tags: ["Kubernetes", "Istio"]
 
 * Master节点作用：编排、管理、调度用户提交的作业
   * Scheduler：编排和调度Pod，基本原理是通过监听api-server获取待调度的pod，然后基于一系列筛选和评优，为pod分配最佳的node节点，在每次需要调度Pod时执行。
-  * APIServer：提供集群对外访问的API接口实现对集群资源的CRUD以及watch，是集群中各个组件数据交互和通信的枢纽，当收到一个创建pod的请求时会进行认证、限速、授权、准入机制等检查后，写入etcd。唯一一个与etcd集群通信的组件。
+  * API-Server：提供集群对外访问的API接口实现对集群资源的CRUD以及watch，是集群中各个组件数据交互和通信的枢纽，当收到一个创建pod的请求时会进行认证、限速、授权、准入机制等检查后，写入etcd。唯一一个与etcd集群通信的组件。
   * Controller Manager：管理控制器的，比如Deployment、Job、CronbJob、RC、StatefulSet、Daemon等，核心思想是监听、比较资源实际状态与期望状态是否一致，否则进行协调。
   
 * Device Plugin：管理节点上的硬件设备，比如GPU
@@ -204,6 +204,51 @@ CRI是对容器操作相关的接口，而不是对于Pod，分为两组类型�
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/CRI_work_flow.png)
 
+### exec命令执行原理
+
+对标docker的exec命令，docker的exec原理：一个进程可以选择加入某个进程已有的Namespace中，从而达到进入容器的目的。
+
+![](https://github.com/Nixum/Java-Note/raw/master/picture/kubectl_exec_命令原理.png)
+
+这里以docker作为容器引擎为例：
+
+1. kubectl执行exec命令后，首先发送Get请求到API-Server，获取pod的相关信息；
+2. 获取到信息后，kubectl再发送Post请求，API-Server返回101 upgrade响应给kubectl，表示切换到 SPDY 协议。SPDY协议允许在单个TCP连接上复用独立的 stdin / stdout / stderr / spdy-err 流。
+3. API-Server找到对应的Pod和容器，将Post请求转发到节点的Kubelet，再转发到向对应容器的Docker shim请求一个流式端点URL，并将exec请求转发到Docker exec API。Kubelet再将这个URL以 redirect 的方式返回给API-Server，请求就会重定向到对应的Streaming Server上发起exec请求，并维护长连接，之后就是在这个长连接的基础上执行命令和获取结果了。
+
+除了exec命令意外，其他的如 attach、port-forward、logs 等命令也是类似的模式。
+
+### 节点NotReady原因
+
+notReady一般是因为节点的Kubelet无法与API-Server通信，导致没办法把节点的信息及时同步给API-Server，此时节点就会被标记为NotReady，所以问题就变成了，为啥Kubelet无法与API-Server通信，原因：
+
+* Kubelet启动失败
+* 网络组件故障，导致无法通信
+* 集群网络分区
+* 节点OOM
+* Kubelet与容器通信时响应超时，死锁，导致无法处理其他事情
+* 节点上Pod的数量太多，导致relist操作无法在3分钟内完成
+
+当节点出现NotReady时，节点上的容器依然可以提供服务，只是脱离了Kubenetes的调度，不会做任何改变，此时Kubernetes会将NotReady节点上的Pod调度到其他正常的节点上。
+
+时间段：
+
+* Kubelet默认每**10s**会上报一次节点的数据到API-Server，可以通过参数`--node-status-update-frequency`配置上报频率。
+
+* Controller-Manager会定时检查Kubelet的状态，默认是**5s**，可以通过参数`--node-monitor-period`配置。
+
+* Kubelet在更新状态失败时，会进行重试，默认是**5次**，可通过参数`nodeStatusUpdateRetry`配置。
+
+* 当节点失联一段时间后，节点就会被判定为NotReady状态，默认时间是**40s**，可通过参数`--node-monitor-grace-period`配置；
+
+* NotReady一段时间后，节点的状态转为UnHealthy状态，默认时间是**1m**，可通过参数`--node-startup-grace-period`配置；
+
+* 当节点UnHealthy状态一段时间后，节点上的Pod将被转移，默认是**5m**，可通过参数`--pod-eviction-timeout`配置。
+
+由于Controller-Manager和Kubelet是异步工作，可能存在信息获取的延迟，所以Pod整体被迁移的时间也会有延迟。
+
+Kubernetes 1.13版本后，节点处于不同的状态时将被打上不同的污点，节点上的Pod就可以基于污点在不同的状态被驱逐了，这个时候Pod被迁移的时间就不定了。
+
 ## etcd
 
 etcd作为Kubernetes的元数据存储，kube-apiserver是唯一直接跟etcd交互的组件，kube-apiserver对外提供的监听机制底层实现就是etcd的watch。
@@ -256,7 +301,7 @@ Kubernetes中使用Resource Version实现增量监听逻辑，避免客户端因
 
 ## Pod
 
-Pod是最小的API对象。
+Pod是最小的API对象。Pod中的容器会作为一个整体被Master打包调度到一个节点上运行。
 
 由于不同容器间需要共同协作，如war包和tomcat，就需要把它们包装成一个pod，概念类似于进程与进程组，pod并不是真实存在的，只是逻辑划分。
 
@@ -278,7 +323,15 @@ kubelet会为每个节点上创建一个基本的cbr0网桥，并为每一个Pod
 
 对于initContainer命令的作用是按配置顺序最先执行，执行完之后才会执行container命令，例如，对war包所在容器使用initContainer命令，将war包复制到挂载的卷下后，再执行tomcat的container命令启动tomcat以此来启动web应用，这种先启动一个辅助容器来完成一些独立于主进程（主容器）之外的工作，称为sidecar，边车。
 
-Pod可以理解为一个机器，容器是里面的进程，凡是调度、网络、储存、安全相关、跟namespace相关的属性，都是Pod级别的
+Pod可以理解为一个机器，容器是里面的进程，凡是调度、网络、储存、安全相关、跟namespace相关的属性，都是Pod级别的。
+
+### 关于Pause容器 / Infra容器
+
+pause容器，也叫Infra容器，每个Pod都会自动创建的容器，但不属于用户自定义容器。因为Pod的作用，就是管理Pod内多个容器之间最高效的共享某些资源和数据，而Pod内的容器是被namespace和cgroups隔开的。Infra容器在Pod中担任Linux Namespace共享的基础，启用Pid namespace，开启init进程。Infra容器可使得Pod内的容器共享pid namespace、network namespace、ipc namespace(用于共享systemV IPC或POSIX消息队列进行通信)、uts namespace(共享主机名)、共享Pod级别的Volumes。
+
+以network namespace为例，如果里面只有用户自己的容器，没有Infra容器这个第三方容器，只要network的owner容器退出了，Pod内的其他容器的网络就都异常了，这显然不合理。所以在同一个Pod内的其他容器通过 join namespace的方式加入到Infra container的netword namespace中，这样，Pod内的所有容器共享同一份网络资源，Pod的IP地址 = Pod第一次创建的Infra container的IP地址。
+
+Infra container是一个只有700KB左右的镜像，永远处于pause状态。整个Pod的生命周期等于Infra container的生命周期，与内部的其他容器无关，且Infra conatiner一定是第一个启动的，这也是Kubernetes里运行更新Pod里的某一个镜像，而整个Pod不会被重建和重启的原因。即使把Pod里的所有用户容器都kill掉，Pod也不会退出。
 
 ### Pod在K8s中的生命周期
 
@@ -430,7 +483,7 @@ spec:
 
 声明了两个容器，都挂载了shared-data这个Volume，且该Volume是hostPath，对应宿主机上的/data目录，所以么，nginx-container 可 以 从 它 的/usr/share/ nginx/html 目 录 中， 读取到debian-container生 成 的 index.html文件。
 
-### Pod的资源分配
+### Pod的资源分配 QoS
 
 Pod的资源分配由定义的Container决定，比如
 
@@ -453,19 +506,23 @@ CPU属于可压缩资源，当CPU不足时，Pod只会"饥饿"，不会退出；
 
 内存数与不可压缩资源，当内存不足时，Pod会因为OOM而被kill掉；
 
-Matser的kube-scheduler会根据requests的值进行计算，根据limits设置cgroup的限制，不同的requests和limits设置方式，会将Pod划分为不同的QoS类型，用于对Pod进行资源回收和调度。
+Matser的kube-scheduler会根据requests的值进行计算，根据limits设置cgroup的限制，即request用于调度，limit用于限制，不同的requests和limits设置方式，会将Pod划分为不同的QoS类型，用于对Pod进行资源回收和调度。QoS按优先级从高到低：
 
 1. Guaranteed：只设置了limits或者limits和requests的值一致；
 
-   在保证是Guaranteed类型的情况下，requests和limits的CPU设置相等，此时是cpuset设置，容器会绑到某个CPU核上，不会与其他容器共享CPU算力，减少CPU上下文切换的次数，提升性能。
+   在保证是Guaranteed类型的情况下，requests和limits的CPU和内存设置相等，此时是cpuset设置，容器会绑到某个CPU核上，不会与其他容器共享CPU算力，减少CPU上下文切换的次数，提升性能。
 
 2. Burstable：不满足Guaranteed级别，但至少有一个Container设置了requests；
 
-3. BestEffort：requests和limits都没有设置；
+3. BestEffort：requests和limits都没有设置，当节点资源充足时可以充分使用，但是当节点被Guaranteed或Burstable Pod抢占时，资源就会被压缩；
+
+因为节点上除了运行用户容器，还运行了其他系统进程，比如kubelet、ssh等，为了保证这些外部的进程有足够的资源运行，Kubernetes引入 Eviction Policy特性，设置了默认的资源回收阈值，当Kubernetes所管理的不可压缩资源短缺时，就会触发Eviction机制，不可压缩节点资源有：内存、磁盘、容器运行镜像的存储空间等。
+
+> 每个运行状态容器都有其 OOM 得分，得分越高越会被优先杀死；其中Guaranteed级别的Pod得分最低，BestEffort级别的Pod得分最高，所以优先级Guaranteed> Burstable> Best-Effort，优先级低的Pod会在资源不足时优先被杀死；同等级别优先级的 Pod 资源在 OOM 时，与自身的 requests 属性相比，其内存占用比例最大的 Pod 对象将被首先杀死。
 
 **kubelet默认的资源回收阈值**：
 
-memory.available < 100Mi；nodefs.available < 10%；nodefs.inodesFree < 5%；imagefs.available < 15%；
+`memory.available < 100Mi`；`nodefs.available < 10%`；`nodefs.inodesFree < 5%`；`imagefs.available < 15%；`
 
 达到阈值后，会对node设置状态，避免新的Pod被调度到这个node上。
 
@@ -502,7 +559,7 @@ livenessProbe:
 
 ### Pod的恢复机制
 
-API对象中spec.restartPolicy字段用来描述Pod的恢复策略，默认是always，即容器不在运行状态则重启，OnFailure是只有容器异常时才自动重启，Never是从来不重启容器
+API对象中`spec.restartPolicy`字段用来描述Pod的恢复策略，默认是always，即容器不在运行状态则重启，OnFailure是只有容器异常时才自动重启，Never是从来不重启容器
 
 Pod的恢复过程，永远发生在当前节点，即跟着API对象定义的spec.node的对应的节点，如果要发生在其他节点，则需要deployment的帮助。
 
@@ -865,7 +922,7 @@ StatefulSet可以解决两种情况下的状态：
 
 * 拓扑状态，如果PodA和PodB有启动的先后顺序，当它们被再次创建出来时也会按照这个顺序进行启动，且新创建的Pod和原来的Pod拥有同样的网络标识（比如DNS记录），保证在使用原来的方式通信也可行。
 
-  StatefulSet通过Headless Service，使用这个DNS记录维持Pod的拓扑状态。在声明StatefulSet时，在spec.serviceName里指定Headless Service的名称，因为serviceName的值是固定的，StatefulSet在为Pod起名字的时候又会按顺序编号，为每个Pod生成一条DNS记录，通过DNS记录里的Pod编号来进行顺序启动。
+  StatefulSet通过Headless Service，使用这个DNS记录维持Pod的拓扑状态。在声明StatefulSet时，在`spec.serviceName`里指定Headless Service的名称，因为serviceName的值是固定的，StatefulSet在为Pod起名字的时候又会按顺序编号，为每个Pod生成一条DNS记录，通过DNS记录里的Pod编号来进行顺序启动。
 
   StatefulSet只会保证DNS记录不变，Pod对应的IP还是会随着重启发生改变的。
 
@@ -875,9 +932,17 @@ StatefulSet可以解决两种情况下的状态：
 
 StatefulSet**直接管理**Pod，每个Pod不再认为只是复制集，而是会有hostname、名字、编号等的不同，并生成对应的带有相同编号的DNS记录，对应的带有相同编号的PVC，保证每个Pod都拥有独立的Volume。
 
-StatefulSet的滚动更新，会按照与Pod编号相反的顺序，逐一更新，如果发生错误，滚动更新会停止；StatefulSet支持按条件更新，通过对`spec.updateStrategy.rollingUpdate的partition字段`进行配置，也可实现金丝雀部署或灰度发布。
+对于一个副本数为n的StatefulSet，Pod被部署时是按照0~n-1的序号顺序创建的，会等待前一个Pod变为Running和Ready才会启动下一个Pod。使用配置`spec.podManagementPolicy: "Parallel"`则可以使得Pod同时创建。
+
+StatefulSet的滚动更新，会按照与Pod编号相反的顺序，逐一更新，，如果发生错误，滚动更新会停止；
+
+StatefulSet支持按条件更新，通过对`spec.updateStrategy.rollingUpdate的partition字段`进行配置，可实现金丝雀部署或灰度发布。比如：`{"spec":{"updateStrategy":{"type":"RollingUpdate","rollingUpdate":{"partition":3}}}}`进行设置后，再继续对`spec.template`里进行修改，StatefulSet会对序号大于或等于此序号的Pod进行更新，小于此序号的保存旧版本不变，即使这些Pod被删除和重建，也是用的旧版本。
+
+也可以设置`spec.updateStrategy.type: OnDelete`时，当`spec.template`发生变化时，Pod不会进行更新，需要手动删除，让StatefulSet来重新产生Pod，才会使用新的设置。
 
 StatefulSet可用于部署有状态的应用，比如有主从节点MySQL集群，在这个case中，虽然Pod会有相同的template，但是主从Pod里的sidecar执行的动作不一样，而主从Pod可以根据编号来实现，不同类型的Pod存储通过PVC + PV实现。
+
+StatefulSet的删除支持级联和非级联两种，非级联删除时，只会删除StatefulSet控制器，不会删除对应的Pod，需要使用参数`--cascade=orphan`。当StatefulSet被重新创建时，会再执行一遍Pod的创建，同时下掉之前非级联删除的Pod。非级联删除StatefulSet时，不会删除其对应的Pod相关联的PV卷
 
 StatefulSet主要由StatefulSetController、StatefulSetControl和StatefulPodControl三个组件协作来完成StatefulSet的管理，StatefulSetController会同时从PodInformer和ReplicaSetInformer中接受增删查改事件并将事件推送到队列中。
 
@@ -1428,17 +1493,23 @@ metadata:
 
 ## 声明式API
 
-通过编排对象，在为它们定义服务的这种方法，就称为声明式API，
+通过编排对象，在为它们定义服务的这种方法，就称为声明式API。
 
 Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示元数据，通过里面的labels字段（键值对）来找到这个API对象；每一个API对象都有一个Spec字段，来配置这个对象独有的配置，如为Pod添加挂载的Volume。
 
-命令式配置文件操作：编写一个yaml配置，使用kubectl create -f config.yaml创建controller和Pod，然后修改yaml配置，使用kubectl replace -f config.yaml，更新controller和Pod，kube-apiserver一次只能处理一个命令；或者直接使用命令 kubectl set image ... 或 kubectl edit ... 这些都属于命令式的
+命令式配置文件操作：编写一个yaml配置，使用`kubectl create -f config.yaml`创建controller和Pod，然后修改yaml配置，使用`kubectl replace -f config.yaml`，更新controller和Pod，kube-apiserver一次只能处理一个命令；或者直接使用命令 `kubectl set image ... `或 `kubectl edit ...` 这些都属于命令式的。
 
-声明式配置文件操作：编写yaml配置和更新yaml配置均使用kubectl apply -f config.yaml，kube-apiserver一次处理多个命令，并且具备merge能力。
+声明式配置文件操作：编写yaml配置和更新yaml配置均使用`kubectl apply -f config.yaml`，kube-apiserver一次处理多个命令，并且具备merge能力。
+
+命令式是告诉API-Server我要做什么操作，而声明式是告诉API-Server我要达到什么样的效果，幂等的操作。
+
+所以声明式API可以解决命令式API因为反复重试导致的错误，或者 并发执行时产生的问题。
 
 ### 工作原理
 
-k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在etcd里的完整资源路径是由Group（API 组）、Version（API 版本）和 Resource（API 资源类型）三个部分组成的
+k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在etcd里的完整资源路径是由Group（API 组）、Version（API 版本）和 Resource（API 资源类型）三个部分组成的。
+
+一个资源可以有多个版本，版本和资源的信息会存储在etcd中，但etcd只会存储资源的一个指定版本，当客户端传入的yaml文件中指定的资源版本和客户端向API-Server请求的资源版本可能并不是etcd中存储的版本时，会进行版本转换。API-Server会维护一个internal版本，当需要版本转换时，任意版本都会先转换为internal版本，再由internal版本转换为指定的目标版本，所以只要保证每个版本都能转换成internal版本，即可支持任意版本间的转换了，对应的CRD代码也要支持新老版本的切换。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/API对象树形结构.png)
 
@@ -1500,7 +1571,7 @@ spec:
 
 控制器通过APIServer获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应
 
- Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库。这个本地缓存在 Kubernetes 中一般被称为 Store，索引一般被称为 Index。
+Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库。这个本地缓存在 Kubernetes 中一般被称为 Store，索引一般被称为 Index。
 
 Informer会使用Index库把增量里的API对象保存到本地缓存，并创建索引，Handler可以是对API对象进行增删改
 
