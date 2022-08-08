@@ -1094,7 +1094,57 @@ spec:
 
 ### Operator
 
-本质是一个Deployment，会创建一个CRD，常用于简化StatefulSet的部署，用来管理有状态的Pod，维持拓扑状态和存储状态。需要编写与Kubernetes Matser交互的代码，才能实现自定义CRD的行为。
+本质是一个控制器，控制自定义的CRD的流程控制，执行自定义CRD的行为。
+
+CRD（ Custom Resource Definition），一种API插件机制，允许用户在k8s中添加一个跟Pod、Node类型的，新的API资源，即kind为CustomResourceDefinition，类似于类的概念，这样就可以通过这个类，来创建属于这个类的实例(编写yaml文件)，这个实例就称为CR
+
+比如有CRD为
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: networks.samplecrd.k8s.io
+spec:
+  group: samplecrd.k8s.io
+  version: v1
+  names:
+    kind: Network
+    plural: networks
+  scope: Namespaced
+```
+
+CR为
+
+```yaml
+apiVersion: samplecrd.k8s.io/v1
+kind: Network
+metadata:
+  name: example-network
+spec:
+  cidr: "192.168.0.0/16"
+  gateway: "192.168.0.1"
+```
+
+其中的资源类型、组、版本号要一一对应
+
+上面这些操作只是告诉k8s怎么认识yaml文件，接着就需要编写代码，让k8s能够通过yaml配置生成API对象，以及如何使用这些配置的字段属性了，接着，还需要编写操作该API对象的控制器
+
+控制器的原理：
+
+![](https://github.com/Nixum/Java-Note/raw/master/picture/控制器工作流程.png)
+
+控制器通过APIServer获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应
+
+Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库。这个本地缓存在 Kubernetes 中一般被称为 Store，索引一般被称为 Index。
+
+Informer会使用Index库把增量里的API对象保存到本地缓存，并创建索引，Handler可以是对API对象进行增删改
+
+Informer 使用了 Reflector 包，它是一个可以通过 ListAndWatch 机制获取并监视 API 对象变化的客户端封装。
+
+Reflector 和 Informer 之间，用到了一个“增量先进先出队列”进行协同。而 Informer 与你要编写的控制循环之间，则使用了一个工作队列来进行协同
+
+实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行
 
 ## Service
 
@@ -1523,63 +1573,13 @@ kind: CronJob
 
 核心API对象如Pod、Node是没有Group的，k8s是直接在/api这个层级进行下一步的匹配
 
-过程步骤
+过程步骤：
 
-1. yaml文件被提交给APIServer，APIServer接收到后完成前置工作，如授权、超时处理、审计
-2. 进入MUX和Routes流程，APIServer根据yaml提供的信息，使用上述的匹配过程，找到CronJob的类型定义
-3. APIServer根据这个类型定义，根据yaml里CronbJob的相关字段，创建一个CronJob对象，同时也会创建一个SuperVersion对象，它是API资源类型所有版本的字段全集，用于处理不同版本的yaml转成的CronJob对象
-4. APIServer 会先后进行 Admission() 和 Validation() 操作，进行初始化和校验字段合法性，验证过后保存在Registry的数据结构中
-5. APIServer把验证过的API对象转换成用户最初提交的版本，进行序列化操作，保存在ETCD中
-
-CRD（ Custom Resource Definition），一种API插件机制，允许用户在k8s中添加一个跟Pod、Node类型的，新的API资源，即kind为CustomResourceDefinition，类似于类的概念，这样就可以通过这个类，来创建属于这个类的实例(编写yaml文件)，这个实例就称为CR
-
-比如有CRD为
-
-```yaml
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: networks.samplecrd.k8s.io
-spec:
-  group: samplecrd.k8s.io
-  version: v1
-  names:
-    kind: Network
-    plural: networks
-  scope: Namespaced
-```
-
-CR为
-
-```yaml
-apiVersion: samplecrd.k8s.io/v1
-kind: Network
-metadata:
-  name: example-network
-spec:
-  cidr: "192.168.0.0/16"
-  gateway: "192.168.0.1"
-```
-
-其中的资源类型、组、版本号要一一对应
-
-上面这些操作只是告诉k8s怎么认识yaml文件，接着就需要编写代码，让k8s能够通过yaml配置生成API对象，以及如何使用这些配置的字段属性了，接着，还需要编写操作该API对象的控制器
-
-控制器的原理：
-
-![](https://github.com/Nixum/Java-Note/raw/master/picture/控制器工作流程.png)
-
-控制器通过APIServer获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应
-
-Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库。这个本地缓存在 Kubernetes 中一般被称为 Store，索引一般被称为 Index。
-
-Informer会使用Index库把增量里的API对象保存到本地缓存，并创建索引，Handler可以是对API对象进行增删改
-
-Informer 使用了 Reflector 包，它是一个可以通过 ListAndWatch 机制获取并监视 API 对象变化的客户端封装。
-
-Reflector 和 Informer 之间，用到了一个“增量先进先出队列”进行协同。而 Informer 与你要编写的控制循环之间，则使用了一个工作队列来进行协同
-
-实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行
+1. yaml文件被提交给API-Server，APIServer接收到后完成前置工作，如授权、超时处理、审计；
+2. 进入MUX和Routes流程，API-Server根据yaml提供的信息，使用上述的匹配过程，找到CronJob的类型定义；
+3. API-Server根据这个类型定义，根据yaml里CronJob的相关字段，创建一个CronJob对象，同时也会创建一个SuperVersion对象，它是API资源类型所有版本的字段全集，用于处理不同版本的yaml转成的CronJob对象；
+4. API-Server 会先后进行 Admission() 和 Validation() 操作，进行初始化和校验字段合法性，验证过后保存在Registry的数据结构中；
+5. API-Server把验证过的API对象转换成用户最初提交的版本，进行序列化操作，保存在etcd中；
 
 ## 配置相关
 
