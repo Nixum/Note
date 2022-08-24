@@ -356,7 +356,107 @@ fmt.Println(x, ok)
 ```
 
 * 从一个已经关闭的channel接收数据，如果缓冲区为空，则返回一个零值；
+
 * 已关闭的channel再次关闭，会panic；
+
+* 对于一个不关闭的channel，在方法结束后，只要channel没有被引用，会被GC自动回收；
+
+* 关闭channel的原则：不要向已关闭的channel发送数据或者再次关闭，关闭的动作尽量在sender做，主要还是分场景：
+
+  * 一个sender一个receiver的场景：在sender处关闭。
+
+  * 一个sender多个recevier的场景：在sender处关闭。
+
+  * 多个sender一个receiver的场景：增加一个传递关闭信号的 channel，receiver 通过信号 channel 下达关闭数据 channel 指令。senders 监听到关闭信号后，停止发送数据。
+
+    ```go
+    	dataCh := make(chan int, 100)
+        stopCh := make(chan struct{})
+    	// senders
+        for i := 0; i < NumSenders; i++ {
+            go func() {
+                for {
+                    select {
+                    case <- stopCh:
+                        // 接收关闭信号退出
+                        return
+                    case dataCh <- rand.Intn(Max):
+                    }
+                }
+            }()
+        }
+        // the receiver
+        go func() {
+            for value := range dataCh {
+                if value == Max-1 {
+                    fmt.Println("send stop signal to senders.")
+                    // 直接关闭
+                    close(stopCh)
+                    return
+                }
+    
+                fmt.Println(value)
+            }
+        }()
+    ```
+
+  * 多个sender多个receiver的场景：再增加一个中间的channel，用来接收标识关闭的数据，收到后直接close传递关闭的信号channel即可。
+
+    ```go
+    	dataCh := make(chan int, 100)
+        stopCh := make(chan struct{})
+    
+        // 当使用select发送数据到toStop时，一定要有buffer，防止中间channel没准备好而错失关闭时机的问题
+        toStop := make(chan string, 1)
+        var stoppedBy string
+    
+        // 中间channel，用于接收标识关闭的数据
+        go func() {
+            stoppedBy = <-toStop
+            close(stopCh)
+        }()
+    
+        // senders
+        for i := 0; i < NumSenders; i++ {
+            go func(id string) {
+                for {
+                    value := rand.Intn(Max)
+                    // 发送者也可以关闭
+                    if value == 0 {
+                        toStop <- "sender#" + id
+                        return
+                    }
+    
+                    select {
+                    case <- stopCh: // 真正的停止
+                        return
+                    case dataCh <- value:
+                    }
+                }
+            }(strconv.Itoa(i))
+        }
+    
+        // receivers
+        for i := 0; i < NumReceivers; i++ {
+            go func(id string) {
+                for {
+                    select {
+                    case <- stopCh:  // 真正的停止
+                        return
+                    case value := <-dataCh:
+                        // 接收者也能进行关闭
+                        if value == Max-1 {
+                            case toStop <- "receiver#" + id:
+                            return
+                        }
+    
+                        fmt.Println(value)
+                    }
+                }
+            }(strconv.Itoa(i))
+        }
+    ```
+
 * channel在关闭时会自动退出循环；
 
 ```go
@@ -875,9 +975,124 @@ func closechan(c *hchan) {
 ## 应用场景
 
 * 实现生产者 - 消费组模型，数据传递，比如[worker池的实现](http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang/)
+
+  ```go
+  func consumer(taskChan <-chan int) {
+      for i := 0; i < 5; i++ {
+          go func(id int) {
+              for {
+                  task := <- taskChan
+                  time.Sleep(time.Second) // 模拟耗时
+              }
+          }(i)
+      }
+  }
+  
+  func main() {
+      taskCh := make(chan int, 100)
+      go consumer(taskCh)
+      // 生产者
+      for i := 0; i < 10; i++ {
+          taskCh <- i
+      }
+      // wait...
+  }
+  ```
+
 * 信号通知：利用 如果chan为空，那receiver接收数据的时候就会阻塞等待，直到chan被关闭或有新数据进来 的特点，将一个协程将信号(closing、closed、data ready等)传递给另一个或者另一组协程，比如 wait/notify的模式。
-* 任务编排：让一组协程按照一定的顺序并发或串行执行，比如实现waitGroup的功能
+
+* 控制并发量，可以配合WaitGroup进行控制goroutine的数量
+
+  ```go
+  func main() {
+      ch := make(chan int, 3)
+      for i := 0; i < 10; i++ {
+  // 这个放在外层和放在里层的效果不同，都可以控制并发量，但是前者会阻塞for循环，后者不会
+          ch <- 1
+  		go func(k int) {
+  			fmt.Println(k) // do something...
+  			time.Sleep(time.Second)
+  			// 防止泄露
+  			defer func() {
+  				<- ch
+  			}()
+  		}(i)
+      }
+  }
+  
+  // 配合WaitGroup控制goroutine的数量
+  func main() {
+      ch := make(chan int, 3)
+      wg := sync.WaitGroup{}
+      for i := 0; i < 10; i++ {
+          wg.Add(1)
+  		go func(k int) {
+              defer wg.Done()
+              ch <- 1
+  			fmt.Println(k) // do something...
+  			time.Sleep(time.Second)
+              // 防止泄露
+  			defer func() {
+  				<- ch
+  			}()
+  		}(i)
+      }
+      wg.Wait()
+  }
+  ```
+
+* 任务定时
+
+  ```go
+  func worker() {
+      ticker := time.Tick(1 * time.Second)
+      for {
+          select {
+          case <- ticker:
+              // 执行定时任务
+              fmt.Println("执行 1s 定时任务")
+          }
+      }
+  }
+  // 或者
+  func worker() {
+      for {
+          select {
+      		case <-time.After(100 * time.Millisecond):
+      		case <-s.stopc:
+          		return false
+  		}
+      }
+  }
+  ```
+
+  任务编排：让一组协程按照一定的顺序并发或串行执行，比如实现waitGroup的功能
+
 * 实现互斥锁的机制，比如，容量为 1 的chan，放入chan的元素代表锁，谁先取得这个元素，就代表谁先获取了锁
+
+  ```go
+  type Locker struct {
+      ch chan int
+  }
+  
+  func NewLocker() *Locker {
+      locker := &Locker{ch: make(chan int, 1)}
+      locker.ch <- 1
+      return locker
+  }
+  
+  func (locker *Locker) Lock() {
+      <- locker.ch
+  }
+  
+  func (locker *Locker) UnLock() {
+      select {
+          case m.ch <- struct{}{}: 
+      	default: 
+          	panic(" unlock of unlocked mutex") 
+      }
+  }
+  ```
 
 > 共享资源的并发访问使用传统并发原语；
 >
