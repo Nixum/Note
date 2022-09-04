@@ -343,6 +343,8 @@ const (
 
 * map是非线程安全的，扩容不是一个原子操作，通过hmap里的flags字段在并发修改时进行fast-fail。
 
+* 当 map 对象同时进行加锁的 write 和不加锁的read（比如打印，序列化等）时，会发生panic。
+
 * map的遍历是无序的，每次遍历出来的结果的顺序都不一样。
 
 * 有个特殊的key值math.NaN，它每次生成的哈希值是不一样的，这会造成m[math.NaN]是拿不到值的，而且多次对它赋值，会让map中存在多个math.NaN的key。

@@ -705,39 +705,156 @@ func (o *Once) doSlow(f func()) {
 
 # Pool
 
+这里是针对go 1.13之后的版本
+
 ## 数据结构
+
+```go
+type Pool struct {
+    // 使用go vet工具可以检测用户代码是否复制了pool
+	noCopy noCopy
+
+    // 每个 P 的本地队列，实际类型为 [P]poolLocal，长度是固定的，P的id对应[P]poolLocal下标索引，通过这样的设计，多个 G 使用同一个Pool时，减少竞争，提升性能
+	local     unsafe.Pointer
+	// [P]poolLocal 本地队列的大小
+	localSize uintptr
+
+    // GC 时使用，分别接管 local 和 localSize，victim机制用于减少GC后冷启动导致的性能抖动，让对象分配更平滑，降低GC压力的同时提高命中率
+	victim     unsafe.Pointer // local from previous cycle
+	victimSize uintptr        // size of victims array
+
+	// 自定义的对象创建回调函数，当 pool 中无可用对象时会调用此函数
+	New func() interface{}
+}
+```
+
+当Pool没有缓存对象时，调用 New 函数生成以下对象
+
+```go
+type poolLocal struct {
+	poolLocalInternal
+
+	// 将 poolLocal 补齐至两个缓存行的倍数，防止 false sharing,
+	// 每个缓存行具有 64 bytes，即 512 bit
+	// 目前我们的处理器一般拥有 32 * 1024 / 64 = 512 条缓存行
+	// 伪共享，仅占位用，防止在 cache line 上分配多个 poolLocalInternal
+	pad [128 - unsafe.Sizeof(poolLocalInternal{})%128]byte
+}
+
+// Local 每个P都有一个
+type poolLocalInternal struct {
+    // P 的私有对象，使用时无需要加锁，用于不同G执行get和put
+	private interface{}
+    // 共享对象数组，每个P都有一个。本地 P 可以 pushHead/popHead，其他 P 则只能 popTail, 进时append，出时slice[:last-1]
+    // 同一个P上不同G可以多次执行put方法，需要有地方能存储, 并且别的P上的G可能过来偷，所以要加锁
+	shared  poolChain
+}
+```
+
+poolChain 是一个双端队列的实现；
+
+poolDequeue 被实现为单生产者，多消费者的固定大小无锁的环形队列，生产者可以从 head 插入和删除，而消费者仅能从 tail 删除
+
+```go
+type poolChain struct {
+	// 只有生产者会 push to，不用加锁
+	head *poolChainElt
+
+	// 读写需要原子控制，pop from
+	tail *poolChainElt
+}
+
+type poolChainElt struct {
+	poolDequeue
+
+	// next 被 producer 写，consumer 读。所以只会从 nil 变成 non-nil
+	// prev 被 consumer 写，producer 读。所以只会从 non-nil 变成 nil
+	next, prev *poolChainElt
+}
+
+type poolDequeue struct {
+	// headTail 包含一个 32 位的 head 和一个 32 位的 tail 指针。这两个值都和 len(vals)-1 取模过。
+	// tail 是队列中最老的数据，head 指向下一个将要填充的 slot
+    // slots 的有效范围是 [tail, head)，由 consumers 持有。
+    // 通过对其cas操作保证并发安全
+	headTail uint64
+
+	// vals 是一个存储 interface{} 的环形队列，它的 size 必须是 2 的幂，初始化长度为8
+	// 如果 slot 为空，则 vals[i].typ 为空；否则，非空。
+	// 一个 slot 在这时宣告无效：tail 不指向它了，vals[i].typ 为 nil
+	// 由 consumer 设置成 nil，由 producer 读
+	vals []eface
+}
+```
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/go_syncPool数据结构.png)
 
-* 每次垃圾回收时，Pool会把victim中的对象移除，然后把local的数据给victim，local置为nil，如果此时有Get方法被调用，则会从victim中获取对象。通过这种方式，避免缓存元素被大量回收后再再次使用时新建很多对象
-* 获取重用对象时，先从local中获取，获取不到再从victim中获取
-* poolLocalInternal用于CPU缓存对齐，避免false sharing
-* private字段代表一个缓存元素，且只能由相应的一个P存取，因为一个P同时只能执行一个goroutine，所以不会有并发问题
-* shared字段可以被任意的P访问，但是只有本地的P次啊能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个local-free的队列实现
+* 每次垃圾回收时，Pool会把victim中的对象移除，然后把local的数据给victim，local置为nil，如果此时有Get方法被调用，则会从victim中获取对象。通过这种方式，避免缓存元素被大量回收后再再次使用时新建很多对象；
+* 获取重用对象时，先从local中获取，获取不到再从victim中获取；
+* poolLocalInternal用于CPU缓存对齐，避免false sharing；
+* private字段代表一个可复用对象，且只能由相应的一个P存取，因为一个P同时只能执行一个goroutine，所以不会有并发问题；
+* shared字段可以被任意的P访问，但是只有本地的P次啊能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个local-free的队列实现；
 
 ## 基本
 
-* sync.Pool用于保存一组可独立访问的临时对象，它池化的对象如果没有被其他对象持有引用，可能会在未来某个时间点被回收掉
+* sync.Pool用于保存一组可独立访问的临时对象，它池化的对象如果没有被其他对象持有引用，可能会在未来某个时间点（GC发生时）被回收掉；
+
 * sync.Pool是并发安全的，多个gotoutine可以并发调用它存取对象；
-* 不能复制使用
-* 在1.13以前，保证并发安全使用了带锁的队列，1.13后，改成了lock-free的队列实现，避免锁对性能的影响
-* 包含了三个方法：New、Get、Put；Get方法调用时，会从池中移走该元素
-* 当Pool里没有元素可用时，Get方法会返回nil；可以向Pool中Put一个nil的值，Pool会将其忽略
-* 当使用Pool作为buffer池时，要注意buffer如果太大，reset后它就会占很大空间，引起内存泄漏，因此在回收元素时，需要检查大小，如果太大了就直接置为null，丢弃即可
+
+* 不能复制使用；
+
+* 在1.13以前，保证并发安全使用了带锁的队列，且在GC时，直接清空所有Pool的`local`和`poollocal.shared`，GC的时间可能会很长;
+
+  1.13后，改成了lock-free的队列实现，避免锁对性能的影响，且在GC时，使用victim作为次级缓存，GC时将对象放入其中，下次GC来临之前，如果有 Get 调用则会从victim中取，直到下一次GC来临时回收，拉长实际回收时间，使得单位时间内GC的开销减少；
+
+* 包含了三个方法：New、Get、Put；Get方法调用时，会从池中移走该元素；
+
+* 当Pool里没有元素可用时，Get方法会返回nil；可以向Pool中Put一个nil的值，Pool会将其忽略；
+
+* 在使用Put归还对象时，需要将对象的属性reset；
+
+* 当使用Pool作为buffer池时，要注意buffer如果太大，reset后它就会占很大空间，引起内存泄漏，因此在回收元素时，需要检查大小，如果太大了就直接置为null，丢弃即可；
+
+* Pool 里对象的生命周期受 GC 影响，不适合于做连接池，因为连接池需要自己管理对象的生命周期；
+
+* Pool 不可以指定大小，大小只受制于 GC 临界值；
+
+* `procPin` 将 G 和 P 绑定，防止 G 被抢占。在绑定期间，GC 无法清理缓存的对象；
+
+* `sync.Pool` 的最底层使用切片加链表来实现双端队列，并将缓存的对象存储在切片中；
+
+* 双端队列初始化长度为8，始终保持2的n次幂，两倍两倍的增长，最大的长度是2^30，达到上限时，再执行Put操作就放不进去，也不报错；
+
+* Get方法调用时，如果是从其他P的local.shared的尾部窃取复用对象，同时会移除，当最小时收缩成只剩下一个节点时，双端队列的长度会变为2，不会收缩成空链表；
 
 ## Get方法
 
-1. 将当前goroutine固定在P上，优先从local的private字段取出一个元素，将private置为null
-2. 如果取出的元素为null，从当前的local.shared的head中取出一个元素，如果还取不到，调用getSlow函数去其他shared中取
-3. getSlow函数会遍历所有local，从它们的shared的head中弹出一个元素，如果还没有，则对victim中以在同样的方式(先从private里找，找不到再在shared里找)获取一遍
-4. 如果还取不到，则调用New函数生成一个，然后返回
+1. 如果是第一次访问，创建P个poolLocal，返回New的新对象；
+2. 如果非第一次访问，调用`p.pin()`函数，将当前 G 固定在P上，防止被抢占，并获取pid，再根据pid号找到当前P对应的poolLocal，优先从local的private字段取出一个元素，将private置为null；
+3. 如果从private取出的元素为null，则从当前的local.shared的head中取出一个无锁队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个无锁队列继续获取，直到获取到或者遍历完双端链表；
+4. 如果还没有的话，调用getSlow函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个无锁队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到，沿着next指针到下一个无锁队列继续获取，如果还没有，直到获取到或者遍历完双端链表；如果还没有，就到别的P上继续获取；
+5. 如果所有P的poolLocal.shared都没有，则对victim中以在同样的方式，先从当前P的poolLocal的private里找，找不到再在shared里找，获取一遍；
+6. Pool相关操作执行完，调用`runtime_procUnpin()`解除非抢占；
+7. 如果还取不到，则调用New函数生成一个，然后返回；
 
-因为当前的goroutine被固定在了P上，在查找元素时不会被其他P执行
+因为当前的G被固定在了P上，在查找元素时不会被其他P执行。
+
+## Pin方法
+
+> `pin` 的作用就是将当前 groutine 和 P 绑定在一起，禁止抢占。并且返回对应的 poolLocal 以及 P 的 id。
+>
+> 如果 G 被抢占，则 G 的状态从 running 变成 runnable，会被放回 P 的 localq 或 globaq，等待下一次调度。下次再执行时，就不一定是和现在的 P 相结合了。因为之后会用到 pid，如果被抢占了，有可能接下来使用的 pid 与所绑定的 P 并非同一个。
+>
+> 所谓的抢占，就是把 M 绑定的 P 给剥夺了，因为我们后面获取本地的 poolLocal 是根据pid获取的，如果这个过程中 P 被抢走，就乱套了，所以需要设置禁止抢占，实现的原理就是让 M 的locks字段不等于0，比如+1，实际上也相当于对M上锁，让调度器知道 M 不适合抢占。
+>
+> 执行完之后，P 不可抢占，且 GC 不会清扫 Pool 里的对象
 
 ## Put方法
 
-1. 如果Put进来的元素是null，直接返回
-2. 固定当前goroutine，如果本地private没有值，直接设置，否则加入到shared中
+1. 如果Put进来的元素是null，直接返回；
+2. 调用`p.pin()`函数，将当前 G 固定在P上，防止被抢占，并获取pid，再根据pid号找到当前P对应的poolLocal；
+3. 尝试将put进来的元素赋值给private，如果本地private没有值，直接赋值；
+4. 否则，将其加入到shared对应的双端队列的队首；
 
 # 原子操作
 
@@ -950,3 +1067,5 @@ type CyclicBarrier interface {
 [go中waitGroup源码解读](https://www.cnblogs.com/ricklz/p/14496612.html)
 
 [深度解密Go语言之sync.map](https://zhuanlan.zhihu.com/p/344834329)
+
+[golang的对象池sync.pool源码解读](https://zhuanlan.zhihu.com/p/99710992)
