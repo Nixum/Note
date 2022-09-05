@@ -714,14 +714,14 @@ type Pool struct {
     // 使用go vet工具可以检测用户代码是否复制了pool
 	noCopy noCopy
 
-    // 每个 P 的本地队列，实际类型为 [P]poolLocal，长度是固定的，P的id对应[P]poolLocal下标索引，通过这样的设计，多个 G 使用同一个Pool时，减少竞争，提升性能
+    // 每个 P 的本地队列，实际类型为 [P]poolLocal数组，长度是固定的，P的id对应[P]poolLocal下标索引，通过这样的设计，多个 G 使用同一个Pool时，减少竞争，提升性能
 	local     unsafe.Pointer
 	// [P]poolLocal 本地队列的大小
 	localSize uintptr
 
-    // GC 时使用，分别接管 local 和 localSize，victim机制用于减少GC后冷启动导致的性能抖动，让对象分配更平滑，降低GC压力的同时提高命中率
-	victim     unsafe.Pointer // local from previous cycle
-	victimSize uintptr        // size of victims array
+    // GC 时使用，分别接管 local 和 localSize，victim机制用于减少GC后冷启动导致的性能抖动，让对象分配更平滑，降低GC压力的同时提高命中率，由poolCleanup()方法操作
+	victim     unsafe.Pointer
+	victimSize uintptr
 
 	// 自定义的对象创建回调函数，当 pool 中无可用对象时会调用此函数
 	New func() interface{}
@@ -745,13 +745,13 @@ type poolLocal struct {
 type poolLocalInternal struct {
     // P 的私有对象，使用时无需要加锁，用于不同G执行get和put
 	private interface{}
-    // 共享对象数组，每个P都有一个。本地 P 可以 pushHead/popHead，其他 P 则只能 popTail, 进时append，出时slice[:last-1]
+    // 双向链表
     // 同一个P上不同G可以多次执行put方法，需要有地方能存储, 并且别的P上的G可能过来偷，所以要加锁
 	shared  poolChain
 }
 ```
 
-poolChain 是一个双端队列的实现；
+poolChain 是一个双向链表的实现；
 
 poolDequeue 被实现为单生产者，多消费者的固定大小无锁的环形队列，生产者可以从 head 插入和删除，而消费者仅能从 tail 删除
 
@@ -773,7 +773,7 @@ type poolChainElt struct {
 }
 
 type poolDequeue struct {
-	// headTail 包含一个 32 位的 head 和一个 32 位的 tail 指针。这两个值都和 len(vals)-1 取模过。
+    // headTail 包含一个 32 位的 head (高32位)和一个 32 位的 tail(低32位) 指针。这两个值都和 len(vals)-1 取模过。
 	// tail 是队列中最老的数据，head 指向下一个将要填充的 slot
     // slots 的有效范围是 [tail, head)，由 consumers 持有。
     // 通过对其cas操作保证并发安全
@@ -831,8 +831,8 @@ type poolDequeue struct {
 
 1. 如果是第一次访问，创建P个poolLocal，返回New的新对象；
 2. 如果非第一次访问，调用`p.pin()`函数，将当前 G 固定在P上，防止被抢占，并获取pid，再根据pid号找到当前P对应的poolLocal，优先从local的private字段取出一个元素，将private置为null；
-3. 如果从private取出的元素为null，则从当前的local.shared的head中取出一个无锁队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个无锁队列继续获取，直到获取到或者遍历完双端链表；
-4. 如果还没有的话，调用getSlow函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个无锁队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到，沿着next指针到下一个无锁队列继续获取，如果还没有，直到获取到或者遍历完双端链表；如果还没有，就到别的P上继续获取；
+3. 如果从private取出的元素为null，则从当前的local.shared的head中取出一个双端环形队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个双端环形队列继续获取，直到获取到或者遍历完双向链表；
+4. 如果还没有的话，调用getSlow函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个双端环形队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到（如果当前节点为null，则删除），沿着next指针到下一个双端环形队列继续获取，如果还没有，直到获取到或者遍历完双向链表；如果还没有，就到别的P上继续获取；
 5. 如果所有P的poolLocal.shared都没有，则对victim中以在同样的方式，先从当前P的poolLocal的private里找，找不到再在shared里找，获取一遍；
 6. Pool相关操作执行完，调用`runtime_procUnpin()`解除非抢占；
 7. 如果还取不到，则调用New函数生成一个，然后返回；
@@ -841,13 +841,19 @@ type poolDequeue struct {
 
 ## Pin方法
 
-> `pin` 的作用就是将当前 groutine 和 P 绑定在一起，禁止抢占。并且返回对应的 poolLocal 以及 P 的 id。
+> `pin` 的作用就是将当前 G 和 P 绑定在一起，禁止抢占，并返回对应的 poolLocal 以及 P 的 id。
 >
 > 如果 G 被抢占，则 G 的状态从 running 变成 runnable，会被放回 P 的 localq 或 globaq，等待下一次调度。下次再执行时，就不一定是和现在的 P 相结合了。因为之后会用到 pid，如果被抢占了，有可能接下来使用的 pid 与所绑定的 P 并非同一个。
 >
-> 所谓的抢占，就是把 M 绑定的 P 给剥夺了，因为我们后面获取本地的 poolLocal 是根据pid获取的，如果这个过程中 P 被抢走，就乱套了，所以需要设置禁止抢占，实现的原理就是让 M 的locks字段不等于0，比如+1，实际上也相当于对M上锁，让调度器知道 M 不适合抢占。
+> 所谓的抢占，就是把 M 绑定的 P 给剥夺了，因为我们后面获取本地的 poolLocal 是根据pid获取的，如果这个过程中 P 被抢走，就乱套了，所以需要设置禁止抢占，实现的原理就是让 M 的locks字段不等于0，比如+1，实际上也相当于对M上锁，让调度器知道 M 不适合抢占，这里就很好体现了数据的局部性：让G和M在被抢占后，仍然找回原来的P，这里通过禁止抢占，来保证数据局部性。
 >
-> 执行完之后，P 不可抢占，且 GC 不会清扫 Pool 里的对象
+> 执行完之后，P 不可抢占，且 GC 不会清扫 Pool 里的对象。
+
+在Pool里，还有一个全局Pool数组，allPools和oldPools，用于维护所有声明的Pool对象，同时也使用了victim cache机制让GC更平滑。
+
+当P的数量大于 poolLocal 数组的长度时，就会进入 pinSlow 方法，构建新的 poolLocal 节点。
+
+进入pinSlow方法后，首先会解除G和P的绑定，再上锁，锁定allPools（因为是全局变量），之所以先解除绑定再上锁，主要是锁的粒度比较大，被阻塞的概率也大，如果还占用着P，浪费资源；锁定成功后，才再次进行绑定，由于此时P可能被其他线程占用了，p.local可能会发生变化，此时还需要对pid进行检查，如果P的数量大于 poolLocal 的长度，才创建新的poolLocal数组，长度为P的个数，这一步其实是懒加载，懒汉式初始化 poolLocal数组 作为 P的本地数组，如果是首次创建，p还会加入allPools。
 
 ## Put方法
 
@@ -855,6 +861,14 @@ type poolDequeue struct {
 2. 调用`p.pin()`函数，将当前 G 固定在P上，防止被抢占，并获取pid，再根据pid号找到当前P对应的poolLocal；
 3. 尝试将put进来的元素赋值给private，如果本地private没有值，直接赋值；
 4. 否则，将其加入到shared对应的双端队列的队首；
+
+## GC时
+
+Pool会在init方法中使用`runtime_registerPoolCleanup`注册GC的钩子poolCleanup来进行pool回收处理。
+
+其中一个主要动作是 poolCleanup() 方法，该方法主要就是在GC开始前，遍历oldPools数组，将其中的pool对象的victim置为nil，遍历allPools数组，将local对象赋值给victim，然后将allPools赋值给oldPools，allPools置为nil，当GC开始时候，就会将 victim cache 中所有对象的回收（因为已经被置为null了）。
+
+因为victim cache的设计，pool中的复用对象会在每两个GC循环中清除；
 
 # 原子操作
 
@@ -1069,3 +1083,5 @@ type CyclicBarrier interface {
 [深度解密Go语言之sync.map](https://zhuanlan.zhihu.com/p/344834329)
 
 [golang的对象池sync.pool源码解读](https://zhuanlan.zhihu.com/p/99710992)
+
+[深度解密 Go 语言之 sync.Pool](https://www.cnblogs.com/qcrao-2018/p/12736031.html)
