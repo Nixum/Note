@@ -129,10 +129,8 @@ func TODO() Context {
 
 有两种方式可触发取消：
 
-1. 返回的CancelFunc被调用，此时会**取消当前context和其所有的子context**
-2. Done这个chan被close了，此时会**取消当前context和其所有的子context**
-
-所以cancel时，只会取消当前ctx和其子ctx，并从其父ctx的children列表中移除，不会影响父ctx的其他子ctx
+1. 返回的CancelFunc被调用，此时会取消当前context和其所有的子context
+2. Done这个chan被close了，此时会取消当前context和其所有的子context
 
 ```go
 type CancelFunc func()
@@ -152,16 +150,13 @@ func newCancelCtx(parent Context) cancelCtx {
 	return cancelCtx{Context: parent}
 }
 
-// 该方法主要是找到可以”挂靠“的”可取消“的ctx，
-// 将child ctx放到parent的children属性中，与parent ctx绑定，当parent ctx调用取消时，才能层层传递，取消挂靠的child ctx
+// 主要是将child ctx与parent ctx绑定，放到parent的children属性中
 func propagateCancel(parent Context, child canceler) {
 	done := parent.Done()
-    // parent节点是一个空节点
 	if done == nil {
 		return // parent is never canceled
 	}
 
-    // 判断parent节点是否已经被取消
 	select {
 	case <-done:
 		// parent is already canceled
@@ -170,8 +165,7 @@ func propagateCancel(parent Context, child canceler) {
 	default:
 	}
 
-    // parentCancelCtx方法的作用判断该节点是否是cancelCtx类型，因为只有cancelCtx类型的context才有children map
-    // 找到可以取消的parent节点，上锁
+    // 获取parent的cancelCtx
 	if p, ok := parentCancelCtx(parent); ok {
 		p.mu.Lock()
 		if p.err != nil {
@@ -186,15 +180,13 @@ func propagateCancel(parent Context, child canceler) {
 		}
 		p.mu.Unlock()
 	} else {
-        // 表示parent ctx不是一个cancelCtx，没有children map，无法构建成树，只能通过parent的done来向下传播取消信号
+        // 表示parent的ctx不是一个cancelCtx，没有children属性，无法构建成树，只能通过parent的done来向下传播
 		atomic.AddInt32(&goroutines, +1)
 		go func() {
 			select {
 			case <-parent.Done():
-                // 这个case的作用是传递parent取消信号，取消child ctx
 				child.cancel(false, parent.Err())
 			case <-child.Done():
-                // 这个case的作用是防止parent.Done()一直不执行导致G泄漏
 			}
 		}()
 	}
@@ -220,7 +212,6 @@ type cancelCtx struct {
 
 func (c *cancelCtx) Done() <-chan struct{} {
    c.mu.Lock()
-   // 懒汉式创建，返回一个只读channel，该channel不会被写入数据，仅用于接收close()方法调用时的信号
    if c.done == nil {
       c.done = make(chan struct{})
    }
@@ -246,13 +237,13 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 		close(c.done)
 	}
 	for child := range c.children {
-		// 取消所有子context，通过传递error
+		// 取消所有子context
 		child.cancel(false, err)
 	}
 	c.children = nil
 	c.mu.Unlock()
 
-    // 从父context的children map中移除当前context
+    // 从父context的children中移除当前context
 	if removeFromParent {
 		removeChild(c.Context, c)
 	}
@@ -305,7 +296,7 @@ type timerCtx struct {
 
 `valueCtx`内部仍然使用`Context`存储父`Context`的指针，并用`interface{}`存储键值；
 
-如果当前`valueCtx`找不到需要的`key`，会沿着树向上一直查找父节点直到根节点，类似链表的搜索；
+如果当前`valueCtx`找不到需要的`key`，会沿着树向上一直查找直到根节点，类似链表的搜索；
 
 使用`WithValue`创建时，会判断`key`是否实现`Comparable`接口。如果没有实现，会触发`panic`；
 
@@ -1034,10 +1025,10 @@ func closechan(c *hchan) {
       ch := make(chan int, 3)
       wg := sync.WaitGroup{}
       for i := 0; i < 10; i++ {
+          ch <- 1 // ch如果放在里层就达不到控制goroutine的效果了
           wg.Add(1)
   		go func(k int) {
               defer wg.Done()
-              ch <- 1
   			fmt.Println(k) // do something...
   			time.Sleep(time.Second)
               // 防止泄露
