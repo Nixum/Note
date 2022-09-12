@@ -1134,9 +1134,13 @@ https://www.cyhone.com/articles/analysis-of-golang-timer/
 
 # 时间轮
 
-概念理解：https://zhuanlan.zhihu.com/p/121483218
+概念理解：[一张图理解Kafka时间轮](https://zhuanlan.zhihu.com/p/121483218)
 
-golang实现：https://lk668.github.io/2021/04/05/2021-04-05-%E6%89%8B%E6%8A%8A%E6%89%8B%E6%95%99%E4%BD%A0%E5%A6%82%E4%BD%95%E7%94%A8golang%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AAtimewheel/
+[手把手教你如何用golang实现一个timewheel时间轮](https://lk668.github.io/2021/04/05/2021-04-05-%E6%89%8B%E6%8A%8A%E6%89%8B%E6%95%99%E4%BD%A0%E5%A6%82%E4%BD%95%E7%94%A8golang%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AAtimewheel/)
 
-https://www.luozhiyun.com/archives/444
+[Go语言中时间轮的实现](https://www.luozhiyun.com/archives/444)
+
+![](https://github.com/Nixum/Java-Note/raw/master/picture/Kafka时间轮简单实现.png)
+
+
 
