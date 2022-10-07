@@ -108,7 +108,7 @@ func hello() {
 
 ```go
 type Mutex struct {
-	state int32   // 分成三部分，最小一位表示锁是否被持有，第二位表示是否有唤醒的goroutine，第三位表示是否处于饥饿状态，剩余的位数表示等待锁的goroutine的数量，最大数量为2^(32-3)-1个，以goroutine初始空间为2k，则达到最大数量时需要消耗1TB内存
+	state int32   // 分成四部分，最小一位表示锁是否被持有，第二位表示是否有唤醒的goroutine，第三位表示是否处于饥饿状态，剩余的位数表示等待锁的goroutine的数量，最大数量为2^(32-3)-1个，以goroutine初始空间为2k，则达到最大数量时需要消耗1TB内存
 	sema  uint32  // 信号量变量，用来控制等待goroutine的阻塞休眠和唤醒
 }
 const (
@@ -471,11 +471,11 @@ type entry struct {
 
 ## Store方法
 
-创建新dirty时，将read中非删除的键值对赋值给dirty是在store方法中执行。
+**创建新dirty时，将read中非删除的键值对赋值给dirty是在store方法中执行。**
 
 1. 更新或写入键值对时，先判断read中是否存在，如果存在，会自旋更新该键值对直到成功；
 
-   原因是read中的键值对，一定包含了dirty中的键值对，另外，read和dirty指向同一个value，所以直接修改一次即可；
+   原因是**read中的键值对，一定包含了dirty中的键值对**，另外，read和dirty指向同一个value，所以直接修改一次即可；
 
 2. 如果read中读不到，才会进行加锁；
 
@@ -495,7 +495,7 @@ type entry struct {
 
 ## Load方法
 
-将dirty提升为read这个操作在load方法中执行。
+**将dirty提升为read这个操作在load方法中执行。**
 
 1. 不加锁，优先读取read中的键值对，判断key是否存在，存在则返回；
 2. 如果read中不存在，且dirty中包含了read中不存在的键值对，加锁，再次读取read中的键值对；
@@ -508,7 +508,7 @@ type entry struct {
 
 ## Delete方法
 
-将dirty提升为read这个操作也会在delete方法中执行。
+**将dirty提升为read这个操作也会在delete方法中执行。**
 
 1. 判断read中是否存在该key；
 2. 如果read中不存在，且dirty中包含了read中不存在的key，加锁；
@@ -793,7 +793,7 @@ type poolDequeue struct {
 * 获取重用对象时，先从local中获取，获取不到再从victim中获取；
 * poolLocalInternal用于CPU缓存对齐，避免false sharing；
 * private字段代表一个可复用对象，且只能由相应的一个P存取，因为一个P同时只能执行一个goroutine，所以不会有并发问题；
-* shared字段可以被任意的P访问，但是只有本地的P次啊能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个local-free的队列实现；
+* shared字段可以被任意的P访问，但是只有本地的P次啊能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个lock-free的队列实现；
 
 ## 基本
 
@@ -839,7 +839,7 @@ type poolDequeue struct {
 
 因为当前的G被固定在了P上，在查找元素时不会被其他P执行。
 
-## Pin方法
+## pin方法
 
 > `pin` 的作用就是将当前 G 和 P 绑定在一起，禁止抢占，并返回对应的 poolLocal 以及 P 的 id。
 >
@@ -849,7 +849,7 @@ type poolDequeue struct {
 >
 > 执行完之后，P 不可抢占，且 GC 不会清扫 Pool 里的对象。
 
-在Pool里，还有一个全局Pool数组，allPools和oldPools，用于维护所有声明的Pool对象，同时也使用了victim cache机制让GC更平滑。
+在Pool里，还有一个全局Pool数组，allPools和oldPools，用于保存所有声明的Pool对象，便于GC时遍历所有声明的Pool，使用了victim cache机制让GC更平滑（调用poolCleanup方法）。
 
 当P的数量大于 poolLocal 数组的长度时，就会进入 pinSlow 方法，构建新的 poolLocal 节点。
 
@@ -864,18 +864,18 @@ type poolDequeue struct {
 
 ## GC时
 
-Pool会在init方法中使用`runtime_registerPoolCleanup`注册GC的钩子poolCleanup来进行pool回收处理。
+Pool会在init方法中使用`runtime_registerPoolCleanup`注册GC的钩子`poolCleanup`来进行pool回收处理。
 
-其中一个主要动作是 poolCleanup() 方法，该方法主要就是在GC开始前，遍历oldPools数组，将其中的pool对象的victim置为nil，遍历allPools数组，将local对象赋值给victim，然后将allPools赋值给oldPools，allPools置为nil，当GC开始时候，就会将 victim cache 中所有对象的回收（因为已经被置为null了）。
+其中一个主要动作是 `poolCleanup()` 方法，该方法主要就是在GC开始前，遍历oldPools数组，将其中的pool对象的victim置为nil，遍历allPools数组，将local对象赋值给victim，然后将allPools赋值给oldPools，allPools置为nil，当GC开始时候，就会将 victim cache 中所有对象的回收（因为已经被置为null了）。
 
 因为victim cache的设计，pool中的复用对象会在每两个GC循环中清除；
 
 # 原子操作
 
-* 依赖atomic包，因为没有泛型，目前该包支持int32、int64、uint32、unit64、uintptr、Pointer的原子操作，比如Add、CompareAndSwap、Swap、Load、Store等（Pointer不支持Add），对于有符号的数值来说，Add一个负数相当于减
-* 对于现代多核操作系统来说，由于cache、指令重排、可见性问题，一个核对地址的值的更改，在更新到主内存中前，会先存在多级缓存中，此时，多个核看到该数据可能还没看到更新的数据，还在使用旧数据，而atomic包提供的方法会提供内存屏障的功能，保证赋值数据的完整性和可见性
+* 依赖atomic包，因为没有泛型，目前该包支持int32、int64、uint32、unit64、uintptr、Pointer的原子操作，比如Add、CompareAndSwap、Swap、Load、Store等（Pointer不支持Add），对于有符号的数值来说，Add一个负数相当于减；
+* 对于现代多核操作系统来说，由于cache、指令重排、可见性问题，一个核对地址的值的更改，在更新到主内存中前，会先存在多级缓存中，此时，多个核看到该数据可能还没看到更新的数据，还在使用旧数据，而atomic包提供的方法会提供内存屏障的功能，保证赋值数据的完整性和可见性；
 
-* atomic操作的对象是一个地址，不是变量值
+* atomic操作的对象是一个地址，不是变量值；
 
 用atomic实现的lock-free的队列
 

@@ -346,6 +346,7 @@ chan<- chan int    // 等价于 chan<- (chan int)chan<- <-chan int  // 等价于
 * 给一个已经关闭的channel发送数据，会引起panic；
 
 ```go
+// 因为是无缓冲区的，只有当存在receiver的时候才能send成功，否则就一直阻塞，所以当close的时候，就会panic
 ch := make(chan int)
 go func() { ch <- 1 }() // panic: send on closed channel
 time.Sleep(time.Second)
@@ -553,7 +554,7 @@ func makechan(t *chantype, size int) *hchan {
 
 2. 如果chan没有被close，但是chan满了，则直接返回false，但是由于阻塞参数为true，这部分不会被执行；
 
-3. 上锁，保证线程安全，再次检查chan是否被close，如果被close，再往里发数据会触发 解锁，panic；
+3. **上锁**，保证线程安全，再次检查chan是否被close，如果被close，再往里发数据会触发 解锁，panic；
 
 4. 同步发送 - **优先发送给等待接收的G**
 
@@ -703,7 +704,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
    这里两次empty检查，因为第一次检查，chan可能还没关闭，但是第二次检查时关闭了，由于可能在两次检查之间有待接收的数据达到了，所以需要两次empty检查；
 
-3. 上锁检查buf区大小：上锁，如果chan已经被close，且buf区没有数据，清除ep指针中的数据，解锁，返回selected为true，received为false；
+3. **上锁**检查buf区大小：上锁，如果chan已经被close，且buf区没有数据，清除ep指针中的数据，解锁，返回selected为true，received为false；
 
 4. 同步接收 - **如果无buf，消费发送等待队列中G的数据，如果buf满，先拿buf区的，发送的再加入**
 
@@ -904,6 +905,8 @@ func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
 
    将接收者等待队列中的sudoG对象加入到待清除队列glist中，这里会优先回收接收者，这样即使从close中的chan读取数据，也不会panic，最多读到默认值；
 
+   这样第6步执行的时候，才会先执行接收者，接收后面发送者的数据，否则发送者发送的数据无法被先接收。
+
 4. **其次是释放所有发送者**：
    将发送者等待队列中的sudoG对象加入到待清除队列glist中，这里可能会发生panic，因为往一个close的chan中发送数据会panic；
 
@@ -1029,6 +1032,7 @@ func closechan(c *hchan) {
           wg.Add(1)
   		go func(k int) {
               defer wg.Done()
+              // ch<- 1, ch如果放在这，那就只阻塞goroutine里的逻辑，goroutine还是会创建多个
   			fmt.Println(k) // do something...
   			time.Sleep(time.Second)
               // 防止泄露
@@ -1142,5 +1146,10 @@ https://www.cyhone.com/articles/analysis-of-golang-timer/
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/Kafka时间轮简单实现.png)
 
+总结：
 
+通过DelayQueue（优先级队列实现，队列里的每个元素，都是某一个具体时间的list） + 环形数组（数组的每个元素是个list，索引代表时间格）
 
+DelayQueue会根据环形数组中的每个元素进行排序；
+
+添加任务时，判断任务执行时间，加入环形数组中，对应的环形数组的元素（list），加入DelayQueue中。

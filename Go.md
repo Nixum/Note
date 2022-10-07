@@ -236,18 +236,19 @@ type hmap struct {
 	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半或0.75，非扩容状态下为null
 	nevacuate  uintptr // 扩容迁移的进度，小于nevacuate的buckets表示已迁移完成，同时也用来计算下一个要迁移的桶在oldbuckets中的位置
 
-	extra *mapextra // 用于扩容的指针，存储单个桶装满时溢出的数据，溢出桶和正常桶在内存上是连续的，该字段是为了优化GC扫描而设计的。
+	extra *mapextra // 用于扩容的指针，存储单个桶装满时溢出的数据，溢出桶和正常桶在内存上是连续的
 }
 
 type mapextra struct {
-    // 当map的key和value都不是指针，并且size都小于128字节时（即可以被inline），会把bmap标记为不含指针，避免gc时扫描整个hmap。
-    // 通过overflow实现，bmap.overflow是个指针，指向溢出的bucket，GC时又必定会扫描指针，也就是会扫描所有bmap，
-    // 而当map的key和value都是非指针类型时，可直接标记整个map的颜色，避免扫描每个bmap的overflow指针，
-    // 但溢出的bucket总是存在，与key和value的类型无关，于是就利用overflow来指向溢出的bucket，
-    // 并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），于是整个bmap就完全没指针了，也就不会被GC扫描。
+    // 下面这两个字段是为了优化GC扫描而设计的。
+    // 当map的key和value都不是指针，并且size都小于128字节时（即可以被inline），会把bmap标记为不含指针，避免gc时扫描整个hmap，就是通过overflow实现的。
+    // bmap.overflow是个指针，指向溢出的bucket，由于GC时必定会扫描指针，所以就会扫描所有bmap，
+    // 而当map的key和value都是非指针类型时，可以直接标记整个map的颜色，避免扫描每个bmap的overflow指针，
+    // 但扩容时，溢出的bucket总是存在，与key和value的类型无关
+    // 于是就利用extra.overflow来指向溢出的bucket，并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），那整个bmap就完全没指针了，也就不会被GC扫描。
     // 另一方面，当 GC 在扫描 hmap 时，通过 extra.overflow 这条路径（指针）就可以将 overflow 的 bucket 正常标记成黑色，从而不会被 GC 错误地回收。
-	overflow    *[]*bmap  // 包含hmap.buckets的overflow的buckets
-	oldoverflow *[]*bmap  // 包含扩容时的hmap.oldbuckets的overflow的bucket
+	overflow    *[]*bmap  // 包含hmap.buckets的overflow的buckets，即保存了所有溢出桶，便于GC扫描
+	oldoverflow *[]*bmap  // 包含扩容时的hmap.oldbuckets的overflow的bucket，用于扩容
 	nextOverflow *bmap    // 指向空闲的 overflow bucket 的指针，用于预分配
 }
 
@@ -293,12 +294,12 @@ const (
 
     // 每个桶（如果有溢出，则包含它的overflow的链接桶）在搬迁完成状态下，要么会包含它所有的键值对，要么一个都不包含（但不包括调用evacuate()方法阶段，该方法调用只会在对map发起write时发生，在该阶段其他goroutine是无法查看该map的）。简单的说，桶里的数据要么一起搬走，要么一个都还未搬。
     // 当tophash值小于minTopHash时，表示存的是迁移状态，大于minTopHash时，表示的是计算的值。
-    emptyRest      = 0 // 表示cell为空，并且之后的位置也为空，包括overflow（初始化bucket时，就是该状态）
-    emptyOne       = 1 // 表示当前是空的cell，或者已经被搬迁到新的bucket，后面的位置则不清楚是否可用
+    emptyRest      = 0 // 表示cell为空，并且之后的位置也为空，包括overflow，初始化bucket时，就是该状态
+    emptyOne       = 1 // 表示当前是空的cell，但曾经有值，已经被搬迁到新的bucket
     evacuatedX     = 2 // 键值对已经搬迁完毕，key在新buckets数组的前半部分
     evacuatedY     = 3 // 键值对已经搬迁完毕，key在新buckets数组的后半部分
     evacuatedEmpty = 4 // cell为空，整个bucket已经搬迁完毕
-    minTopHash     = 5 // tophash的最小正常值
+    minTopHash     = 5 // tophash的最小正常值，如果计算出来的tophash小于该值，则加上它避免跟前面几个状态枚举冲突
 
     // flags
     iterator     = 1 // 可能有迭代器在使用buckets
@@ -335,7 +336,7 @@ const (
 
 * key的哈希值的低B位计算获得桶的位置，高8位计算得到tophash的位置，进而找到key的位置。
 
-* 溢出桶也是一个bmap，bmap的overflow会指向下一个溢出桶，所以**溢出桶的结构是链表，但是它们跟正常桶是在一片连续内存上，都在buckets数组里**。
+* 溢出桶也是一个bmap，bmap的overflow会指向下一个溢出桶，所以**溢出桶的结构是链表，但是它们跟正常桶是在一片连续内存上，都在buckets数组里，前2^B个当成正常桶，后2^(B-4)个当作溢出桶**。
 
 * 每个桶存了8个tophash + 8对键值对。
 
@@ -386,6 +387,7 @@ func makemap(t *maptype, hint int, h *hmap) *hmap {
 		B++
     }
     h.B = B
+    // 如果 B == 0时，就会懒加载
     if h.B != 0 {
 		var nextOverflow *bmap
 		h.buckets, nextOverflow = makeBucketArray(t, h.B, nil)
@@ -434,7 +436,7 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 		nextOverflow = (*bmap)(add(buckets, base*uintptr(t.bucketsize)))
         // 计算出申请的最后一块bucket的地址
 		last := (*bmap)(add(buckets, (nbuckets-1)*uintptr(t.bucketsize)))
-        // 将最后一块bucket的overflow指针（指向链表的指针）指向buckets 的首部。 原因呢，是为了将来判断是否还有空的bucket 可以让溢出的bucket空间使用。
+        // 将最后一个bucket桶的位置指向non-nil值，这样在获取溢出桶时，可以通过nextOverflow指针判断自己是否是最后一个溢出桶，nil说明还有桶，non-nil说明是最后一个桶
 		last.setoverflow(t, (*bmap)(buckets))
 	}
 	return buckets, nextOverflow
@@ -511,7 +513,7 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 
    2. 此时key还没插入，且正常位已满，还不需要扩容，此时会调用newoverflow()函数。
 
-      newoverflow()函数使用hmap在extre.overflow中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
+      newoverflow()函数使用hmap在extra.overflow中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
 
       newoverflow()函数会在一开始判断hmap的extra.nextOverflow是否为空，如果为空会先预分配，不为空则直接将其设置为当前要使用的溢出桶，并把原来的nextOverflow设置为空，目的是充分利用已分配的内存，减少分配次数，算是比较巧妙了。
 
@@ -542,7 +544,7 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
 	var ovf *bmap
 	if h.extra != nil && h.extra.nextOverflow != nil {
 		ovf = h.extra.nextOverflow
-        // 如果hmap的extre.nextOverflow桶的没有溢出桶，则进行初始化
+        // 如果hmap的extra.nextOverflow桶的没有溢出桶，则进行初始化
 		if ovf.overflow(t) == nil {
 			h.extra.nextOverflow = (*bmap)(add(unsafe.Pointer(ovf), uintptr(t.bucketsize)))
 		} else {
@@ -604,13 +606,13 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 ### 触发扩容
 
-触发扩容条件时，会执行hashGrow函数，**进行新桶的分配，但还未迁移数据**。
+触发扩容条件时，会执行hashGrow函数，**进行新桶的分配，但还未迁移数据**，真正迁移数据在growWork函数中。
 
 1. 首先会判断是增量扩容还是等量扩容，如果是增量扩容，B + 1，即扩容到原来的两倍，如果是等量扩容，B + 0，容量不变
 
-2. 将当前buckets数组挂在hmap的oldbuckets字段，当前extra里的溢出桶挂在hmap.extra.oldoverflow
+2. 将当前buckets数组挂在hmap的oldbuckets字段，当前extra里的溢出桶挂在`hmap.extra.oldoverflow`
 
-3. 创建新的buckets数组，容量为新的B值，预创建溢出桶（溢出桶的数量看上面创建初始化逻辑），然后将新的buckets数组挂在buckets字段，新的溢出桶挂在hmap.mapextra.nextOverflow字段上
+3. 创建新的buckets数组，容量为新的B值，预创建溢出桶（溢出桶的数量看上面创建初始化逻辑），然后将新的buckets数组挂在buckets字段，新的溢出桶挂在`hmap.mapextra.nextOverflow`字段上
 
 触发扩容条件，对新桶进行内存分配，只是创建了新的桶，旧数据还在旧桶上，之后还需要完成数据迁移。
 
@@ -716,6 +718,8 @@ func growWork(t *maptype, h *hmap, bucket uintptr) {
 [Go map原理剖析](https://segmentfault.com/a/1190000020616487)
 
 [年度最佳【golangmap】详解](https://segmentfault.com/a/1190000023879178)
+
+[逐行拆解 Go map 源码](https://juejin.cn/post/7079964047893856293)
 
 [深度解密Go语言之channel](https://zhuanlan.zhihu.com/p/74613114)
 
