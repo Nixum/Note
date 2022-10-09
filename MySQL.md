@@ -1058,7 +1058,7 @@ MHA还可以修复多个slave之间的日志差异，使得所有salve的数据�
 
 * 自增的两个重要参数`auto_increment_offset`和`auto_increment_increment`都是系统参数，默认值为1
 
-* 设置 ```innodb_autoinc_lock_mode```，=1时，普通insert语句会执行完之后释放，批量insert时会等到所有批量insert的SQL都结束的时候才释放锁，原因是如果bin log不是row，备库在复制时产生的行的id可能于主库的不一致问题；=2时，自增id锁每次获取完就会释放。
+* 设置 ```innodb_autoinc_lock_mode```，=1时，普通insert语句会执行完之后释放，批量insert时会等到所有批量insert的SQL都结束的时候才释放锁，原因是如果bin log不是row，备库在复制时产生的行的id可能跟主库的不一致问题；=2时，自增id锁每次获取完就会释放。
 
   如果选择=1，在批量insert时性能就会很差，MySQL的优化是让insert的语句不使用连续的自增id，不过这样就会让自增id不连续了。所以一般的操作是选择=2，bin log=row
 
