@@ -1092,7 +1092,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-### Operator
+### Operator 与 控制器原理
 
 本质是一个控制器，控制自定义的CRD的流程控制，执行自定义CRD的行为。
 
@@ -1128,23 +1128,69 @@ spec:
 
 其中的资源类型、组、版本号要一一对应
 
-上面这些操作只是告诉k8s怎么认识yaml文件，接着就需要编写代码，让k8s能够通过yaml配置生成API对象，以及如何使用这些配置的字段属性了，接着，还需要编写操作该API对象的控制器
+上面这些操作只是告诉k8s怎么认识yaml文件，接着就需要编写代码，让k8s能够通过yaml配置生成API对象，以及如何使用这些配置的字段属性了，接着，还需要编写操作该API对象的控制器。
 
-控制器的原理：
+#### Client-Go
+
+编写一个Operator时，需要用到Client-Go，实现与API-Server的交互。Client-Go提供了4种交互对象：
+
+* RESTClient：最基础的客户端，对HTTP请求做封装，支持Json和Protobuf格式，是对DiscoveryClient、ClientSet、DynamicClient的封装；
+
+* DiscoveryClient：发现客户端，负责发现API-Server支持的支援组、版本和资源信息，等同于`kubectl api-resources`；由于GVR数据很少变动，所以可以将GVR数据缓存在本地，减少Client与API-Server的交互。使用CachedDiscoveryClient和MemCacheClient请求时，会先从缓存里取，取不到才请求API-Server。
+
+  在使用kubectl命令时，也会进行缓存，以json文件的形式缓存存在 `~/.kube/cache` 中。
+
+* ClientSet：负责操作Kubernetes内置的资源对象，如Pod、Service等；
+
+* DynamicClient：动态客户端，可以对任意的Kubernetes资源对象进行通用操作，包括CRD；本质是通过一个嵌套的`map[string]interface{}`对象存储API-Server的返回值，再使用反射机制进行数据绑定，虽然灵活，但无法获取强数据类型的检查和验证
+
+本质上都是发送HTTP请求给API-Server，只是RESTClient比较原始，其他Client都对具体资源做了结构体封装。
+
+#### 控制器的原理
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/控制器工作流程.png)
 
-控制器通过APIServer获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应
+**Informer**：
 
-Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库。这个本地缓存在 Kubernetes 中一般被称为 Store，索引一般被称为 Index。
+控制器通过Watch机制，与APIServer交互，获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应；
 
-Informer会使用Index库把增量里的API对象保存到本地缓存，并创建索引，Handler可以是对API对象进行增删改
+Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库，查询时，优先从本地缓存里查找数据，而创建、更新、删除操作，则根据事件通知机制写入队列DeltaFIFO中，同时，当对应的事件处理后，更新本地缓存，使得本地缓存与etcd里的数据一致；
 
-Informer 使用了 Reflector 包，它是一个可以通过 ListAndWatch 机制获取并监视 API 对象变化的客户端封装。
+这个本地缓存在 Kubernetes 中一般被称为 LocalStore，索引一般被称为 Indexer；一般是一个资源一个Informer；
 
-Reflector 和 Informer 之间，用到了一个“增量先进先出队列”进行协同。而 Informer 与你要编写的控制循环之间，则使用了一个工作队列来进行协同
+* **Reflector**：通过 **List-Watch** 机制获取并监视 API 对象变化的客户端封装，保证本地缓存数据的准确性、顺序性和一致性。
 
-实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行
+  List：获取资源的全量列表数据，并同步到本地缓存中；List基于HTTP短链接实现；
+
+  Watch：负责监听变化的数据，当Watch的资源发生变化时，并将资源对象的变化事件存放到本地队列DeltaFIFO中，触发对应的变更事件进行处理，同时更新本地缓存，使得本地缓存与etcd里的数据一致。Watch基于HTTP长链接。
+
+  定时同步：定时器触发同步机制，定时更新缓存数据，定时同步的周期时间可配。
+
+  数据更新的依据来源于 ResourceVersion，当资源发生变化时，ResourceVersion就会以递增的形式更新，保证事件的顺序性，通过比较这个值，来判断资源是否有变化。
+
+* **DeltaFIFO**：增量队列，记录资源变化，Relector相当于队列的生产者；
+
+  Delta是资源对象存储，保存存储对象的消费类型，作为队列里的消息体，有两个属性，Type表示事件类型，比如`Added、Updated、Deleted、Replaced、Sync`，Object表示资源对象，如Pod、Service；
+
+  FIFO负责接收Reflector传递过来的事件，并将其按顺序存储，然后等待事件的处理函数进行处理，如果出现多个相同事件，则只会被处理一次；
+
+* **Indexer**：用来存储资源对象，并自带索引功能的本地存储LocalStore，可以理解为里面有很多map组成的倒排索引和对应的索引处理器；
+
+  IndexFunc：索引器函数，用于计算资源对象的索引列表；
+
+  Index：存储数据，比如：要查找某个命名空间下的Pod，对应的Index类型可以是`map[{namespace}]{sets.pod}`；
+
+  Indexers：存储索引器，key为索引器名称，value为 IndexFunc， 比如`map["namespace"]{IndexFunc}`
+
+  Indices：存储缓存器，key为索引器名称，value为缓存的数据，比如：`map["namespace"]map[{namespace}]{sets.pod}`
+
+  Reflector 从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Index库把增量里的API对象保存到本地缓存，并创建索引；Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
+
+而 Informer 与我们要编写的控制循环之间，则使用了一个工作队列来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
+
+**SharedInformer**
+
+为了解决多个控制器操作同一资源的问题，导致对同一资源的重复操作，比如重复缓存。使用SharedInformer后，不管有多少个控制器同时读取事件，都只会调用一个Watch API来Watch上游的API-Server，降低Api-Server的负载，比如 Kube-Controller-Manager。
 
 ## Service
 
@@ -1562,6 +1608,12 @@ k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在e
 一个资源可以有多个版本，版本和资源的信息会存储在etcd中，但etcd只会存储资源的一个指定版本，当客户端传入的yaml文件中指定的资源版本和客户端向API-Server请求的资源版本可能并不是etcd中存储的版本时，会进行版本转换。API-Server会维护一个internal版本，当需要版本转换时，任意版本都会先转换为internal版本，再由internal版本转换为指定的目标版本，所以只要保证每个版本都能转换成internal版本，即可支持任意版本间的转换了，对应的CRD代码也要支持新老版本的切换。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/API对象树形结构.png)
+
+G：group、V：version、R：resource、K：kind
+
+分为有组名，比如`/apis/app/v1/deployment` 和 无组名，比如`/api/v1/pods`，无组名也被称为核心资源组，CoreGroup。
+
+接口调用时，只需要知道GVR即可，通过GVR操作资源对象。通过GVK信息获取要读取的资源对象的GVR，进而构建RESTful API请求获取对应的资源，通过GVK和GVR的映射叫做RESTMapper，其作用是在ListerWatcher时，根据Schema定义的类型GVK解析出GVR，向API-Server发起HTTP请求获取资源，然后Watch。
 
 ```yaml
 apiVersion: batch/v2alpha1
