@@ -793,7 +793,7 @@ type poolDequeue struct {
 * 获取重用对象时，先从local中获取，获取不到再从victim中获取；
 * poolLocalInternal用于CPU缓存对齐，避免false sharing；
 * private字段代表一个可复用对象，且只能由相应的一个P存取，因为一个P同时只能执行一个goroutine，所以不会有并发问题；
-* shared字段可以被任意的P访问，但是只有本地的P次啊能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个lock-free的队列实现；
+* shared字段可以被任意的P访问，但是只有本地的P能pushHead/popHead，其他P可以popTail，相当于只有一个本地P作为生产者，多个P作为消费者，它由一个lock-free的队列实现；
 
 ## 基本
 
@@ -807,7 +807,7 @@ type poolDequeue struct {
 
   1.13后，改成了lock-free的队列实现，避免锁对性能的影响，且在GC时，使用victim作为次级缓存，GC时将对象放入其中，下次GC来临之前，如果有 Get 调用则会从victim中取，直到下一次GC来临时回收，拉长实际回收时间，使得单位时间内GC的开销减少；
 
-* 包含了三个方法：New、Get、Put；Get方法调用时，会从池中移走该元素；
+* 包含了三个方法：New、Get、Put；**Get方法调用时，会从池中移走该元素**；
 
 * 当Pool里没有元素可用时，Get方法会返回nil；可以向Pool中Put一个nil的值，Pool会将其忽略；
 
@@ -830,11 +830,11 @@ type poolDequeue struct {
 ## Get方法
 
 1. 如果是第一次访问，创建P个poolLocal，返回New的新对象；
-2. 如果非第一次访问，调用`p.pin()`函数，将当前 G 固定在P上，防止被抢占，并获取pid，再根据pid号找到当前P对应的poolLocal，优先从local的private字段取出一个元素，将private置为null；
+2. 如果非第一次访问，调用`p.pin()`函数，**将当前 G 固定在P上，防止被抢占**，并获取pid，再根据pid号找到当前P对应的poolLocal，优先从local的private字段取出一个元素，将private置为null；
 3. 如果从private取出的元素为null，则从当前的local.shared的head中取出一个双端环形队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个双端环形队列继续获取，直到获取到或者遍历完双向链表；
 4. 如果还没有的话，调用getSlow函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个双端环形队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到（如果当前节点为null，则删除），沿着next指针到下一个双端环形队列继续获取，如果还没有，直到获取到或者遍历完双向链表；如果还没有，就到别的P上继续获取；
 5. 如果所有P的poolLocal.shared都没有，则对victim中以在同样的方式，先从当前P的poolLocal的private里找，找不到再在shared里找，获取一遍；
-6. Pool相关操作执行完，调用`runtime_procUnpin()`解除非抢占；
+6. Pool相关操作**执行完，调用`runtime_procUnpin()`解除非抢占**；
 7. 如果还取不到，则调用New函数生成一个，然后返回；
 
 因为当前的G被固定在了P上，在查找元素时不会被其他P执行。
@@ -997,7 +997,7 @@ type Weighted struct {
 ## Release方法
 
 1. 加锁，当前已使用资源数cur - 入参要释放的资源数，唤醒等待队列中的元素，解锁
-2. 唤醒等待队列的元素时，会遍历waiters队列，按照先入先出的方式唤醒调用者，前提是释放的资源数要够队首的元素资源的要求，比如释放100个资源，但是队首元素要求101个资源，那队列中的所有等待者都将继续等待，直到队首元素出队，这样做是为了避免饥饿
+2. 唤醒等待队列的元素时，会遍历waiters队列，按照先入先出的方式唤醒调用者，前提是释放的资源数要够队首的元素资源的要求，比如只释放了100个资源，但是队首元素要求101个资源，那队列中的所有等待者都将继续等待，直到队首元素出队，这样做是为了避免饥饿
 
 # SingleFlight
 

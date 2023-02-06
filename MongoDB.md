@@ -378,7 +378,10 @@ checkpoint 相当于一个日志，记录上次checkpoint后相关数据文件�
 #### 作用
 
 * 发生写操作时，只是将数据写入内存和journal日志，然后再通过check point机制将内存里面发生修改的数据写到数据文件进行持久化保存，确保数据一致性，同时也通过延迟持久化的方式，提升磁盘效率；
-* 实现数据库在某个时刻意外发生故障，再次启动时，缩短数据库的恢复时间；
+
+  也就是说，checkpoint开始时，在当前时间点创建快照（同时也有对应的checkpoint文件，但是其读取速度是比数据文件快的），写操作时，先写journal buffer（100ms或buffer到达100M后写入journal日志到磁盘）同时更新内存里的checkpoint数据，等到下一次执行checkpoint前，将checkpoint数据持久化到磁盘，变成数据文件。
+
+* 实现数据库在某个时刻意外发生故障，再次启动时，直接读取checkpoint文件（会比读数据文件快），配合journal日志恢复数据，缩短数据库的恢复时间；
 
 有点像MySQL中的change buffer + 持久化，优化写操作的速度和数据持久化的保证。
 
@@ -427,7 +430,7 @@ checkpoint分成两类，一类是已经持久化到磁盘的，另一类是处�
 * MVCC：以本次trancsaction_id + 本次修改后的value组成一个结点，每次修改都会追加到链表的头部，每次读取时根据trancsaction_id和本次事务的snapshot来找到对应的历史版本，该链表挂在叶子结点的WT_UPDATE字段中；
 * snapshot：拉取当前事务之前的数据快照，确定当前事务哪些数据可见，哪些不可见，确定事务状态；
 * operation_array：本次事务中已执行的操作列表，用于事务回滚，类似MySQL的undo log；
-* redo log，即journal日志：记录当前操作，一个mongoDB实例中的所有DB共享journal文件；
+* journal日志，相当于redo log，即：记录当前操作，一个mongoDB实例中的所有DB共享journal文件；
 * trancsaction_id：全局唯一事务id，通过cas自增生成；
 * 全局事务管理器：管理系统所有事务，用数组保存所有历史事务对象transaction_array，用于snapshot的创建，扫描transaction_array时使用cas保证并发安全；
 * namespace文件：默认大小为16M，主要用于保存集合、索引的属性、命令信息等字段；
@@ -554,7 +557,7 @@ mongo是分布式数据库，通过部署多复制集来实现，单个MongoDB s
 
   mongo的一次写操作，包括 1.将文档数据写进集合； 2.更新集合的索引信息； 3.写入oplog日志，（此时只是写入内存），这三个步骤是原子性的，要么成功要么失败。一次写操作可以是批量的也可以是单条，一次写操作对应一条journal日志。
   
-* **开启jourbal和writeConcern后的数据写入顺序**：
+* **开启journal和writeConcern后的数据写入顺序**：
 
   1. 写操作进来，先将写操作写入journal缓存，将写操作产生的数据写入数据缓存，将journal内存里的写操作日志同步到oplog里，异步响应给客户端；
   2. 后台线程检测到日志变化，将oplog同步给从节点；另外，后台每100ms会将journal缓存里的日志刷盘，每60s将数据缓存里的数据刷盘
