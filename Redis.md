@@ -50,7 +50,7 @@ Redis所有类型有一个顶层的数据结构叫RedisObject，这个RedisObjec
 typedef struct redisObject {
     // 类型，如String、List
     unsigned type:4;
-    // 编码方式：SDS、压缩列表
+    // 编码方式：如SDS、压缩列表、跳表等
     unsigned encoding:4;
     // LRU - 24位, 记录最后一次访问时间（相对于lru_clock）; 或者 LFU（最少使用的数据：8位频率，16位访问时间）
     unsigned lru:LRU_BITS; // LRU_BITS: 24
@@ -311,9 +311,9 @@ Redis 6.0之后才引入多线程的网络IO模型（多Reactor模型，但不�
 
 对于LRU算法，如果一些元素被频繁使用，会导致频繁的移动，带来了额外的开销。
 
-Redis的LRU算法做了简化，其只会在RedisObject中记录每个数据最近以此访问的时间戳，当出现数据淘汰时，第一次会*随机*选出N个数据，作为一个候选集合，比较N个数据的lru字段，把lru字段最小的元素淘汰。
+Redis的LRU算法做了简化，其只会在RedisObject中记录每个数据最近以此访问的时间戳，当出现数据淘汰时，第一次会**随机**选出N个数据，作为一个候选集合，比较N个数据的lru字段，把lru字段最小的元素淘汰。
 
-再次淘汰时，Redis会挑选*那些*LRU的值小于候选集合中最小LRU值的数据，进入第一次淘汰时创建的候选集合，可能会把里面最大的换出去或者淘汰里面最小的。准备候选集和淘汰数据是两个解耦操作。
+再次淘汰时，Redis会挑选那些LRU的值小于候选集合中最小LRU值的数据，进入第一次淘汰时创建的候选集合，可能会把里面最大的换出去或者淘汰里面最小的。准备候选集和淘汰数据是两个解耦操作。
 
 N的值由`maxmemory-samples`决定。
 

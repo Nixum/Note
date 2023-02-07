@@ -74,6 +74,17 @@ tags: ["Kubernetes", "Istio"]
 5. Scheduler监听到API-Server中有新的Pod对象被创建，就会查看Pod是否被调度，如果没有，Scheduler就会给它分配一个最优节点，并更新Pod对象的spec.nodeName属性，随后该Pod对象被同步回API-Server里，并保存在etcd中；
 6. 最后，节点的kubelet会一直监听API-Server的Pod资源变化，当发现有新的Pod对象分配到自己所在的节点时，kubelet就会通过gRPC通信，通过CRI向容器运行时创建容器，运行起来。
 
+## API-Server
+
+api-server在收到请求后，会进行一系列的执行链路。
+
+1. 认证：校验发起请求的用户身份是否合法，支持多种方式如x509客户端证书认证、静态token认证、webhook认证
+2. 限速：默认读 400/s，写 200/s，1.19版本以前不支持根据请求类型进行分类、按优先级限速，1.19版本以后支持将请求按重要程度分类限速，支持多租户，可有效保障Leader选举之类的高优先级请求得到及时响应，防止一个异常client导致整个集群被限速。
+3. 审计：记录用户对资源的详细操作行为
+4. 授权：检查用户是否有权限对其访问的资源进行相关操作，支持RBAC、ABAC、webhook，1.12版本后默认授权机制是RBAC
+5. 准入控制：提供在访问资源前拦截请求的静态和动态扩展能力，如镜像拉取策略。
+6. 与etcd交互
+
 ## 调度器Scheduler
 
 主要职责就是为新创建的Pod寻找合适的节点，默认调度器会先调用一组叫Predicate的调度算法检查每个Node，再调用一组叫Priority的调度算法为上一步结果里的每个Node打分，将新创建的Pod调度到得分最高的Node上。
@@ -172,7 +183,7 @@ PriorityClass里的value值越高，优先级越大，优先级是一个32bit的
 
 #### 抢占过程
 
-当一个高优先级的Pod调度失败时，调度器会试图从当前集群里寻找一个节点，当该节点上的一个或多个低优先级的Pod被删除后，待调度的高优先级的Pod可用被调度到该节点上，但是抢占过程不是立即发生，而只是在待调度的高优先级的Pod上先设置spec.nominatedNodeName=Node名字，等到下一个调度周期再决定是否针对要运行在该节点上，之所以这么做是因为被删除的Pod有默认的30秒优雅退出时间，在这个过程中，可能有新的更加被适合给高优先级调度的节点加入。
+当一个高优先级的Pod调度失败时，调度器会试图从当前集群里寻找一个节点，当该节点上的一个或多个低优先级的Pod被删除后，待调度的高优先级的Pod可用被调度到该节点上，但是抢占过程不是立即发生，而只是在待调度的高优先级的Pod上先设置`spec.nominatedNodeName=Node名字`，等到下一个调度周期再决定是否针对要运行在该节点上，之所以这么做是因为被删除的Pod有默认的30秒优雅退出时间，在这个过程中，可能有新的更加被适合给高优先级调度的节点加入。
 
 #### 抢占原理
 
@@ -213,7 +224,7 @@ CRI是对容器操作相关的接口，而不是对于Pod，分为两组类型�
 这里以docker作为容器引擎为例：
 
 1. kubectl执行exec命令后，首先发送Get请求到API-Server，获取pod的相关信息；
-2. 获取到信息后，kubectl再发送Post请求，API-Server返回101 upgrade响应给kubectl，表示切换到 SPDY 协议。SPDY协议允许在单个TCP连接上复用独立的 stdin / stdout / stderr / spdy-err 流。
+2. 获取到信息后，kubectl再发送Post请求，API-Server返回`101 upgrade`响应给kubectl，表示切换到 SPDY 协议。SPDY协议允许在单个TCP连接上复用独立的 stdin / stdout / stderr / spdy-err 流。
 3. API-Server找到对应的Pod和容器，将Post请求转发到节点的Kubelet，再转发到向对应容器的Docker shim请求一个流式端点URL，并将exec请求转发到Docker exec API。Kubelet再将这个URL以 redirect 的方式返回给API-Server，请求就会重定向到对应的Streaming Server上发起exec请求，并维护长连接，之后就是在这个长连接的基础上执行命令和获取结果了。
 
 除了exec命令意外，其他的如 attach、port-forward、logs 等命令也是类似的模式。
@@ -252,15 +263,6 @@ Kubernetes 1.13版本后，节点处于不同的状态时将被打上不同的�
 ## etcd
 
 etcd作为Kubernetes的元数据存储，kube-apiserver是唯一直接跟etcd交互的组件，kube-apiserver对外提供的监听机制底层实现就是etcd的watch。
-
-api-server在收到请求后，会进行一系列的执行链路。
-
-1. 认证：校验发起请求的用户身份是否合法，支持多种方式如x509客户端证书认证、静态token认证、webhook认证
-2. 限速：默认读 400/s，写 200/s，1.19版本以前不支持根据请求类型进行分类、按优先级限速，1.19版本以后支持将请求按重要程度分类限速，支持多租户，可有效保障Leader选举之类的高优先级请求得到及时响应，防止一个异常client导致整个集群被限速。
-3. 审计：记录用户对资源的详细操作行为
-4. 授权：检查用户是否有权限对其访问的资源进行相关操作，支持RBAC、ABAC、webhook，1.12版本后默认授权机制是RBAC
-5. 准入控制：提供在访问资源前拦截请求的静态和动态扩展能力，如镜像拉取策略。
-6. 与etcd交互
 
 ### 资源存储格式
 
@@ -305,7 +307,7 @@ Pod是最小的API对象。Pod中的容器会作为一个整体被Master打包�
 
 由于不同容器间需要共同协作，如war包和tomcat，就需要把它们包装成一个pod，概念类似于进程与进程组，pod并不是真实存在的，只是逻辑划分。
 
-同一个pod里的所有容器，共享同一个Network Namespace，也可以共享同一个Volume。
+**同一个pod里的所有容器，共享同一个Network Namespace，也可以共享同一个Volume**。
 
 这种把多个容器组合打包在一起管理的模式也称为容器设计模式。
 
@@ -317,7 +319,7 @@ Pod是最小的API对象。Pod中的容器会作为一个整体被Master打包�
 
 由于不同容器间可能存在依赖关系（如启动顺序的依赖），因此k8s会起一个中间容器Infra容器，来关联其他容器，infra容器一定是最先起的，其他容器通过Join Network Namespace的方式与Infa容器进行关联。
 
-一个 Pod 只有一个 IP 地址，由Pod内容器共享，Pod 的生命周期只跟 Infra 容器一致，Infra管理共享资源。
+**一个 Pod 只有一个 IP 地址，由Pod内容器共享，Pod 的生命周期只跟 Infra 容器一致，Infra管理共享资源**。
 
 kubelet会为每个节点上创建一个基本的cbr0网桥，并为每一个Pod创建veth虚拟网络设备，绑定一个IP地址，同一个Pod中的所有容器会通过这个网络设备共享网络，从而能通过localhost相互访问彼此暴露的端口和服务。
 
@@ -449,7 +451,7 @@ spec:
 
 serviceAccountToken是一种特殊的Secret，一般用于访问Kubernetes API Server时提供token作为验证的凭证。Kubernets提供了一个默认的default Service Account，任何运行在Kubernets中的Pod都可以使用，无需显式声明挂载了它。
 
-默认挂载路径：/var/run/secrets/kubernetes.io/serviceaccount，里面包含了ca.crt，namespace，token三个文件，用于授权当前Pod访问API Server。
+默认挂载路径：`/var/run/secrets/kubernetes.io/serviceaccount`，里面包含了`ca.crt，namespace，token`三个文件，用于授权当前Pod访问API Server。
 
 如果要让Pod拥有不同访问API Server的权限，就需要不同的service account，也就需要不同的token了。
 
@@ -481,7 +483,7 @@ spec:
       path: /data
 ```
 
-声明了两个容器，都挂载了shared-data这个Volume，且该Volume是hostPath，对应宿主机上的/data目录，所以么，nginx-container 可 以 从 它 的/usr/share/ nginx/html 目 录 中， 读取到debian-container生 成 的 index.html文件。
+声明了两个容器，都挂载了shared-data这个Volume，且该Volume是hostPath，对应宿主机上的/data目录，所以么，nginx-container 可 以 从 它 的`/usr/share/ nginx/html` 目 录 中， 读取到debian-container生 成 的 index.html文件。
 
 ### Pod的资源分配 QoS
 
@@ -532,7 +534,7 @@ Matser的kube-scheduler会根据requests的值进行计算，根据limits设置c
 >
 > 其次，是属于Burstable类别、并且发生“饥饿”的资源使用量已经超出了requests的Pod。 
 >
-> 最后，才是Guaranteed类别。并且，Kubernetes会保证只有当Guaranteed类别的Pod的资源使用量超过了其limits的限制，或者宿主机本身正处于Memory Pressure状态时，Guaranteed的Pod才可能被选中进行Eviction操 作。
+> 最后，才是Guaranteed类别。并且，Kubernetes会保证只有当Guaranteed类别的Pod的资源使用量超过了其limits的限制，或者宿主机本身正处于Memory Pressure状态时，Guaranteed的Pod才可能被选中进行Eviction操作。
 
 ### Pod中的健康检查
 
@@ -561,7 +563,7 @@ livenessProbe:
 
 API对象中`spec.restartPolicy`字段用来描述Pod的恢复策略，默认是always，即容器不在运行状态则重启，OnFailure是只有容器异常时才自动重启，Never是从来不重启容器
 
-Pod的恢复过程，永远发生在当前节点，即跟着API对象定义的spec.node的对应的节点，如果要发生在其他节点，则需要deployment的帮助。
+Pod的恢复过程，永远发生在当前节点，即跟着API对象定义的`spec.node`的对应的节点，如果要发生在其他节点，则需要deployment的帮助。
 
 当Pod的restartPolicy是always时，Pod就会保持Running状态，无论里面挂掉多少个，因为Pod总会重启这些容器；当restartPolicy是never时，Pod里的所有容器都挂了，才会变成Failed，只有一个容器挂了也是Running。
 

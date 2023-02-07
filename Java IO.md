@@ -345,7 +345,7 @@ reactor其实就是针对传统阻塞IO模型的缺点，将上述操作拆分�
 ![单Reactor多线程模型](https://github.com/Nixum/Java-Note/raw/master/picture/单Reactor多线程模型.jpg)
 
 * 在单Reactor单线程模型的基础上，因为Handler的处理流程相对固定，就将比较耗时的业务处理包装成任务交由线程池处理，加快Handler的处理速度
-* 实际上如果只是在Handler处将业务逻辑交给线程池去做，在同步等待结果，只是一种伪异步，本质上Handler还是要等任务执行完才能执行send操作。优化的方法是先将Handler存起来，把业务处理提交给线程池后，就结束handler的执行了，这样就能把主线程释放出来，处理其他事件。当线程池里的任务执行完，只需将结果、handlerId、事件交由Reactor，Reactor根据事件和HandlerId找到对应的Handler去响应结果就可以了。
+* 实际上如果只是在Handler处将业务逻辑交给线程池去做，再同步等待结果，只是一种伪异步，本质上Handler还是要等任务执行完才能执行send操作。优化的方法是先将Handler存起来，把业务处理提交给线程池后，就结束handler的执行了，这样就能把主线程释放出来，处理其他事件。当线程池里的任务执行完，只需将结果、handlerId、事件交由Reactor，Reactor根据事件和HandlerId找到对应的Handler去响应结果就可以了。
 * 由于业务处理使用了多线程，需要注意共享数据的问题，处理起来会比较复杂，线程安全只存在于Reactor所在的线程
 * Reactor需要处理的事件变多，高并发下容易出现性能瓶颈
 
