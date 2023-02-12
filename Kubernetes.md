@@ -67,6 +67,8 @@ tags: ["Kubernetes", "Istio"]
 
 ### 核心组件的协作流程
 
+![](https://github.com/Nixum/Java-Note/raw/master/picture/Kubenetes组件协作流程.png)
+
 1. 以创建Deployment为例，用户或控制器通过kubectl、RestAPI或者其他客户端向API-Server发起创建deployment的请求；
 2. API-Server收到创建请求后，经过认证、鉴权、准入三个环节后，将deployment对象保存到etcd中，触发watch机制，通知API-Server，API-Server再调用ControllerManager对应的deployment控制器进行操作；
 3. ControllerManager中的DeploymentController会监听API-Server中所有Deployment的事件变更，当收到该deployment对象的创建事件后，就会检查当前namespace中所有的ReplicaSet对象，判断其属性是否存在该deployment对象，如果没有，DeploymentController会向API-Server发起创建ReplicaSet对象的请求，经过API-Server的检查后，将该ReplicaSet对象保存在etcd中，触发watch机制通知API-Server调用控制器...；
@@ -1164,21 +1166,27 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
 这个本地缓存在 Kubernetes 中一般被称为 LocalStore，索引一般被称为 Indexer；一般是一个资源一个Informer；
 
-* **Reflector**：通过 **List-Watch** 机制获取并监视 API 对象变化（请求API-Server）的客户端封装，保证本地缓存数据的准确性、顺序性和一致性。
+* **Reflector**：通过 **List-Watch** 机制监听并获取API-Server中资源的create、update、delete事件，并针对事件类型调用对应的处理函数，是k8s统一的异步消息处理机制，保证了消息的实时性、可靠性，保证本地缓存数据的准确性、顺序性和一致性。
 
-  List：获取资源的全量列表数据，并同步到本地缓存中；List基于HTTP短链接实现；
+  * List：获取资源的全量列表数据，并同步到本地缓存中；List基于HTTP短链接实现；
 
-  Watch：负责监听变化的数据，当Watch的资源发生变化时，并将资源对象的变化事件存放到本地队列DeltaFIFO中，触发对应的变更事件进行处理，同时更新本地缓存，使得本地缓存与etcd里的数据一致。Watch基于HTTP长链接。
+  * Watch：负责监听变化的数据，当Watch的资源发生变化时，并将资源对象的变化事件存放到本地队列DeltaFIFO中，触发对应的变更事件进行处理，同时更新本地缓存，使得本地缓存与etcd里的数据一致。
 
-  定时同步：定时器触发同步机制，定时更新缓存数据，定时同步的周期时间可配。
+    Watch基于HTTP长链接，使用分块传输编码`响应头加上Transfer-Encoding=chunked基于HTTP/1.1，因为在短连接里，客户端需要通过Content-Length或连接是否关闭来判断是否接收完成，可以关掉，使用chunked后，服务端无需使用来告诉客户端响应体的结束位置，结束位置通过/n, /r或0来表示`（1.5以后使用HTTP/2），将数据分解成一系列数据块，一个或多个地发送。
+
+  * 定时同步：定时器触发同步机制，定时更新缓存数据，定时同步的周期时间可配。
 
   数据更新的依据来源于 ResourceVersion，当资源发生变化时，ResourceVersion就会以递增的形式更新，保证事件的顺序性，通过比较这个值，来判断资源是否有变化。
+
+  List-Watch必须一起配合才能保证消息的可靠性，如果仅依靠Watch，当连接断开后，消息就有可能丢失，此时通过List来获取所有数据，还有判断ResourceVersion的值，纠正数据不一致，保证事件不丢失。
 
 * **DeltaFIFO**：增量队列，记录资源变化，Relector相当于队列的生产者；
 
   Delta是资源对象存储，保存存储对象的消费类型，作为队列里的消息体，有两个属性，Type表示事件类型，比如`Added、Updated、Deleted、Replaced、Sync`，Object表示资源对象，如Pod、Service；
 
   FIFO负责接收Reflector传递过来的事件，并将其按顺序存储，然后等待事件的处理函数进行处理，如果出现多个相同事件，则只会被处理一次；
+
+  DeltaFIFO只会存储Watch返回的各种事件，而LocalStorae只会被Lister的List/gGet方法访问。
 
 * **Indexer**：用来存储资源对象，并自带索引功能的本地存储LocalStore，可以理解为里面有很多map组成的倒排索引和对应的索引处理器；
 
@@ -1190,15 +1198,20 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
   Indices：存储缓存器，key为索引器名称，value为缓存的数据，比如：`map["namespace"]map[{namespace}]{sets.pod}`
 
-  Reflector 从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Index库把增量里的API对象保存到本地缓存，并创建索引；Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
+**整体流程**
 
-而 Informer 与我们要编写的控制循环之间，则使用了一个工作队列来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
+1. Reflector通过List罗列资源，通过Watch监听资源的变更事件，将结果放到DeltaFIFO队列中；
+2. 然后从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Index库把增量里的API对象保存到本地缓存，并创建索引；
+3. Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
+4. Informer 与我们要编写的控制循环ControlLoop之间，则使用了一个工作队列WorkQ来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
 
 **SharedInformer**
 
 在K8s中，每一个资源都有一个Informer，Informer使用Reflector来监听资源，如果统一资源的Informer实例化太多次，就会有很多重复的步骤。为了解决多个控制器操作同一资源的问题，导致对同一资源的重复操作，比如重复缓存。使用SharedInformer后，不管有多少个控制器同时读取事件，都只会调用一个Watch API来Watch上游的API-Server，降低Api-Server的负载，比如 Kube-Controller-Manager。
 
 Informer是一种机制，SharedInformer是其中一种实现。
+
+通常自定义Controller要求只有一个实例在运行，因为当出现多个实例的时候，会出现并发问题，重复消费事件，如果要实现高可用，需要主从部署，只有主服务处于工作状态，从服务处于暂停状态，当主服务出现问题时，实现主从切换。Client-Go本身提供了leaderelection机制来实现，原理是通过K8s的 `endpoints或configmap或lease`实现一个分布式锁（通过resourceVersion + 乐观锁实现，判断资源的id和自己所持有的id是否一致），只有抢到锁的服务才能成为leader，并定期更新，而抢不到的节点会一直等待。当 leader 因为某些异常原因挂掉后，租约到期，其他节点会尝试抢锁，成为新的 leader，成为leader时，对应pod的annotations会更新`control-plane.alpha.kubernetes.io/leader`字段。
 
 ## Service
 
@@ -1613,7 +1626,9 @@ Pod就是一种API对象，每一个API对象都有一个Metadata字段，表示
 
 k8s根据我们提交的yaml文件创建出一个API对象，一个API对象在etcd里的完整资源路径是由Group（API 组）、Version（API 版本）和 Resource（API 资源类型）三个部分组成的。
 
-一个资源可以有多个版本，版本和资源的信息会存储在etcd中，但etcd只会存储资源的一个指定版本，当客户端传入的yaml文件中指定的资源版本和客户端向API-Server请求的资源版本可能并不是etcd中存储的版本时，会进行版本转换。API-Server会维护一个internal版本，当需要版本转换时，任意版本都会先转换为internal版本，再由internal版本转换为指定的目标版本，所以只要保证每个版本都能转换成internal版本，即可支持任意版本间的转换了，对应的CRD代码也要支持新老版本的切换。
+一个资源可以有多个版本，版本和资源的信息会存储在etcd中，但**etcd只会存储资源的一个指定版本**，当客户端传入的yaml文件中指定的资源版本和客户端向API-Server请求的资源版本可能并不是etcd中存储的版本时，会进行版本转换（通过在资源中定义 `served：控制某个版本是否可读写；storage：判断是否有多个版本`）。
+
+API-Server会维护一个internal版本，当需要版本转换时，任意版本都会先转换为internal版本，再由internal版本转换为指定的目标版本，所以只要保证每个版本都能转换成internal版本，即可支持任意版本间的转换了，对应的CRD代码也要支持新老版本的切换。需要编写conversion webhook，这样请求在到达controller时，就会经过webhook进行转换。
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/API对象树形结构.png)
 
