@@ -78,7 +78,22 @@ tags: ["Kubernetes", "Istio"]
 
 ## API-Server
 
-api-server在收到请求后，会进行一系列的执行链路。
+> API-Server 作为统一入口，任何对数据的操作都必须经过 API-Server。API-Server负责各个模块之间的通信，集群里的功能模块通过API-Server将信息存入到etcd中，etcd 存储集群的数据信息，其他模块通过API-Server读取这些信息，实现来模块之间的交互。
+
+主要场景：
+
+1. 节点上的 Kubelet 会周期性的调用api-server的接口，上报节点信息，API-Server将节点信息更新到etcd中
+2. 节点上的 Kubelet 会通过API-Server上的Watch接口，监听Pod信息，判断Pod是要从本节点进行调度、删除还是修改
+3. Controller Manager的Node-Controller模块会通过API-Server的Watch接口，监控节点信息，进行相应的处理
+4. Scheduler通过API-Server的Watch接口，监听Pod的信息进行调度
+
+### 原理
+
+API-Server本质上也是控制器那一套，通过List-Watch和缓存机制，来解决被大量调用的问题，保证消息实时性、可靠性、顺序性和性能，另外其他模块也是差不多的机制，对集群信息进行了缓存，通过List-Watch进行更新进行保证。
+
+### 流程
+
+api-server在收到请求后，会进行一系列的执行链路：
 
 1. 认证：校验发起请求的用户身份是否合法，支持多种方式如x509客户端证书认证、静态token认证、webhook认证
 2. 限速：默认读 400/s，写 200/s，1.19版本以前不支持根据请求类型进行分类、按优先级限速，1.19版本以后支持将请求按重要程度分类限速，支持多租户，可有效保障Leader选举之类的高优先级请求得到及时响应，防止一个异常client导致整个集群被限速。
@@ -1198,13 +1213,6 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
   Indices：存储缓存器，key为索引器名称，value为缓存的数据，比如：`map["namespace"]map[{namespace}]{sets.pod}`
 
-**整体流程**
-
-1. Reflector通过List罗列资源，通过Watch监听资源的变更事件，将结果放到DeltaFIFO队列中；
-2. 然后从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Index库把增量里的API对象保存到本地缓存，并创建索引；
-3. Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
-4. Informer 与我们要编写的控制循环ControlLoop之间，则使用了一个工作队列WorkQ来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
-
 **SharedInformer**
 
 在K8s中，每一个资源都有一个Informer，Informer使用Reflector来监听资源，如果统一资源的Informer实例化太多次，就会有很多重复的步骤。为了解决多个控制器操作同一资源的问题，导致对同一资源的重复操作，比如重复缓存。使用SharedInformer后，不管有多少个控制器同时读取事件，都只会调用一个Watch API来Watch上游的API-Server，降低Api-Server的负载，比如 Kube-Controller-Manager。
@@ -1212,6 +1220,46 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 Informer是一种机制，SharedInformer是其中一种实现。
 
 通常自定义Controller要求只有一个实例在运行，因为当出现多个实例的时候，会出现并发问题，重复消费事件，如果要实现高可用，需要主从部署，只有主服务处于工作状态，从服务处于暂停状态，当主服务出现问题时，实现主从切换。Client-Go本身提供了leaderelection机制来实现，原理是通过K8s的 `endpoints或configmap或lease`实现一个分布式锁（通过resourceVersion + 乐观锁实现，判断资源的id和自己所持有的id是否一致），只有抢到锁的服务才能成为leader，并定期更新，而抢不到的节点会一直等待。当 leader 因为某些异常原因挂掉后，租约到期，其他节点会尝试抢锁，成为新的 leader，成为leader时，对应pod的annotations会更新`control-plane.alpha.kubernetes.io/leader`字段。
+
+**WorkQueue**
+
+> WorkQueue支持三种队列：FIFO队列、延时队列、限速队列，供不同场景下使用。
+>
+> 从event handler触发的事件会先放入WorkQueue中，WorkQueue是一个去重队列，内部除了 Queue队列 外还带有 Processing Set 和 Dirty Set记录，用来实现同一个资源对象的多次事件触发，入队列后会去重，不会被多个worker同时处理。
+>
+> * Queue队列：实际存储元素的地方，保证元素有序，本质是一个slice；
+>
+> * Dirty Set：保证去重，还能保证处理一个元素之前哪怕被添加多次（并发），也只会被处理一次；
+> * Processing Set：标记机制，标记一个元素是否被处理，保证只有一个元素在Queue队列里被处理；
+
+并发处理流程：
+
+Add方法：
+
+1. 元素被Add时，首先会检查其是否存在于Dirty Set中，如果存在则直接丢弃，不存在才加入，保证Dirty Set中不会有多个指向同一resource的相同元素存在；
+2. 元素被添加进Dirty Set后，再判断Processing Set是否存在，如果存在则跳出，防止同一元素被并发处理，不存在则加入Queue队列；
+
+Get方法：
+
+1. 元素被Get时，Reconcile Loop从Queue队列队首中取出元素，并放入Processing Set中，防止并发处理同一元素；
+2. 最后从Dirty Set中删除该元素，因为 Dirty Set 是为了实现的待消费去重, 既然从 Queue队列 拿走元素, Dirty Set 也需要删除；
+
+Done方法：
+
+1. Reconcile Loop处理结束后，从Processing Set中删除元素；
+
+2. 如果 Dirty Set 中存在相同resource的元素，就会被放入Queue队列；
+
+   这里的意思是，如果一个元素正在被处理，又再次加入了相同的元素，由于该元素还没处理完，只能把该元素先放入Dirty Set中，因为Queue队列会被多个协程消费，只放在Dirty Set中保证同一元素不会被并发消费，当元素处理完时，再重新进入Queue队列，因为此时该元素已经被处理过，是最新的了。
+
+> 这样就解决了去重的问题，还解决了同一个对象并发处理的顺序问题，只不过可能和原来请求的顺序不太一致，相同资源的请求被delay了，但是不影响最终结果，也实现了无锁的操作。
+
+**整体流程**
+
+1. Reflector通过List罗列资源，通过Watch监听资源的变更事件，将结果放到DeltaFIFO队列中；
+2. 然后从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Index库把增量里的API对象保存到本地缓存，并创建索引；
+3. Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
+4. Informer 与我们要编写的控制循环ControlLoop之间，则使用了一个工作队列WorkQ来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
 
 ## Service
 
@@ -2061,3 +2109,7 @@ spec:
 [详解 Kubernetes Pod 的实现原理](https://draveness.me/kubernetes-pod/)
 
 [谈 Kubernetes 的架构设计与实现原理](https://draveness.me/understanding-kubernetes/)
+
+[云计算K8s组件系列（一）---- K8s apiserver 详解](https://kingjcy.github.io/post/cloud/paas/base/kubernetes/k8s-apiserver/)
+
+[源码分析 kubernetes client-go workqueue 的实现原理](https://github.com/rfyiamcool/notes/blob/main/kubernetes_client_go_workqueue_code.md)

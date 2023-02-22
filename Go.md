@@ -133,7 +133,7 @@ type Slice struct {
 * 从数组上截取`arr1 := [5]int; var slice2 []int = arr1[1:3], 此时长度2，容量5，且对slice2的修改会影响arr1`。
 * 可以使用make([]type, len, cap)来创建，len必填，cap非必填，如果cap不填，初始cap=len。如`slice4 := make(int[], 5, 10)，长度5，容量10`。
 * 可以使用new来创建，比如 `new([100]int)[0:50]` 效果等同于 `make([]int, 50, 100)`，或者 `slice := *new([]int) 为空切片`
-* 空切片：`slice := make([]int, 0) 或 slice := []int{}`，nil切片：`var slice []int 或 slice := *new([]int)`；两者的区别在于，空切片会指向一个内存地址，但它没有分配任何的内存空间；nil切片是直接指向nil。
+* 空切片：`slice := make([]int, 0) 或 slice := []int{}`，nil切片：`var slice *[]int 或 slice := *new([]int)`；两者的区别在于，空切片会指向一个内存地址，但它没有分配任何的内存空间；nil切片是直接指向nil。
 
   打印时，两者的结果均为`[], len=0， cap=0`，但nil切片与nil比较的结果为true，空切片与nil的比较结果为false。
 * 切片是对数组的一个连续片段的引用，对于**切片底层数组是引用类型**，作为函数参数时，虽然是传切片的值，但是底层数组传递指针，函数内部的修改会影响原始数组
@@ -255,7 +255,7 @@ type mapextra struct {
 // 即桶bucket的结构
 type bmap struct {
     // 表示一个桶，实际上为len为8的数组，每个桶只能存8个键值对，包含此桶中每个key的哈希值的高8位
-    // 如果tophash[0] < minTopHash，说明前minTopHash个以及被搬迁过
+    // 如果tophash[0] < minTopHash，说明前minTopHash个已经被搬迁过
     // tophash的最低位代表桶的搬迁evacuation状态，最低位0表示在X part，1表示在Y part。
     tophash [bucketCnt]uint8 
 }
@@ -324,7 +324,7 @@ const (
 
 * 当使用字面量的方式创建哈希表时，如果{}中元素少于或等于25时，编译器会转成make的方式创建，再进行赋值；如果超过了25个，编译时会转成make的方式创建，同时为key和value分别创建两个数组，最后进行循环赋值
 
-* 直接声明 `var m map[string]int`此时创建了一个**nil的map**，此时不能被赋值，但可以取值，虽然不会panic，但会得到零值
+* 直接声明 `var m map[string]int`会创建了一个**nil的map**，此时不能被赋值，但可以取值，虽然不会panic，但会得到零值
 
 * key不允许为slice、map、func，允许bool、numeric、string、指针、channel、interface、struct及其类型对应的数组
 
@@ -352,7 +352,7 @@ const (
 
 ## 创建初始化
 
-通过`make(map[type]type)`，或者`make(map[type]type, hint), hint <= 8`创建的map，底层会调用makemap_small函数，并直接从堆上进行分配，此时只分配内存空间，不初始化桶，懒加载，只有在第一次插入时才会初始化桶，此时B=0，桶的数量为1。
+通过`make(map[type]type)`，或者`make(map[type]type, hint), hint <= 8`创建的map，底层会调用`makemap_small函数`，并直接从堆上进行分配，此时只分配内存空间，不初始化桶，懒加载，只有在第一次插入时才会初始化桶，此时B=0，桶的数量为1。
 
 ```go
 func makemap_small() *hmap {
@@ -362,7 +362,7 @@ func makemap_small() *hmap {
 }
 ```
 
-当hint > 8时，则会在运行时调用makemap函数进行创建和初始化，
+当hint > 8时，则会在运行时调用`makemap函数`进行创建和初始化，
 
 1. 计算哈希表占用的内存是否溢出或者超出能分配的最大值
 
@@ -511,11 +511,11 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 
    1. 判断当前map的装载因子是否达到默认的6.5，或者当前map的溢出桶数量是否过多，如果是这两种情况之一，则进行扩容，扩容 + 迁移后，继续步骤5上的逻辑（使用了goto关键字）。如果不满足扩容条件，则进行下一种情况的判断
 
-   2. 此时key还没插入，且正常位已满，还不需要扩容，此时会调用newoverflow()函数。
+   2. 此时key还没插入，且正常位已满，还不需要扩容，此时会调用`newoverflow()函数`。
 
-      newoverflow()函数使用hmap在extra.overflow中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
+      `newoverflow()函数`使用hmap在`extra.overflow`中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
 
-      newoverflow()函数会在一开始判断hmap的extra.nextOverflow是否为空，如果为空会先预分配，不为空则直接将其设置为当前要使用的溢出桶，并把原来的nextOverflow设置为空，目的是充分利用已分配的内存，减少分配次数，算是比较巧妙了。
+      `newoverflow()函数`会在一开始判断hmap的`extra.nextOverflow`是否为空，如果为空会先预分配，不为空则直接将其设置为当前要使用的溢出桶，并把原来的nextOverflow设置为空，目的是充分利用已分配的内存，减少分配次数，算是比较巧妙了。
 
 [mapassign函数](https://github.com/Nixum/Java-Note/raw/master/source_with_note/go_map_mapassign.go)
 
@@ -620,7 +620,7 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 ### 扩容迁移
 
-扩容迁移发生在 mapassign 和 mapdelete 函数中，即进行插入、修改、删除时，才会调用growWrok函数和evacuate函数，完成真正的迁移工作后，才会进行插入、修改或删除。
+**扩容迁移发生在 mapassign 和 mapdelete 函数中，即进行插入、修改、删除时**，才会调用growWrok函数和evacuate函数，完成真正的迁移工作后，才会进行插入、修改或删除。
 
 迁移时是渐进式迁移，一次最多迁移两个bucket桶。
 
