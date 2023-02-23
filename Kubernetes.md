@@ -73,7 +73,7 @@ tags: ["Kubernetes", "Istio"]
 2. API-Server收到创建请求后，经过认证、鉴权、准入三个环节后，将deployment对象保存到etcd中，触发watch机制，通知API-Server，API-Server再调用ControllerManager对应的deployment控制器进行操作；
 3. ControllerManager中的DeploymentController会监听API-Server中所有Deployment的事件变更，当收到该deployment对象的创建事件后，就会检查当前namespace中所有的ReplicaSet对象，判断其属性是否存在该deployment对象，如果没有，DeploymentController会向API-Server发起创建ReplicaSet对象的请求，经过API-Server的检查后，将该ReplicaSet对象保存在etcd中，触发watch机制通知API-Server调用控制器...；
 4. 同上，会触发ReplicaSet Controller的检查，最后创建一个Pod对象，保存在etcd中；
-5. Scheduler监听到API-Server中有新的Pod对象被创建，就会查看Pod是否被调度，如果没有，Scheduler就会给它分配一个最优节点，并更新Pod对象的spec.nodeName属性，随后该Pod对象被同步回API-Server里，并保存在etcd中；
+5. Scheduler监听到API-Server中有新的Pod对象被创建，就会查看Pod是否被调度，如果没有，Scheduler就会给它分配一个最优节点，并更新Pod对象的`spec.nodeName`属性，随后该Pod对象被同步回API-Server里，并保存在etcd中；
 6. 最后，节点的kubelet会一直监听API-Server的Pod资源变化，当发现有新的Pod对象分配到自己所在的节点时，kubelet就会通过gRPC通信，通过CRI向容器运行时创建容器，运行起来。
 
 ## API-Server
@@ -82,7 +82,7 @@ tags: ["Kubernetes", "Istio"]
 
 主要场景：
 
-1. 节点上的 Kubelet 会周期性的调用api-server的接口，上报节点信息，API-Server将节点信息更新到etcd中
+1. 节点上的 Kubelet 会周期性的调用API-Server的接口，上报节点信息，API-Server将节点信息更新到etcd中
 2. 节点上的 Kubelet 会通过API-Server上的Watch接口，监听Pod信息，判断Pod是要从本节点进行调度、删除还是修改
 3. Controller Manager的Node-Controller模块会通过API-Server的Watch接口，监控节点信息，进行相应的处理
 4. Scheduler通过API-Server的Watch接口，监听Pod的信息进行调度
@@ -130,8 +130,8 @@ Predicates阶段：
 
 * GeneralPredicates算法组，最基础的调度策略，由Admit操作执行
   * PodFitsResources：检查节点是否有Pod的requests字段所需的资源
-  * PodFitsHost：检查节点的宿主机名称是否和Pod的spec.nodeName一致
-  * PodFitsHostPorts：检查Pod申请的宿主机端口spec.nodePort是否已经被占用
+  * PodFitsHost：检查节点的宿主机名称是否和Pod的`spec.nodeName`一致
+  * PodFitsHostPorts：检查Pod申请的宿主机端口`spec.nodePort`是否已经被占用
   * PodMatchNodeSelector：检查Pod的nodeSelector或nodeAffinity指定的节点是否与待考察节点匹配
 * Volume的检查
   * NodeDiskConflict：检查多个Pod声明的持久化Volume是否有冲突，比如一个AWS EBS不允许被多个Pod使用
@@ -279,21 +279,21 @@ Kubernetes 1.13版本后，节点处于不同的状态时将被打上不同的�
 
 ## etcd
 
-etcd作为Kubernetes的元数据存储，kube-apiserver是唯一直接跟etcd交互的组件，kube-apiserver对外提供的监听机制底层实现就是etcd的watch。
+etcd作为Kubernetes的元数据存储，API-Server是唯一直接跟etcd交互的组件，API-Server对外提供的监听机制底层实现就是etcd的watch。
 
 ### 资源存储格式
 
 资源以 `prefix + / + 资源类型 + / + namespace + / + 具体资源名称` 组成，作为key。基于etcd提供的范围查询能力，支持按具体资源名称查询、namespace查询。默认的prefix是 /registry。
 
-对于基于label查询，是由api-server通过范围查询遍历etcd获取原始数据，然后再通过label过滤。
+对于基于label查询，是由API-Server通过范围查询遍历etcd获取原始数据，然后再通过label过滤。
 
 ### 资源创建流程
 
 创建资源时，会经过 BeforeCreate 策略做etcd的初始化工作，Storgae.Create接口调用etcd进行存储，最后在经过AfterCreate和Decorator。
 
-由于put并不是并发安全的接口，并发时可能导致key覆盖，所以api-server会调用Txn接口将数据写入etcd。
+由于put并不是并发安全的接口，并发时可能导致key覆盖，所以API-Server会调用Txn接口将数据写入etcd。
 
-当资源信息写入etcd后，api-server就会返回给客户端了。资源的真正创建是基于etcd的Watch机制。
+当资源信息写入etcd后，API-Server就会返回给客户端了。资源的真正创建是基于etcd的Watch机制。
 
 controller-manager内配备多种资源控制器，当触发etcd的Watch机制时会通知api-server，api-server在调用对应的控制器进行资源的创建。比如，当我们创建一个deployment资源写入etcd，通过Watch机制，通知给api-server，api-server调用controller-manager里的deployment-controller创建ReplicaSet资源对象，写入etcd，再次触发Watch机制，经过api-server调用ReplicaSet-controller，创建一个待调度的Pod资源，写入etcd，触发Watch机制，经过api-server，scheduler监听到待调度的Pod，就会为其分配节点，通过api-server的Bind接口，将调度后的节点IP绑定到Pod资源上。kubelet通过同样的Watch机制感知到新建的Pod，发起Pod创建流程。
 
@@ -301,15 +301,15 @@ Kubernetes中使用Resource Version实现增量监听逻辑，避免客户端因
 
 在Get请求中ResourceVersion有三种取值：
 
-* 未指定，默认为空串：api-server收到后会向etcd发起共识读/线性读，获取集群最新数据，所以在集群规模较大时，未指定查的性能会比较差。
+* 未指定，默认为空串：API-Server收到后会向etcd发起共识读/线性读，获取集群最新数据，所以在集群规模较大时，未指定查的性能会比较差。
 
-* =字符串0：api-server收到后会返回任意资源版本号的数据，优先返回最新版本；一般情况下先从api-server缓存中获取数据返回给客户端，有可能读到过期数据，适用于一致性要求不高的场景。
+* =字符串0：API-Server收到后会返回任意资源版本号的数据，优先返回最新版本；一般情况下先从API-Server缓存中获取数据返回给客户端，有可能读到过期数据，适用于一致性要求不高的场景。
 
-* =非0字符串：api-server收到后，会保证Cache中的最新ResouorceVersion大于等于请求中的ResourceVersion，然后从Cache中查询返回。
+* =非0字符串：API-Server收到后，会保证Cache中的最新ResouorceVersion大于等于请求中的ResourceVersion，然后从Cache中查询返回。
 
   Cache的原理是基于etcd的Watch机制来更新，=非0字符串且Cache中的ResourceVersion没有大于请求中的ResourceVersion时，会进行最多3秒的等待。
 
-> 若使用的Get接口，那么kube-apiserver会取资源key的ModRevision字段填充Kubernetes资源的ResourceVersion字段（ v1. meta/ ObjectMeta.ResourceVersion）。若你使用的是List接口，kube-apiserver会在查询时，使用etcd当前版本号填充ListMeta.ResourceVersion字段（ v1. meta/ ListMeta.ResourceVersion）。
+> 若使用的Get接口，那么API-Server会取资源key的ModRevision字段填充Kubernetes资源的ResourceVersion字段（ v1. meta/ ObjectMeta.ResourceVersion）。若你使用的是List接口，API-Server会在查询时，使用etcd当前版本号填充ListMeta.ResourceVersion字段（ v1. meta/ ListMeta.ResourceVersion）。
 >
 
 在Watch请求中ResourceVersion的三种取值：
@@ -330,7 +330,7 @@ Pod是最小的API对象。Pod中的容器会作为一个整体被Master打包�
 
 另外还有静态Pod：
 
-> 静态pod是由kubelet进行管理的仅存在于特定Node的Pod上，他们不能通过API Server进行管理，无法与ReplicationController、Deployment或者DaemonSet进行关联，并且kubelet无法对他们进行健康检查。静态Pod总是由kubelet进行创建，并且总是在kubelet所在的Node上运行。
+> 静态pod是由kubelet进行管理的仅存在于特定Node的Pod上，他们不能通过API-Server进行管理，无法与ReplicationController、Deployment或者DaemonSet进行关联，并且kubelet无法对他们进行健康检查。静态Pod总是由kubelet进行创建，并且总是在kubelet所在的Node上运行。
 
 ### 原理
 
@@ -358,7 +358,7 @@ Infra container是一个只有700KB左右的镜像，永远处于pause状态。�
 * Running：Pod已经调度成功，跟一个具体的节点绑定，内部容器创建成功，并且至少有一个正在运行。
 * Succeeded：Pod里所有容器都正常运行完毕，并且已经退出，在运行一次性任务时比较常见。
 * Failed：Pod里至少有一个容器以不正常的状态退出，需要查看Events和日志查看原因。
-* Unknown：异常状态，Pod的状态不能持续通过kubelet汇报给kube-apiserver，可能是主从节点间通信出现问题。
+* Unknown：异常状态，Pod的状态不能持续通过kubelet汇报给API-Server，可能是主从节点间通信出现问题。
 
 除此之外，Pod的status字段还能细分一组Conditions，主要是描述造成当前status的具体原因，比如PodScheduled、Ready、Initialized以及Unschedulable。
 
@@ -911,7 +911,7 @@ spec:
 
 Deployment想要实现水平扩展/收缩，实际操控的是ReplicaSet对象，而ReplicaSet管理着定义数量的Pod，所以它是一种三层结构，Deployment -> ReplicaSet -> 多个平行的Pod，Deployment是一个两层控制器，Deployment控制的是RepliocaSet的版本，ReplicaSet控制的是Pod的数量。
 
-ReplicaSet表示版本，比如上面那份配置，replicas:2是一个版本，replicas:3是一个版本，这里是因为数量不同产生两个版本，每一个版本对应着一个ReplicaSet，由Deployment管理。
+ReplicaSet表示版本，比如上面那份配置，`replicas: 2`是一个版本，`replicas: 3`是一个版本，这里是因为数量不同产生两个版本，每一个版本对应着一个ReplicaSet，由Deployment管理。
 
 ReplicaSet是ReplicationController的升级版，都用于确保运行指定数量的Pod副本（像滚动更新、回滚、启动、暂停之类的功能则由Deployment提供），ReplicationController只支持基于等式的selector，比如`xxx = yyy或xxx != yyy`，而ReplicaSet支持基于集合的selector，比如 `matchExpressions: {key: tier, operator: In, values: [frontend]}`。
 
@@ -1175,7 +1175,7 @@ Webhook的职责是修改和验证，可以集成在Operator中。
 
 **Informer**：
 
-控制器通过Watch机制，与APIServer交互，获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应；
+控制器通过Watch机制，与API-Server交互，获取它所关心的对象，依靠Informer通知器来完成，Informer与API对象一一对应；
 
 Informer是一个自带缓存和索引机制，通过增量里的事件触发 Handler 的客户端库，查询时，优先从本地缓存里查找数据，而创建、更新、删除操作，则根据事件通知机制写入队列DeltaFIFO中，同时，当对应的事件处理后，更新本地缓存，使得本地缓存与etcd里的数据一致；
 
@@ -1183,7 +1183,7 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
 * **Reflector**：通过 **List-Watch** 机制监听并获取API-Server中资源的create、update、delete事件，并针对事件类型调用对应的处理函数，是k8s统一的异步消息处理机制，保证了消息的实时性、可靠性，保证本地缓存数据的准确性、顺序性和一致性。
 
-  * List：获取资源的全量列表数据，并同步到本地缓存中；List基于HTTP短链接实现；
+  * List：获取资源的全量列表数据，并同步到本地缓存中；List基于HTTP短连接实现；
 
   * Watch：负责监听变化的数据，当Watch的资源发生变化时，并将资源对象的变化事件存放到本地队列DeltaFIFO中，触发对应的变更事件进行处理，同时更新本地缓存，使得本地缓存与etcd里的数据一致。
 
@@ -1199,7 +1199,7 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
   Delta是资源对象存储，保存存储对象的消费类型，作为队列里的消息体，有两个属性，Type表示事件类型，比如`Added、Updated、Deleted、Replaced、Sync`，Object表示资源对象，如Pod、Service；
 
-  FIFO负责接收Reflector传递过来的事件，并将其按顺序存储，然后等待事件的处理函数进行处理，如果出现多个相同事件，则只会被处理一次；
+  FIFO队列负责接收Reflector传递过来的事件，并将其按顺序存储，然后等待事件的处理函数进行处理，如果出现多个相同事件，则只会被处理一次；
 
   DeltaFIFO只会存储Watch返回的各种事件，而LocalStorae只会被Lister的List/gGet方法访问。
 
@@ -1215,7 +1215,7 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
 **SharedInformer**
 
-在K8s中，每一个资源都有一个Informer，Informer使用Reflector来监听资源，如果统一资源的Informer实例化太多次，就会有很多重复的步骤。为了解决多个控制器操作同一资源的问题，导致对同一资源的重复操作，比如重复缓存。使用SharedInformer后，不管有多少个控制器同时读取事件，都只会调用一个Watch API来Watch上游的API-Server，降低Api-Server的负载，比如 Kube-Controller-Manager。
+在K8s中，每一个资源都有一个Informer，Informer使用Reflector来监听资源，如果统一资源的Informer实例化太多次，就会有很多重复的步骤。为了解决多个控制器操作同一资源的问题，导致对同一资源的重复操作，比如重复缓存。使用SharedInformer后，不管有多少个控制器同时读取事件，都只会调用一个Watch API来Watch上游的API-Server，降低Api-Server的负载，比如 Controller-Manager。
 
 Informer是一种机制，SharedInformer是其中一种实现。
 
@@ -1248,7 +1248,7 @@ Done方法：
 
 1. Reconcile Loop处理结束后，从Processing Set中删除元素；
 
-2. 如果 Dirty Set 中存在相同resource的元素，就会被放入Queue队列；
+2. 如果 Dirty Set 中存在相同resource的元素，就会被放入Queue队列，此时Dirty Set和Queue持有同一份元素；
 
    这里的意思是，如果一个元素正在被处理，又再次加入了相同的元素，由于该元素还没处理完，只能把该元素先放入Dirty Set中，因为Queue队列会被多个协程消费，只放在Dirty Set中保证同一元素不会被并发消费，当元素处理完时，再重新进入Queue队列，因为此时该元素已经被处理过，是最新的了。
 
@@ -1257,7 +1257,7 @@ Done方法：
 **整体流程**
 
 1. Reflector通过List罗列资源，通过Watch监听资源的变更事件，将结果放到DeltaFIFO队列中；
-2. 然后从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Index库把增量里的API对象保存到本地缓存，并创建索引；
+2. 然后从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Indexer把增量里的API对象保存到本地缓存，并创建索引；
 3. Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
 4. Informer 与我们要编写的控制循环ControlLoop之间，则使用了一个工作队列WorkQ来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
 
@@ -1319,7 +1319,7 @@ Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负
 
 当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址；
 
-说白了，因为pod ip比较容易变化，而endpoint的作用就是维护service和一组pod的映射。
+说白了，因为pod ip比较容易变化，而endpoint的作用就是维护service和一组pod的映射，不用频繁修改service。
 
 endpoints controller的作用：
 
@@ -1698,7 +1698,7 @@ kind: CronJob
 
 过程步骤：
 
-1. yaml文件被提交给API-Server，APIServer接收到后完成前置工作，如授权、超时处理、审计；
+1. yaml文件被提交给API-Server，API-Server接收到后完成前置工作，如授权、超时处理、审计；
 2. 进入MUX和Routes流程，API-Server根据yaml提供的信息，使用上述的匹配过程，找到CronJob的类型定义；
 3. API-Server根据这个类型定义，根据yaml里CronJob的相关字段，创建一个CronJob对象，同时也会创建一个SuperVersion对象，它是API资源类型所有版本的字段全集，用于处理不同版本的yaml转成的CronJob对象；
 4. API-Server 会先后进行 Admission() 和 Validation() 操作，进行初始化和校验字段合法性，验证过后保存在Registry的数据结构中；
