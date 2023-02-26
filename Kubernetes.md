@@ -104,7 +104,7 @@ api-server在收到请求后，会进行一系列的执行链路：
 
 ## 调度器Scheduler
 
-主要职责就是为新创建的Pod寻找合适的节点，默认调度器会先调用一组叫Predicate的调度算法检查每个Node，再调用一组叫Priority的调度算法为上一步结果里的每个Node打分，将新创建的Pod调度到得分最高的Node上。
+主要职责就是为新创建的Pod寻找合适的节点，默认调度器会先调用一组叫Predicate的调度算法检查每个Node，再调用一组叫Priority的调度算法为上一步结果里的每个Node打分和排序，将新创建的Pod调度到得分最高的Node上。
 
 ### 原理
 
@@ -114,19 +114,39 @@ api-server在收到请求后，会进行一系列的执行链路：
 
   此外，还会对调度器缓存进行更新，因为需要尽最大可能将集群信息Cache化，以提高两个调度算法组的执行效率，调度器只有在操作Cache时，才会加锁。
 
-* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用**Predicate算法**进行过滤，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
+* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用**Predicate算法**（预选）进行过滤，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
 
-  然后调用**Priorities算法**为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
+  然后调用**Priorities算法**（优选）为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
 
 * 得到可调度的Node后，调度器就会将Pod对象的nodeName字段的值，修改为Node的名字，实现绑定，此时修改的是Cache里的值，之后才会创建一个goroutine异步向API Server发起更新Pod的请求，完成真正的绑定工作；这个过程称为乐观绑定。
 
 * Pod在Node上运行起来之前，还会有一个叫Admit的操作，调用一组GeneralPredicates的调度算法验证Pod是否真的能够在该节点上运行，比如资源是否可用，端口是否占用之类的问题。
+
+Scheduler内置各个阶段的插件，Predicate预选阶段和Priorities优选阶段就算遍历回调插件求出可用的Node结果。所以当节点很多的时候，如果所有节点都需要参与预先调度的过程，就会导致调度的延时很高。
+
+![](https://github.com/Nixum/Java-Note/raw/master/picture/K8s调度器框架扩展点.png)
+
+> 比如大集群有 2500 个节点, 注册的插件有 10 个, 那么 筛选 Filter 和 打分 Score 过程需要进行 2500 * 10 * 2 = 50000 次计算, 最后选定一个最高分值的节点来绑定 pod. k8s scheduler 考虑到了这样的性能开销, 所以加入了百分比参数控制参与预选的节点数.
+>
+> `numFeasibleNodesToFind` 方法根据当前集群的节点数计算出参与预选的节点数量, 把参与 Filter 的节点范围缩小, 无需全面扫描所有的节点, 这样避免 k8s 集群 nodes 太多时, 造成无效的计算资源开销.
+>
+> `numFeasibleNodesToFind` 策略是这样的, 当集群节点小于 100 时, 集群中的所有节点都参与预选. 而当大于 100 时, 则使用下面的公式计算扫描数. scheudler 的 `percentageOfNodesToScore` 参数默认为 0, 源码中会赋值为 50 %.
+>
+> ```
+> numAllNodes * (50 - numAllNodes/125) / 100
+> ```
+
+> 整个 kubernetes scheduler 调度器只有一个协程处理主调度循环 `scheduleOne`, 虽然 kubernetes scheduler 可以启动多个实例, 但启动时需要 leaderelection 选举, 只有 leader 才可以处理调度, 其他节点作为 follower 等待 leader 失效. 也就是说整个 k8s 集群调度核心的并发度为 1 个.
+>
+> 云原生社区中有人使用 kubemark 模拟 2000 个节点的规模来压测 kube-scheduler 处理性能及时延, 测试结果是 30s 内完成 15000 个 pod 调度任务. 虽然 kube-scheduler 是单并发模型, 但由于预选和优选都属于计算型任务非阻塞IO, 又有 `percentageOfNodesToScore` 参数优化, 最重要的是创建 pod 的操作通常不会太高并发. 这几点下来单并发模型的 scheduler 也还可以接受的.
 
 ### 调度策略
 
 调度的本质是过滤，通过筛选所有节点组，选出符合条件的节点。
 
 Predicates阶段：
+
+> `findNodesThatFitPod` 方法用来实现调度器的预选过程，其内部调用插件的 PreFilter 和 Filter 方法来筛选出符合 pod 要求的 node 节点集合。
 
 * GeneralPredicates算法组，最基础的调度策略，由Admit操作执行
   * PodFitsResources：检查节点是否有Pod的requests字段所需的资源
@@ -148,6 +168,8 @@ Predicates阶段：
 
 Priorities阶段(打分规则)：
 
+> `prioritizeNodes` 方法为调度器的优选阶段的实现. 其内部会遍历调用 framework 的 PreScore 插件集合里 `PeScore` 方法, 然后再遍历调用 framework 的 Score 插件集合的 `Score` 方法. 经过 Score 打分计算后可以拿到各个 node 的分值.
+
 * LeastRequestedPriority：选出空闲资源（CPU和Memory）最多的宿主机。
 
   `score = (cpu((capacity - sum(requested))10 / capacity) + memory((capacity-sum(requested))10 / capacity)) / 2`
@@ -155,6 +177,8 @@ Priorities阶段(打分规则)：
 * BalancedResourceAllocation：调度完成后，节点各种资源分配最均衡的节点，避免出现有些节点资源被大量分配，有些节点则很空闲。
 
   `score = 10 - variance(cpuFraction, memoryFraction, volumeFraction) * 10，Fraction=Pod请求资源 / 节点上可用资源，variance=计算每两种Faction资源差最小的节点`
+
+可以修改调度器的配置，让调度器在Predicates或Priorities阶段选择不同的策略。
 
 ### 常见的调度方式
 
@@ -211,6 +235,18 @@ PriorityClass里的value值越高，优先级越大，优先级是一个32bit的
 3. 执行真正的抢占工作，检查要被删除的Pod列表，把这些Pod的nominatedNodeName字段清除，为高优先级的Pod的nominatedNodeName字段设置为节点名称，之后启动一个协程，移除需要删除的Pod。
 
 第2步和第3步都执行了抢占算法Predicates，只有这两遍抢占算法都通过，才算抢占成功，之所以要两次，是因为需要满足InterPodAntiAffinity规则和下一次调度周期不一定会调度在该节点的情况。
+
+### 自定义调度
+
+K8s有默认的调度器，get Pod -o yaml时能看到， `pod.spec.schedulerName: default-scheduler`，所以可以设置该值来选择具体某一个调度器来实现调度。
+
+有两种方式实现自定义调度：
+
+* 通过K8s默认调度器Plugin机制实现，scheduling-framework在调度周期和绑定周期提供了很多丰富的扩展点，在这些扩展点上可以实现自定义调度逻辑。
+
+  自定义插件有三个步骤：1、写一个go程序，实现调度器的插件接口；2、编写配置文件`KubeSchedulerConfiguration`；3、将自定义插件编译进默认调度器；
+
+* K8s也支持部署多个调度器，也可以基于scheduling-framework编写一个新的调度器，以pod的形式部署到集群，通过pod的`pod.spec.schedulerName`指定调度器，自定义的调度器只能以主备的方式部署，Leader只能有一个，保证不会并发处理；
 
 ## Kubelet和CRI
 
@@ -531,11 +567,17 @@ Matser的kube-scheduler会根据requests的值进行计算，根据limits设置c
 
    在保证是Guaranteed类型的情况下，requests和limits的CPU和内存设置相等，此时是cpuset设置，容器会绑到某个CPU核上，不会与其他容器共享CPU算力，减少CPU上下文切换的次数，提升性能。
 
+   **绑核只会在设置的值是整数时才会生效。**
+
 2. Burstable：不满足Guaranteed级别，但至少有一个Container设置了requests；
 
-3. BestEffort：requests和limits都没有设置，当节点资源充足时可以充分使用，但是当节点被Guaranteed或Burstable Pod抢占时，资源就会被压缩；
+3. Best-Effort：requests和limits都没有设置，当节点资源充足时可以充分使用，但是当节点被Guaranteed或Burstable Pod抢占时，资源就会被压缩；
 
-因为节点上除了运行用户容器，还运行了其他系统进程，比如kubelet、ssh等，为了保证这些外部的进程有足够的资源运行，Kubernetes引入 Eviction Policy特性，设置了默认的资源回收阈值，当Kubernetes所管理的不可压缩资源短缺时，就会触发Eviction机制，不可压缩节点资源有：内存、磁盘、容器运行镜像的存储空间等。
+当设置`limits`而没有设置`requests`时，Kubernetes 默认令`requests`等于`limits`。
+
+K8s会将节点上的CPU资源分成两类：共享池和独享池，如果在Guaranteed上设置了绑核，就会占用独享池，否则是使用共享池，所以，如果一个节点上有比较多的Pod设置绑核，会导致非绑核的Pod都使用共享池，使得竞争严重，使用共享池的Pod性能下降。
+
+节点上除了运行用户容器，还运行了其他系统进程，比如kubelet、ssh等，为了保证这些外部的进程有足够的资源运行，Kubernetes引入 Eviction Policy特性，设置了默认的资源回收阈值，当Kubernetes所管理的不可压缩资源短缺时，就会触发Eviction机制，不可压缩节点资源有：内存、磁盘、容器运行镜像的存储空间等。
 
 > 每个运行状态容器都有其 OOM 得分，得分越高越会被优先杀死；其中Guaranteed级别的Pod得分最低，BestEffort级别的Pod得分最高，所以优先级Guaranteed> Burstable> Best-Effort，优先级低的Pod会在资源不足时优先被杀死；同等级别优先级的 Pod 资源在 OOM 时，与自身的 requests 属性相比，其内存占用比例最大的 Pod 对象将被首先杀死。
 
@@ -1187,7 +1229,11 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
   * Watch：负责监听变化的数据，当Watch的资源发生变化时，并将资源对象的变化事件存放到本地队列DeltaFIFO中，触发对应的变更事件进行处理，同时更新本地缓存，使得本地缓存与etcd里的数据一致。
 
-    Watch基于HTTP长链接，使用分块传输编码`响应头加上Transfer-Encoding=chunked基于HTTP/1.1，因为在短连接里，客户端需要通过Content-Length或连接是否关闭来判断是否接收完成，可以关掉，使用chunked后，服务端无需使用来告诉客户端响应体的结束位置，结束位置通过/n, /r或0来表示`（1.5以后使用HTTP/2），将数据分解成一系列数据块，一个或多个地发送。
+    **Watch的原理**：
+
+    Watch基于HTTP长链接，1.5以前使用HTTP1.1，并采用分块传输编码`响应头加上Transfer-Encoding=chunked基于HTTP/1.1，因为在短连接里，客户端需要通过Content-Length或连接是否关闭来判断是否接收完成，可以关掉，使用chunked后，服务端无需使用来告诉客户端响应体的结束位置，结束位置通过/n, /r或0来表示`，将数据分解成一系列数据块，一个或多个地发送。
+
+    1.5以后使用HTTP/2，引入Frame二进制帧为单位进行传输，etcd v3的gRPC stream协议。
 
   * 定时同步：定时器触发同步机制，定时更新缓存数据，定时同步的周期时间可配。
 
@@ -1219,7 +1265,7 @@ Informer是一个自带缓存和索引机制，通过增量里的事件触发 Ha
 
 Informer是一种机制，SharedInformer是其中一种实现。
 
-通常自定义Controller要求只有一个实例在运行，因为当出现多个实例的时候，会出现并发问题，重复消费事件，如果要实现高可用，需要主从部署，只有主服务处于工作状态，从服务处于暂停状态，当主服务出现问题时，实现主从切换。Client-Go本身提供了leaderelection机制来实现，原理是通过K8s的 `endpoints或configmap或lease`实现一个分布式锁（通过resourceVersion + 乐观锁实现，判断资源的id和自己所持有的id是否一致），只有抢到锁的服务才能成为leader，并定期更新，而抢不到的节点会一直等待。当 leader 因为某些异常原因挂掉后，租约到期，其他节点会尝试抢锁，成为新的 leader，成为leader时，对应pod的annotations会更新`control-plane.alpha.kubernetes.io/leader`字段。
+通常自定义Controller要求只有一个实例在运行，因为当出现多个实例的时候，会出现并发问题，重复消费事件，如果要实现高可用，需要主从部署，只有主服务处于工作状态，从服务处于暂停状态，当主服务出现问题时，实现主从切换。Client-Go本身提供了leaderelection机制来实现。
 
 **WorkQueue**
 
@@ -1260,6 +1306,30 @@ Done方法：
 2. 然后从 DeltaFIFO中 将消费出来的资源对象存储到Indexer中，Indexer把增量里的API对象保存到本地缓存，并创建索引；
 3. Indexer与etcd中的数据完全保持一致，handler处理时，先从本地缓存里拿，拿不到再请求API-Server，减少Client-Go与API-Server交互的压力。
 4. Informer 与我们要编写的控制循环ControlLoop之间，则使用了一个工作队列WorkQ来进行协同，实际应用中，informers、listers、clientset都是通过CRD代码生成，开发者只需要关注控制循环的具体实现就行。
+
+#### leaderelection机制
+
+一些特定的组件需要确保同一时刻只有一个实例在工作，就需要通过leaderelection机制来实现。
+
+原理是通过K8s的 `endpoints、configmap或lease`实现一个分布式锁（通过resourceVersion + 乐观锁实现，判断资源的id和自己所持有的id是否一致），只有抢到锁的服务才能成为leader，并定期更新（比如2s一次），而抢不到的节点会周期性的检查是否能更新以成为新Leader。
+
+抢锁update时，采用乐观锁机制，通过resourceVersion字段判断对象是否已被修改。
+
+当 leader 因为某些异常原因挂掉后，租约到期，其他节点会尝试抢锁，成为新的 leader，成为leader时，对应pod的annotations会更新`control-plane.alpha.kubernetes.io/leader`字段，值为该Pod的一些信息，如：
+
+```json
+{
+    // Leader的Id
+    "holderIdentity": "instance-o24xykos-3_9d68-33ec5eadb906",
+ 	// Follower获得leadership需要的等待LeaseDuration时间，Leader以leaseDuration为周期不断的更新renewTime的值
+    "leaseDurationSeconds": 15,
+    "acquireTime": "2020-04-23T06:45:07Z", 
+    "renewTime": "2020-04-25T07:55:58Z", 
+    "leaderTransitions": 1
+}
+```
+
+所谓的选主，就看哪个Follower能将自己的信息更新到`endpoints、configmap或lease`的`control-plane.alpha.kubernetes.io/leader`上。
 
 ## Service
 
@@ -2113,3 +2183,6 @@ spec:
 [云计算K8s组件系列（一）---- K8s apiserver 详解](https://kingjcy.github.io/post/cloud/paas/base/kubernetes/k8s-apiserver/)
 
 [源码分析 kubernetes client-go workqueue 的实现原理](https://github.com/rfyiamcool/notes/blob/main/kubernetes_client_go_workqueue_code.md)
+
+[源码分析 kubernetes scheduler 核心调度器的实现原理](https://github.com/rfyiamcool/notes/blob/main/kubernetes_scheduler_code.md)
+

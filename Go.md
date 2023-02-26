@@ -31,11 +31,78 @@ go编译时默认会使用内联优化，使用`go build --gcflags="-l" main.go`
 
 * defer和return同时出现时，先return后defer，defer可以修改到return里的变量；
 
+* return 是非原子性的，需要两步，执行前首先要为返回值赋值，然后 return 将返回值返回调用处。
+
+  **defer 和 return 的执行顺序是：1. 先为返回值赋值；2. 然后执行 defer；3. 然后 return 到函数调用处**
+
+  要注意defer里使用的变量是否被提前声明
+
 * panic被触发时，控制权就交给了defer
 
   遇到panic时，会先遍历此协程内的defer链表，并执行defer，如果在执行过程中遇到recover，则停止panic，返回recover处继续往下执行，如果没遇到recover，则遍历完本协程的defer链表后，向stderr抛出panic信息；
 
 * 执行defer过程中出现panic，此时的panic会覆盖它之前的panic，直至被捕获或抛出；
+
+```go
+func main() {
+	fmt.Println(test1()) // 0 0
+	fmt.Println(test2()) // 3 3
+    fmt.Println(test21()) // 0 3
+	fmt.Println(test3()) // 0 4
+	fmt.Println(test4()) // 0 5
+    // 注意返回值是否已经声明了变量
+    fmt.Println(test5()) // 1 0
+    fmt.Println(test51()) // 1 1
+	return
+}
+
+func test1() (v int) {
+	defer fmt.Println(v, " ") // 0
+	return v
+}
+
+func test2() (v int) {
+	defer func() {
+		fmt.Print(v, " ") // 3
+	}()
+	return 3
+}
+// test2 和 test21 的差异在于闭包
+func test21() (v int) {
+	defer fmt.Print(v, " ") // 0
+	return 3
+}
+
+func test3() (v int) {
+	defer fmt.Print(v, " ") // 0
+	v = 3
+	return 4
+}
+
+func test4() (v int) {
+	defer func(n int) {
+		fmt.Print(n, " ") // 0
+	}(v)
+	return 5
+}
+
+func test5() int {
+	var i int
+	defer func() {
+		i++
+		fmt.Print(" ", i) // 1
+	}()
+	return i
+}
+
+func test51() (i int) {
+	defer func() {
+		i++
+		fmt.Print(" ", i) // 1
+	}()
+	return i
+}
+```
 
 # 内存对齐
 
@@ -349,6 +416,8 @@ const (
 * map的遍历是无序的，每次遍历出来的结果的顺序都不一样。
 
 * 有个特殊的key值math.NaN，它每次生成的哈希值是不一样的，这会造成m[math.NaN]是拿不到值的，而且多次对它赋值，会让map中存在多个math.NaN的key。
+
+* 当map出现并发读写时，不是抛出panic错误，而是fatal错误，fatal错误不可被recover，程序会直接退出；原因是当存在并发读写时，如果被recover了，会导致其他协程出现读取错误的情况。
 
 ## 创建初始化
 

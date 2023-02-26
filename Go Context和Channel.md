@@ -252,7 +252,17 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 
 ## timerCtx
 
-可超时自动取消的context，内部使用cancelCtx + timer实现，调用`WithDeadline()`方法可以创建timerCtx用于超时取消操作
+可超时自动取消的context，内部使用cancelCtx + timer实现，调用`WithDeadline()`方法可以创建timerCtx用于超时取消操作。
+
+WithTimeout()方法和WithDeadline()方法，效果是一样的，只是时间的效果不一样。
+
+```go
+func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
+	return WithDeadline(parent, time.Now().Add(timeout))
+}
+```
+
+关于withTimeout()方法，返回的cancel函数，即使不主动调用，也不影响资源的最终释放，它到时间了也会自动调用，建议是提前主动调用，尽快释放，避免等待时间过长导致浪费。
 
 ```go
 func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc) {
