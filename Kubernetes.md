@@ -400,6 +400,26 @@ Infra container是一个只有700KB左右的镜像，永远处于pause状态。�
 
 在Pod的containers定义中，有个lifecycle字段，用于定义容器的状态发生变化时产生的hook。
 
+**Pod被删除时的流程**：
+
+> 1. Pod 被删除，状态变为 `Terminating`。通过API-Server修改Pod的信息，设置DeletionTimestamp和DeletionGracePeriodSeconds信息，给Pod标记上删除时间。
+>
+> 2. endpoint-controller接收到Pod删除的通知，向API-Server发送请求，修改service的endpoints对象，删除该Pod的endpoint。
+>
+> 3. kube-proxy也会接收到Pod删除的通知，开始更新转发规则，修改本机的iptables / ipvs规则，将 Pod 从 service 的 endpoint 列表中摘除掉，新的流量不再转发到该 Pod。
+>
+> 4. kubelet watch 到了就开始销毁 Pod。
+>
+>    3.1. 如果 Pod 中有 container 配置了 [preStop Hook] 将会执行（这里的作用，比如说kube-proxy处理得太慢，会导致Pod被删除了，但是iptables的规则还在，所以可以通过在这里配置处理） 
+>
+>    3.2. 发送 `SIGTERM` 信号给容器内主进程以通知容器进程**开始优雅停止**。
+>
+>    3.3. 等待 container 中的主进程完全停止，如果在 `terminationGracePeriodSeconds` 内 (默认 30s) 还未完全停止，就发送 `SIGKILL` 信号将其强制杀死。
+>
+>    3.4. 所有容器进程终止，清理 Pod 资源。
+>
+>    3.5. 通知 API-Server Pod 销毁完成，删除etcd中Pod的信息，完成 Pod 删除。
+
 ### Side Car
 
 在声明容器时，使用initContainers声明，用法同containers，initContainers作为辅助容器，必定比containers先启动，如果声明了多个initContainers，则会按顺序先启动，当所有initContainers都运行成功后，才会开始初始化Pod的各自信，并创建和启动containers。
@@ -1335,18 +1355,31 @@ Done方法：
 
 * 工作在第四层，传输层，一般转发TCP、UDP流量。
 
-* 每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
+* 每次Pod的重启都会导致IP发生变化，导致IP是不固定的（这个IP就是clusterIP），Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
 
   虽然Service每次重启IP也会发生变化，但是相比Pod会更加稳定。
 
-* 一般是pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的VIP就能访问它代理的Pod了。
-
 * 创建一个新的Service对象需要两大模块同时协作，一个是控制器，它需要在每次客户端创建新的Service对象时，生成其他用于暴露一组Pod的对象，即Endpoint；另一个是kube-proxy，它运行在集群的每个节点上，根据Service和Endpoint的变动改变节点上iptables或者ipvs中保存的规则。
+
+* 一般是Pod指定一个访问端口和label，Service的selector指明绑定的Pod，配置端口映射，Service并不直接连接Pod，而是在selector选中的Pod上产生一个Endpoints资源对象，通过Service的clusterIP就能访问它代理的Pod了。
+
+  Service对应的固定IP就是clusterIP，clusterIP + Endpoint的记录会被kube-proxy转成宿主机上的iptables规则，如果是Headless Service，kube-proxy则不会处理它，也不会生成iptables规则；
+
+  只有在Service中设置了selector，才会创建Endpoint记录，Endpoint与Service同名，跟Service一样的生命周期；
 
 * service负载分发策略有两种模式：
 
   * RoundRobin：轮询模式，即轮询将请求转发到后端的各个pod上（默认模式）
   * SessionAffinity：基于客户端IP地址进行会话保持的模式，第一次客户端访问后端某个pod，之后的请求都转发到这个pod上
+
+关于gRPC的负载均衡：
+
+对于HTTP/1.1 + KeepAlive的长连接，还是可以实现负载均衡的，因为HTTP/1.1是串行的，当请求到达时，如果没有空闲连接，那就新建一个连接，如果有空闲就复用，同一个时间点，一个连接最多只能承载一个请求，所以HTTP/1.1可以连接多个Pod；
+
+由于gRPC是基于HTTP/2实现的，请求发起后是长连接，多个请求发起后进行多路复用，结果就只连接了一个Pod，无法实现负载均衡，解决方法有两种：
+
+* 服务端负载均衡：接入istio-proxy，服务与side car继续保持长连接，由side car向请求的服务实现负载均衡；
+* 客户端负载均衡：NameResolver + Headless-Service方案：Headless-Service为服务端每个Pod实例的IP以A记录形式存储，客户端通过NameResolver解析出服务端对应的IP地址列表，与各个IP建立长连接，实现负载均衡，但这种方案存在问题是当Pod扩容之后，客户端不能感知（缩容是可以的，因为gRPC可以感知连接断开），解决方案是使用kuberesolver，通过它来检查Service对应的Endpoints变化，动态更新连接信息；
 
 ```yaml
 kind: Service
@@ -1387,11 +1420,11 @@ Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负
 
 ### Endpoints的作用
 
-当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址；
+**当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址**；
 
-说白了，因为pod ip比较容易变化，而endpoint的作用就是维护service和一组pod的映射，不用频繁修改service。
+说白了，因为Pod ip比较容易变化，而Endpoint的作用就是维护Service和一组Pod的映射，不用频繁修改Service，。
 
-endpoints controller的作用：
+Endpoints controller的作用：
 
 * 负责生成和维护所有endpoint对象的控制器；
 * 负责监听service和对应pod的变化；
@@ -1404,18 +1437,18 @@ endpoints controller的作用：
 
 Service由kube-proxy组件 + kube-dns组件(coreDNS) + iptables或IPVS共同实现。
 
-1. coreDNS创建时会调用kubelet修改每个节点的`/etc/resolv.conf`文件，添加coreDNS的service的clusterIP作为DNS服务的IP；
-2. coreDNS会监听service和endpoints的变化，缓存到内存中，主要是service名称与其clusterIP的映射；
-3. kube-proxy也会监听service和endpoints的变化，然后更新由service到pod路由规则，并添加到宿主机的iptables中；
-4. 通过service域名请求时，会先请求coreDNS服务获取对应service的clusterIP，再根据这个ip在iptables中转发到对应的pod，iptables会负责负载均衡；
+1. coreDNS创建时会调用kubelet修改每个节点的`/etc/resolv.conf`文件，添加coreDNS的Service的clusterIP作为DNS服务的IP；
+2. coreDNS会监听service和endpoints的变化，缓存到内存中，主要是Service名称与其clusterIP的映射；
+3. kube-proxy也会监听Service和Endpoints的变化，然后更新由Service到Pod路由规则，并添加到宿主机的iptables中；
+4. 通过Service域名请求时，会先请求coreDNS服务获取对应Service的clusterIP，再根据这个ip在iptables中转发到对应的pod，iptables会负责负载均衡；
 
 kube-proxy只是controller，对iptables进行更新，基于iptables的kube-proxy的主要职责包括两大块：
 
-* 监听service更新事件，并更新service相关的iptables规则；
+* 监听Service更新事件，并更新Service相关的iptables规则；
 
-* 监听endpoint更新事件，更新endpoint相关的iptables规则，然后将包请求转入endpoint对应的Pod；
+* 监听Endpoint更新事件，更新Endpoint相关的iptables规则，然后将包请求转入Endpoint对应的Pod；
 
-  如果某个service尚没有Pod创建，那么针对此service的请求将会被丢弃。
+  如果某个Service尚没有Pod创建，那么针对此Service的请求将会被丢弃。
 
 > kube-proxy对iptables的链进行了扩充，自定义了KUBE-SERVICES，KUBE-NODEPORTS，KUBE-POSTROUTING，KUBE-MARK-MASQ和KUBE-MARK-DROP五个链，并主要通过为KUBE-SERVICES chain增加rule来配制traffic routing 规则。通过iptables，修改流入的IP包的目的地址和端口，从而实现转发。
 >
@@ -1438,7 +1471,7 @@ Service在集群内部被访问，有两种方式
 
 * Service的VIP，即clusterIP，访问该IP时，Service会把请求转发到其代理的某个Pod上。
 
-* Service的DNS方式，比如Service有`my-svc.my-namespace.svc.cluster.local`这条DNS记录，访问这条DNS记录，根据这条DNS记录，查询出对应的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡。
+* Service的DNS方式，比如Service有`[svc名称].[namespace名称].svc.cluster.local`这条DNS记录，访问这条DNS记录，根据这条DNS记录，查询出对应的clusterIP，根据clusterIP + iptables转发给对应的pod，实现负载均衡。
 
   如果这条DNS记录没有对应的Service VIP，即Service的clusterIP是None，则称为Headless Service，此时的DNS记录格式为`<pod-name>.<svc-name>.<namespace >.svc.cluster.local`，直接映射到被代理的某个Pod的IP，由客户端来决定自己要访问哪个pod，并直接访问。通过headless service访问不会进行负载均衡。
 
