@@ -2,7 +2,7 @@
 title: Java并发
 description: JUC、线程、锁等原理
 date: 2019-03-02
-lastmod: 2021-11-12
+weight: 17
 categories: ["Java"]
 tags: ["Java并发", "JUC", "线程"]
 ---

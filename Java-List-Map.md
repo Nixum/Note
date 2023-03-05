@@ -2,7 +2,7 @@
 title: Java List Map
 description: Java list、Map相关原理
 date: 2019-02-18
-lastmod: 2021-12-06
+weight: 19
 categories: ["Java"]
 tags: ["JavaSE", "Java集合类原理"]
 ---

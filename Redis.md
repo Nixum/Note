@@ -2,7 +2,7 @@
 title: Redis
 description: Redis数据结构、架构、常见常见、持久化、主从架构
 date: 2020-08-09
-weight: 91
+weight: 10
 categories: ["数据库"]
 tags: ["Redis", "主从架构", "缓存"]
 ---

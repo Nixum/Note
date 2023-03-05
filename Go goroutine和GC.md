@@ -2,7 +2,7 @@
 title: Go Goroutine和GC
 description: go 协程、调度、GC相关原理
 date: 2021-03-22
-weight: 97
+weight: 4
 categories: ["Go"]
 tags: ["Goroutine", "Go GC"]
 ---

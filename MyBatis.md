@@ -2,7 +2,7 @@
 title: MyBatis
 description: MyBatis基本知识
 date: 2019-02-12
-lastmod: 2020-10-25
+weight: 23
 categories: ["框架"]
 tags: ["ORM"]
 ---

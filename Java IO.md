@@ -2,7 +2,7 @@
 title: Java IO
 description: Java BIO、NIO、线程模型、Netty相关原理
 date: 2020-09-22
-lastmod: 2021-10-23
+weight: 18
 categories: ["Java"]
 tags: ["Java BIO", "Java NIO", "线程模型", "Netty"]
 ---

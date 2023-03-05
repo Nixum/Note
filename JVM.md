@@ -2,7 +2,7 @@
 title: JVM
 description: JVM、内存模型、GC等原理
 date: 2019-06-18
-lastmod: 2021-10-18
+weight: 16
 categories: ["Java"]
 tags: ["JVM", "Java内存模型", "Java GC"]
 ---

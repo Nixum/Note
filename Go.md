@@ -2,7 +2,7 @@
 title: Go
 description: go 数组、slice、map原理、内存对齐
 date: 2020-11-07
-weight: 95
+weight: 6
 categories: ["Go"]
 tags: ["Go", "Go slice和map原理"]
 ---

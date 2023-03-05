@@ -2,7 +2,7 @@
 title: RPC与异步设计
 description: RPC原理、异步通信方案
 date: 2020-09-09
-lastmod: 2021-11-14
+weight: 17
 categories: ["RPC", "异步", "设计"]
 tags: ["RPC", "异步设计"]
 ---

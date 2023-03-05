@@ -2,7 +2,7 @@
 title: Java SE
 description: Java基础
 date: 2019-02-18
-lastmod: 2020-10-23
+weight: 22
 categories: ["Java"]
 tags: ["JavaSE", "面向对象"]
 ---
