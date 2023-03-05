@@ -2,7 +2,7 @@
 title: Gin框架原理
 description: 标准库net/http、Gin框架原理
 date: 2021-03-22
-lastmod: 2021-08-15
+weight: 94
 categories: ["Go"]
 tags: ["Go Gin原理", "web框架"]
 ---

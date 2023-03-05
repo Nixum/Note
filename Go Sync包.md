@@ -2,7 +2,7 @@
 title: Go Sync包相关
 description: Go sync包相关类的实现原理
 date: 2021-03-22
-lastmod: 2021-05-15
+weight: 98
 categories: ["Go"]
 tags: ["Go并发", "Go sync包"]
 ---

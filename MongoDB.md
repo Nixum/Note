@@ -2,7 +2,7 @@
 title: MongoDB
 description: MongoDB常用语句、架构、复制集与分片、集合的设计原则、索引、事务原理，引擎相关
 date: 2021-11-28
-lastmod: 2021-12-25
+weight: 92
 categories: ["数据库"]
 tags: ["MongoDB", "数据库", "数据库-锁", "数据库事务", "索引", "主从架构", "数据库优化"]
 ---

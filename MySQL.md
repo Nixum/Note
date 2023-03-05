@@ -2,7 +2,7 @@
 title: MySQL
 description: 记录MySQL从基础架构、常用sql、索引、优化、引擎、事务、锁、主从架构等原理
 date: 2020-07-09
-lastmod: 2022-01-03
+weight: 93
 categories: ["数据库"]
 tags: ["MySQL", "数据库", "数据库-锁", "数据库事务", "索引", "主从架构", "数据库优化"]
 ---

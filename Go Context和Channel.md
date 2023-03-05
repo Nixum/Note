@@ -2,7 +2,7 @@
 title: Go Context和Channel
 description: context、channel 原理
 date: 2021-03-22
-lastmod: 2021-05-15
+weight: 96
 categories: ["Go"]
 tags: ["Go channel原理", "context原理"]
 ---

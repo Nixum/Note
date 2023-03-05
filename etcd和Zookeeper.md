@@ -2,7 +2,7 @@
 title: etcd和ZooKeeper
 description: etcd和ZooKeeper的一些原理，ectd的会详细一点
 date: 2020-09-23
-lastmod: 2021-10-25
+weight: 89
 categories: ["etcd", "zookeeper"]
 tags: ["etcd", "zookeeper"]
 ---
