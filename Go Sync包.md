@@ -382,7 +382,7 @@ type RWMutex struct {
     writerSem uint32  // writer信号量 
     readerSem uint32  // reader信号量 
     readerCount int32 // reader的数量，可以是负数，负数表示此时有writer等待请求锁，此时会阻塞reader
-    readerWait int32  // 等待读完成的reader的数量
+    readerWait int32  // 等待读完成的reader的数量，保证写操作不会被读操作阻塞而饿死
 }
 const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
 ```
@@ -390,14 +390,24 @@ const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
 ## 基本
 
 * 主要提升Mutex在读多写少的场景下的吞吐量，读时共享锁，写时排他锁，基于Mutex实现
+
 * 由5个方法构成：
   * Lock/Unlock：写操作时调用的方法。如果锁已经被 reader 或者 writer 持有，那么，Lock 方法会一直阻塞，直到能获取到锁；Unlock 则是配对的释放锁的方法。
   * RLock/RUnlock：读操作时调用的方法。如果锁已经被 writer 持有的话，RLock 方法会一直阻塞，直到能获取到锁，否则就直接返回；而 RUnlock 是 reader 释放锁的方法。
   * RLocker：这个方法的作用是为读操作返回一个 Locker 接口的对象。它的 Lock 方法会调用 RWMutex 的 RLock 方法，它的 Unlock 方法会调用 RWMutex 的 RUnlock 方法
+  
 * 同Mutex，RWMutex的零值是未加锁状态，无需显示地初始化
+
 * 由于读写锁的存在，可能会有饥饿问题：比如因为读多写少，导致写锁一直加不上，因此go的RWMutex使用的是写锁优先策略，如果已经有一个writer在等待请求锁的话，会阻止新的reader请求读锁，优先保证writer。如果已经有一些reader请求了读锁，则新请求的writer会等待在其之前的reader都释放掉读锁后才请求获取写锁，等待writer解锁后，后续的reader才能继续请求锁。
-* 同Mutex，均为不可重入，使用时应避免复制；要注意reader在加读锁后，不能加写锁，否则会形成相互依赖导致死锁；注意reader是可以重复加读锁的，重复加读锁时，外层reader必须=里层的reader释放锁后自己才能释放锁。
+
+* 同Mutex，均为不可重入，使用时应避免复制；
+
+  要注意reader在加读锁后，加写锁，但必须要先解除读锁后才能解除写锁，否则会形成相互依赖导致死锁；比如先加读锁，再加写锁，解除写锁，解除读锁，这样就会导致死锁，因为加写锁时，需要读锁先释放，而读锁释放又依赖写锁释放，从而导致死锁
+
+  注意reader是可以重复加读锁的，重复加读锁时，外层reader必须=里层的reader释放锁后自己才能释放锁。
+
 * 必须先使用RLock / Lock方法才能使用RUnlock / Unlock方法，否则会panic，重复释放锁也会panic。
+
 * 可以利用RWMutex实现线程安全的map
 
 ## RLock / RUnlock 方法
@@ -407,17 +417,79 @@ const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
 1. RLock时，对readerCount的值+1，判断是否< 0，如果是，说明此时有writer在竞争锁或已持有锁，则将当前goroutine加入readerSem指向的队列中，进行等待，防止写锁饥饿。
 2. RUnlock时，对readerCount的值-1，判断是否<0，如果是，说明当前有writer在竞争锁，调用rUnlockSlow方法，对readerWait的值-1，判断是否=0，如果是，说明当前goroutine是最后一个要解除读锁的，此时会唤醒要请求写锁的writer。
 
+```go
+func (rw *RWMutex) RLock() {
+	if atomic.AddInt32(&rw.readerCount, 1) < 0 {
+        // readerCount小于0，说明有Writer，此时阻塞读操作
+		runtime_SemacquireMutex(&rw.readerSem, false, 0)
+	}
+}
+
+func (rw *RWMutex) RUnlock() {
+	if r := atomic.AddInt32(&rw.readerCount, -1); r < 0 {
+		// readerCount小于0，说明有Writer，判断要不要唤醒被阻塞的Writer
+		rw.rUnlockSlow(r)
+	}
+}
+
+// 进入此方法说明有正在等待的writer
+func (rw *RWMutex) rUnlockSlow(r int32) {
+	if r+1 == 0 || r+1 == -rwmutexMaxReaders {
+		race.Enable()
+		throw("sync: RUnlock of unlocked RWMutex")
+	}
+	if atomic.AddInt32(&rw.readerWait, -1) == 0 {
+		// readerWaiter等于0，说明此时是最后一个reader，此时可以唤醒被阻塞的writer
+		runtime_Semrelease(&rw.writerSem, false, 1)
+	}
+}
+```
+
 ## Lock方法
 
-RWMutex**内部使用Mutex实现写锁互斥**，解决多个writer间的竞争
+RWMutex**内部使用Mutex实现写锁互斥**，解决多个writer间的竞争，readerWait实现写操作不会被读操作阻塞而饿死。
 
 1. 调用w的Lock方法加锁，防止其他writer上锁，反转 readerCount的值并更新到RWMutex中，使其变成负数（readerCount - rwmutexMaxReaders + rwmutexMaxReaders）告诉reader有writer要请求锁
 2. 如果此时readerCount != 0，说明当前有reader持有读锁，需要记录需要等待完成的reader的数量，即readerWait的值（readerWaiter + 第1步算的readerCount的值），并且如果此时readerWait != 0，将当前goroutine加入writerSema指向的队列中，进行等待。直到有goroutine调用RUnlock方法且是最后一个释放锁时，才会被唤醒。
 
+```go
+func (rw *RWMutex) Lock() {
+	// 加锁，保证只有一个writer能处理
+	rw.w.Lock()
+	// readerCount取反进行更新，表示有writer在执行，阻塞后面的读操作，
+    // 因为readerCount，readerWait都是全局变量，在读锁方法那边是没有锁保护的，所以是cas保证并发安全
+    // readerCount再取反回来，用来更新readerWait的值，判断是否有读操作在等待
+	r := atomic.AddInt32(&rw.readerCount, -rwmutexMaxReaders) + rwmutexMaxReaders
+	// readerWait 不等于0，说明有reader在执行，需要挂起当前的写操作，直到RUnlock被调用来唤醒
+	if r != 0 && atomic.AddInt32(&rw.readerWait, r) != 0 {
+		runtime_SemacquireMutex(&rw.writerSem, false, 0)
+	}
+}
+```
+
 ## Unlock方法
+
+通过readerWait来唤醒所有正在等待的reader
 
 1. 反转readerCount的值（readerCount + rwmutexMaxReaders），使其变成reader的数量，唤醒这些reader
 2. 调用w的Unlock方法释放当前goroutine的锁，让其他writer可以继续竞争。
+
+```go
+func (rw *RWMutex) Unlock() {
+	// 反转readerCount值使其变正数，表示可以进行读操作
+	r := atomic.AddInt32(&rw.readerCount, rwmutexMaxReaders)
+	if r >= rwmutexMaxReaders {
+		race.Enable()
+		throw("sync: Unlock of unlocked RWMutex")
+	}
+	// 根据readerWait唤醒正在阻塞的读操作
+	for i := 0; i < int(r); i++ {
+		runtime_Semrelease(&rw.readerSem, false, 0)
+	}
+	// 解锁，允许其他写操作执行
+	rw.w.Unlock()
+}
+```
 
 # sync.Map
 
@@ -493,6 +565,34 @@ type entry struct {
 
 总结：如果是新key，则加锁，优先put到dirty中，如果是dirty为空，则创建新dirty，将read中非删除键值对赋值给新dirty，将read标记为有key在dirty中但不存在在read中，解锁；如果是已存在的key，由于read和dirty的value是同一个引用，直接cas更新read即可。
 
+```go
+read, _ := m.read.Load().(readOnly)
+	if e, ok := read.m[key]; ok && e.tryStore(&value) {
+		return
+	}
+
+	m.mu.Lock()
+	read, _ = m.read.Load().(readOnly)
+	if e, ok := read.m[key]; ok {
+		if e.unexpungeLocked() {
+			m.dirty[key] = e
+		}
+		e.storeLocked(&value)
+	} else if e, ok := m.dirty[key]; ok {
+		e.storeLocked(&value)
+	} else {
+		if !read.amended {
+            // 将readMap中非删除的键值对赋值给dirtyMap
+			m.dirtyLocked()
+            // 标记dirtyMap中包含readMap中不存在的键值对
+			m.read.Store(readOnly{m: read.m, amended: true})
+		}
+		m.dirty[key] = newEntry(value)
+	}
+	m.mu.Unlock()
+}
+```
+
 ## Load方法
 
 **将dirty提升为read这个操作在load方法中执行。**
@@ -504,7 +604,40 @@ type entry struct {
 5. 同时增加miss的值(miss表示读取穿透的次数)，当miss的值等于dirty的长度时，就会将dirty提升为read，只需简单的赋值即可，然后将dirty置为null，重置miss数，避免总是从dirty中加锁读取；
 6. 解锁，将dirty中的查询结果返回；
 
-总结：优先读read中的key，判断read的标记，加锁，判断dirty是否包含read中不存在的key，如果是，才会去读dirty，同时miss值+1，当miss值=dirty长度时，将dirty中非删除的键值对赋值给read，解锁。
+总结：优先读read中的key，判断read的标记，加锁，判断dirty是否包含read中不存在的key，如果是，才会去读dirty，同时miss值+1，当miss值=dirty长度时，将dirty中的键值对赋值给read，解锁。
+
+```go
+func (m *Map) Load(key interface{}) (value interface{}, ok bool) {
+	read, _ := m.read.Load().(readOnly)
+	e, ok := read.m[key]
+	if !ok && read.amended {
+		m.mu.Lock()
+		read, _ = m.read.Load().(readOnly)
+		e, ok = read.m[key]
+		if !ok && read.amended {
+			e, ok = m.dirty[key]
+            // 增加miss的值，判断释放要将dity提升为read
+			m.missLocked()
+		}
+		m.mu.Unlock()
+	}
+	if !ok {
+		return nil, false
+	}
+	return e.load()
+}
+
+func (m *Map) missLocked() {
+	m.misses++
+	if m.misses < len(m.dirty) {
+		return
+	}
+    // 将dirtyMap提升给readMap
+	m.read.Store(readOnly{m: m.dirty})
+	m.dirty = nil
+	m.misses = 0
+}
+```
 
 ## Delete方法
 
@@ -516,6 +649,33 @@ type entry struct {
 4. 如果存在该key（此时该键值对只会在read中存在），自旋，直接在该key对应的entry打上expunged标记，表示删除；
 
 总结：如果dirty中存在该key，dirty中该键值对会被真正的删除，但此时read中的键值对还没被删除，只是其key对应的value被打上一个expunged标记，表示删除，使其在被get的时候能分辨出来，read中该key真正的删除只有在将dirty提升为read的时候；
+
+```go
+func (m *Map) Delete(key interface{}) {
+	m.LoadAndDelete(key)
+}
+
+func (m *Map) LoadAndDelete(key interface{}) (value interface{}, loaded bool) {
+	read, _ := m.read.Load().(readOnly)
+	e, ok := read.m[key]
+	if !ok && read.amended {
+		m.mu.Lock()
+		read, _ = m.read.Load().(readOnly)
+		e, ok = read.m[key]
+		if !ok && read.amended {
+			e, ok = m.dirty[key]
+			delete(m.dirty, key)
+			// 增加miss的值，判断释放要将dity提升为read
+			m.missLocked()
+		}
+		m.mu.Unlock()
+	}
+	if ok {
+		return e.delete()
+	}
+	return nil, false
+}
+```
 
 ## LoadOrStore方法
 
