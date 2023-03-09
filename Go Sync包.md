@@ -989,10 +989,10 @@ type poolDequeue struct {
 
 ## Get方法
 
-1. 如果是第一次访问，创建P个poolLocal，返回New的新对象；
-2. 如果非第一次访问，调用`p.pin()`函数，**将当前 G 固定在P上，防止被抢占**，并获取pid，再根据pid号找到当前P对应的poolLocal，优先从local的private字段取出一个元素，将private置为null；
+1. 如果非第一次访问，调用`p.pin()`函数，**将当前 G 固定在P上，防止被抢占**，并获取pid，再根据pid号找到当前P对应的poolLocal；如果P的数量大于poolLocal的数量，就会进入`p.pinSlow()`方法，创建P个poolLocal。
+2. 拿到poolLocal后，优先从local的private字段取出一个元素，将private置为null；
 3. 如果从private取出的元素为null，则从当前的local.shared的head中取出一个双端环形队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个双端环形队列继续获取，直到获取到或者遍历完双向链表；
-4. 如果还没有的话，调用getSlow函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个双端环形队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到（如果当前节点为null，则删除），沿着next指针到下一个双端环形队列继续获取，如果还没有，直到获取到或者遍历完双向链表；如果还没有，就到别的P上继续获取；
+4. 如果还没有的话，调用`getSlow`函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个双端环形队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到（如果当前节点为null，则删除），沿着next指针到下一个双端环形队列继续获取，如果还没有，直到获取到或者遍历完双向链表；如果还没有，就到别的P上继续获取；
 5. 如果所有P的poolLocal.shared都没有，则对victim中以在同样的方式，先从当前P的poolLocal的private里找，找不到再在shared里找，获取一遍；
 6. Pool相关操作**执行完，调用`runtime_procUnpin()`解除非抢占**；
 7. 如果还取不到，则调用New函数生成一个，然后返回；
@@ -1003,7 +1003,7 @@ type poolDequeue struct {
 
 > `pin` 的作用就是将当前 G 和 P 绑定在一起，禁止抢占，并返回对应的 poolLocal 以及 P 的 id。
 >
-> 如果 G 被抢占，则 G 的状态从 running 变成 runnable，会被放回 P 的 localq 或 globaq，等待下一次调度。下次再执行时，就不一定是和现在的 P 相结合了。因为之后会用到 pid，如果被抢占了，有可能接下来使用的 pid 与所绑定的 P 并非同一个。
+> 如果 G 被抢占，则 G 的状态从 running 变成 runnable，会被放回 P 的 LRQ 或 GRQ，等待下一次调度。下次再执行时，就不一定是和现在的 P 相结合了。因为之后会用到 pid，如果被抢占了，有可能接下来使用的 pid 与所绑定的 P 并非同一个。
 >
 > 所谓的抢占，就是把 M 绑定的 P 给剥夺了，因为我们后面获取本地的 poolLocal 是根据pid获取的，如果这个过程中 P 被抢走，就乱套了，所以需要设置禁止抢占，实现的原理就是让 M 的locks字段不等于0，比如+1，实际上也相当于对M上锁，让调度器知道 M 不适合抢占，这里就很好体现了数据的局部性：让G和M在被抢占后，仍然找回原来的P，这里通过禁止抢占，来保证数据局部性。
 >
@@ -1022,13 +1022,17 @@ type poolDequeue struct {
 3. 尝试将put进来的元素赋值给private，如果本地private没有值，直接赋值；
 4. 否则，将其加入到shared对应的双端队列的队首；
 
-## GC时
+## GC前
 
 Pool会在init方法中使用`runtime_registerPoolCleanup`注册GC的钩子`poolCleanup`来进行pool回收处理。
 
-其中一个主要动作是 `poolCleanup()` 方法，该方法主要就是在GC开始前，遍历oldPools数组，将其中的pool对象的victim置为nil，遍历allPools数组，将local对象赋值给victim，然后将allPools赋值给oldPools，allPools置为nil，当GC开始时候，就会将 victim cache 中所有对象的回收（因为已经被置为null了）。
+其中一个主要动作是 `poolCleanup()` 方法，该方法主要就是在GC开始前：
 
-因为victim cache的设计，pool中的复用对象会在每两个GC循环中清除；
+1. 遍历oldPools数组，将其中的pool对象的victim置为nil；
+2. 遍历allPools数组，将local对象赋值给victim，local对象赋值为nil；
+3. 然后将allPools赋值给oldPools，allPools置为nil；
+
+当GC开始时候，就会将 victim cache 中所有对象的回收（因为已经被置为null了）。因为victim cache的设计，pool中的复用对象会在每两个GC循环中清除；
 
 # 原子操作
 
