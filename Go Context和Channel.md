@@ -165,7 +165,7 @@ func propagateCancel(parent Context, child canceler) {
 	default:
 	}
 
-    // 获取parent的cancelCtx
+    // 获取parent的cancelCtx，ok是用来判断父context是不是CancelCtx类型的
 	if p, ok := parentCancelCtx(parent); ok {
 		p.mu.Lock()
 		if p.err != nil {
@@ -254,7 +254,7 @@ func (c *cancelCtx) cancel(removeFromParent bool, err error) {
 
 可超时自动取消的context，内部使用cancelCtx + timer实现，调用`WithDeadline()`方法可以创建timerCtx用于超时取消操作。
 
-WithTimeout()方法和WithDeadline()方法，效果是一样的，只是时间的效果不一样。
+`WithTimeout()方法`和`WithDeadline()方法`，效果是一样的，只是时间的含义不一样。
 
 ```go
 func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc) {
@@ -336,7 +336,9 @@ CSP模型（Communicating Sequential Process，通信顺序进程），允许使
 
 * channel作为通道，负责在多个goroutine间传递数据，解决多线程下共享数据竞争问题。
 
-* `len()`方法会输出chan中存在的数据数量，`cap()`方法是输出buff数组的长度
+* `len()`方法获取buff中未被读取的数量，即qcount的值；
+
+  `cap()`方法获取buff数组的长度
 
 * 带有 <- 的chan是有方向的，不带 <- 的chan是双向的，比如
 
@@ -564,7 +566,7 @@ func makechan(t *chantype, size int) *hchan {
 
 2. 如果chan没有被close，但是chan满了，则直接返回false，但是由于阻塞参数为true，这部分不会被执行；
 
-3. **上锁**，保证线程安全，再次检查chan是否被close，如果被close，再往里发数据会触发 解锁，panic；
+3. **上锁**，保证线程安全，再次检查chan是否被close，**如果被close，再往里发数据会触发 解锁，panic**；
 
 4. 同步发送 - **优先发送给等待接收的G**
 
@@ -574,7 +576,7 @@ func makechan(t *chantype, size int) *hchan {
 
 5. 异步发送 - **其次是发送到buf区**
 
-   **当recvq中没有等待的接收者，且buf区存在空余空间时**，会使用`chanbuf()`函数获取sendx索引值，计算出下一个可以存储数据的位置，然后调用`typedmemmove()`函数将要发送的数据拷贝到buff区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
+   **当recvq中没有等待的接收者，且buf区存在空余空间时**，会使用`chanbuf()`函数获取**sendx索引值**，计算出下一个可以存储数据的位置，然后调用`typedmemmove()`函数将要发送的数据拷贝到buff区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
 
 6. 阻塞发送 - **最后才是保存在待发送队列，阻塞**
 

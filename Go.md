@@ -35,7 +35,9 @@ go编译时默认会使用内联优化，使用`go build --gcflags="-l" main.go`
 
   **defer 和 return 的执行顺序是：1. 先为返回值赋值；2. 然后执行 defer；3. 然后 return 到函数调用处**
 
-  要注意defer里使用的变量是否被提前声明
+  要注意defer + 函数 里使用的变量是传参进去的，还是闭包引用
+
+  当返回值没有声明变量时，会内置一个隐式的变量来接收return的赋值
 
 * panic被触发时，控制权就交给了defer
 
@@ -69,6 +71,8 @@ func test2() (v int) {
 }
 // test2 和 test21 的差异在于闭包
 func test21() (v int) {
+    // 相当于调用fmt.Print方法，然后把v传值进去，此时 v=0，v已经赋值给了fmt.Print方法的入参了
+    // 类似 test4()
 	defer fmt.Print(v, " ") // 0
 	return 3
 }
@@ -86,6 +90,7 @@ func test4() (v int) {
 	return 5
 }
 
+// 区分 test51, 区别在于返回值是否声明了变量名，当返回值没有声明变量时，return会把值赋值给一个隐式的变量，之后随便i怎么改，都不影响其返回值
 func test5() int {
 	var i int
 	defer func() {
@@ -268,6 +273,8 @@ data =  [0 0 0 0 0  0   0 0 9 0]
 
    内存对齐主要是为了提高内存分配效率，减少内存碎片。
 
+PS：go 18以前还是用 1024 来判断要扩容的大小，18之后使用256，长度小于256，扩容两倍；长度大于256时，规则为 `原长度 += (原长度 + 3*256) / 4`
+
 ```go
 // 此时期望容量是2 + 3 = 5 > 旧容量的两倍 2 * 2 = 4，期望容量为5，占40个字节，不是2^n次，so触发内存对齐，向上取整为48字节，此时新容量为 48 / 8 = 6。
 s1 := []int64{1, 2}
@@ -303,20 +310,21 @@ type hmap struct {
 	oldbuckets unsafe.Pointer // 扩容时用于保存之前buckets的字段，大小是当前buckets的一半或0.75，非扩容状态下为null
 	nevacuate  uintptr // 扩容迁移的进度，小于nevacuate的buckets表示已迁移完成，同时也用来计算下一个要迁移的桶在oldbuckets中的位置
 
-	extra *mapextra // 用于扩容的指针，存储单个桶装满时溢出的数据，溢出桶和正常桶在内存上是连续的
+	extra *mapextra // 存储单个桶装满时溢出的数据，溢出桶和正常桶在内存上是连续的, 即 hmap.buckets[i].overflow会关联hmap.extra.overflow
 }
 
 type mapextra struct {
-    // 下面这两个字段是为了优化GC扫描而设计的。
-    // 当map的key和value都不是指针，并且size都小于128字节时（即可以被inline），会把bmap标记为不含指针，避免gc时扫描整个hmap，就是通过overflow实现的。
-    // bmap.overflow是个指针，指向溢出的bucket，由于GC时必定会扫描指针，所以就会扫描所有bmap，
-    // 而当map的key和value都是非指针类型时，可以直接标记整个map的颜色，避免扫描每个bmap的overflow指针，
-    // 但扩容时，溢出的bucket总是存在，与key和value的类型无关
-    // 于是就利用extra.overflow来指向溢出的bucket，并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），那整个bmap就完全没指针了，也就不会被GC扫描。
+    // 下面这两个字段是为了优化GC扫描而设计的。在map的key和value都不是指针，并且size都小于128字节时使用（即可以被inline），所有hmap.buckets的溢出桶都用这两个字段进行管理，避免gc时扫描整个hmap。
+    
+    // 因为 bmap.overflow 是个指针，指向溢出的bucket，而GC时必定会扫描指针，那就会扫描所有bmap，
+    // 当map的key和value都是非指针类型时，为了避免扫描所有buckets，就可以使用extra.overflow来存储溢出的bucket，并把bmap结构体里的overflow指针类型变成unitptr类型（编译期干的），那整个bmap就完全没指针了。
+    // 这样就可以通过extra直接标记整个map的颜色，避免扫描每个bmap的overflow指针；
     // 另一方面，当 GC 在扫描 hmap 时，通过 extra.overflow 这条路径（指针）就可以将 overflow 的 bucket 正常标记成黑色，从而不会被 GC 错误地回收。
 	overflow    *[]*bmap  // 包含hmap.buckets的overflow的buckets，即保存了所有溢出桶，便于GC扫描
 	oldoverflow *[]*bmap  // 包含扩容时的hmap.oldbuckets的overflow的bucket，用于扩容
-	nextOverflow *bmap    // 指向空闲的 overflow bucket 的指针，用于预分配
+
+    // 指向空闲的 overflow bucket 的指针，用于预分配
+    nextOverflow *bmap
 }
 
 // 即桶bucket的结构
@@ -393,7 +401,7 @@ const (
 
 * 直接声明 `var m map[string]int`会创建了一个**nil的map**，此时不能被赋值，但可以取值，虽然不会panic，但会得到零值
 
-* key不允许为slice、map、func，允许bool、numeric、string、指针、channel、interface、struct及其类型对应的数组
+* key不允许为slice、map、func；允许bool、numeric、string、指针、channel、interface、struct及其类型对应的数组
 
   **即key必须支持 == 或 != 运算的类型，如果是结构体，则他们的所有字段都相等，才被认为是相同的key**。
 
@@ -407,17 +415,17 @@ const (
 
 * 每个桶存了8个tophash + 8对键值对。
 
-* 扩容判断发生在插入，扩容迁移发生在插入和删除。
+* **扩容判断发生在插入，扩容迁移发生在插入和删除**。
 
-* map是非线程安全的，扩容不是一个原子操作，通过hmap里的flags字段在并发修改时进行fast-fail。
+* map是非线程安全的，扩容不是一个原子操作，通过hmap里的flags字段在并发读写时进行fast-fail。
 
-* 当 map 对象同时进行加锁的 write 和不加锁的read（比如打印，序列化等）时，会发生panic。
+  当 map 对象同时进行加锁的 write 和不加锁的read（比如打印，序列化等）时，会发生panic，因为相当于并发读写。
+
+  当map出现并发读写时，不是抛出panic错误，而是fatal错误，fatal错误不可被recover，程序会直接退出；原因是当存在并发读写时，如果被recover了，会导致其他协程出现读取错误的情况。
 
 * map的遍历是无序的，每次遍历出来的结果的顺序都不一样。
 
 * 有个特殊的key值math.NaN，它每次生成的哈希值是不一样的，这会造成m[math.NaN]是拿不到值的，而且多次对它赋值，会让map中存在多个math.NaN的key。
-
-* 当map出现并发读写时，不是抛出panic错误，而是fatal错误，fatal错误不可被recover，程序会直接退出；原因是当存在并发读写时，如果被recover了，会导致其他协程出现读取错误的情况。
 
 ## 创建初始化
 
@@ -439,7 +447,7 @@ func makemap_small() *hmap {
 
 3. 根据hint来计算需要的桶的数量来计算B的值（hint是make的第二个参数），用于初始化桶的数量 = 2^B；
 
-4. 调用makeBucketArray()分配连续的空间，创建用于保存桶的数组
+4. 调用`makeBucketArray()`分配连续的空间，创建用于保存桶的数组
 
    当桶的数量小于2^4时，由于数据较少，哈希冲突的可能性较小，此时不会创建溢出桶。
 
@@ -514,9 +522,9 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 
 ## 查找与插入
 
-`v := m[key]`使用函数mapaccess1()进行查找， `v, ok := m[key]`使用函数mapaccess2()进行查找
+`v := m[key]`使用函数`mapaccess1()`进行查找， `v, ok := m[key]`使用函数`mapaccess2()`进行查找
 
-mapaccess2也会调用mapaccess1，只是返回的时候会返回多一个用于表示当前键值对是否存在的布尔值。
+`mapaccess2()`也会调用`mapaccess1()`，只是返回的时候会返回多一个用于表示当前键值对是否存在的布尔值。
 
 ### key的定位
 
@@ -526,7 +534,7 @@ mapaccess2也会调用mapaccess1，只是返回的时候会返回多一个用于
 
    `10010111 | 000011110110110010001111001010100010010110010101010 │ 00110`
 
-   B等于5，即拿到00110，值为6，也就是6号桶，buckets[6]
+   长度为64位，B等于5，取后5位，即拿到00110，值为6，也就是6号桶，buckets[6]
 
 2. 确定使用buckets数组还是oldbuckets数组：判断oldbuckets数组中是否为空，不为空说明正处于扩容中，还没完成迁移，则重新计算桶的位置，并在oldbuckets数组找到对应的桶；如果为空，则在buckets数组中找到对应的桶。
 
@@ -566,7 +574,7 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 
 2. 根据key计算出哈希；还有就是判断bucket桶是否为空，为空则分配bmap数组，。
 
-3. 判断 hmap的oldbuckets是否为空，不为空说明当前处于扩容搬迁，则进行搬迁工作，完了再进行之后的流程。
+3. **判断 hmap的oldbuckets是否为空，不为空说明当前处于扩容搬迁，则进行搬迁工作（一次最多迁移两个bucket桶），完了再进行之后的流程。**
 
 4. 根据key的哈希值的低B个bit位，计算得到桶的位置；根据key的哈希值的高8个bit位，计算出tophash。
 
@@ -582,9 +590,9 @@ val = add(unsafe.Pointer(b), dataOffset+bucketCnt*uintptr(t.keysize)+i*uintptr(t
 
    2. 此时key还没插入，且正常位已满，还不需要扩容，此时会调用`newoverflow()函数`。
 
-      `newoverflow()函数`使用hmap在`extra.overflow`中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
+      `newoverflow()函数`使用hmap在`extra.nextOverflow`中创建好的桶，如果有，遍历这个创建好的桶链表，直到可以放入新的键值对；如果没有，则创建一个桶，增加noverflow计数，将新键值对放入这个桶中，然后将新桶挂载到当前桶overflow字段，成为溢出桶。
 
-      `newoverflow()函数`会在一开始判断hmap的`extra.nextOverflow`是否为空，如果为空会先预分配，不为空则直接将其设置为当前要使用的溢出桶，并把原来的nextOverflow设置为空，目的是充分利用已分配的内存，减少分配次数，算是比较巧妙了。
+      `newoverflow()函数`会在一开始判断hmap的`extra.nextOverflow`是否为空，如果为空会先预分配，不为空则直接将其设置为当前要使用的溢出桶，并把原来的nextOverflow设置为空，目的是充分利用已分配的内存，减少分配次数。
 
 [mapassign函数](https://github.com/Nixum/Java-Note/raw/master/source_with_note/go_map_mapassign.go)
 
@@ -642,11 +650,13 @@ func (h *hmap) newoverflow(t *maptype, b *bmap) *bmap {
 
 即 在没有正在进行扩容 的情况下，负载因子 > 6.5 或 溢出桶的数量 >= buckets数组的数量
 
+扩容条件的判断发生在`mapassign函数`，即对map使用put的时候。
+
 ### 扩容策略
 
 #### 增量扩容 - 降低哈希冲突
 
-overLoadFactor函数，该函数返回true，表示哈希表内的元素过多，哈希冲突的概率变大，可能在找到桶，遍历完桶内的元素，还要继续遍历溢出桶链表，此时需要**增量扩容，扩容为原来的两倍 **，降低哈希冲突的概率。
+`overLoadFactor函数`，该函数返回true，表示哈希表内的元素过多，哈希冲突的概率变大，可能在找到桶，遍历完桶内的元素，还要继续遍历溢出桶链表，此时需要**增量扩容，扩容为原来的两倍 **，降低哈希冲突的概率。
 
 ```go
 // count是key的数量
@@ -658,7 +668,7 @@ func overLoadFactor(count int, B uint8) bool {
 
 #### 等量扩容 - 提高桶的利用率，防止内存泄漏，加快查询效率
 
-tooManyOverflowBuckets函数，该函数返回true，表示由于某一个桶满后，开始使用溢出桶，不断的插入数据到溢出桶，又不断的删除正常桶上的正常位，但此时哈希表的数量又没超阈值，即空桶太多，溢出桶的数量太多，而每次查找又得先遍历正常位，查找效率变低，此时需要**等量扩容，容量不变，重新迁移键值对**。
+`tooManyOverflowBuckets函数`，该函数返回true，表示由于某一个桶满后，开始使用溢出桶，不断的插入数据到溢出桶，又不断的删除正常桶上的正常位，但此时哈希表的数量又没超阈值，但是空桶太多，溢出桶的数量太多，而每次查找又得先遍历正常位，查找效率变低，此时需要**等量扩容，容量不变，重新迁移键值对**。
 
 ```go
 func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
@@ -675,7 +685,7 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 ### 触发扩容
 
-触发扩容条件时，会执行hashGrow函数，**进行新桶的分配，但还未迁移数据**，真正迁移数据在growWork函数中。
+触发扩容条件时，会执行`hashGrow函数`，**进行新桶的分配，但还未迁移数据**，真正迁移数据在`growWork函数`中。
 
 1. 首先会判断是增量扩容还是等量扩容，如果是增量扩容，B + 1，即扩容到原来的两倍，如果是等量扩容，B + 0，容量不变
 
@@ -689,11 +699,11 @@ func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
 
 ### 扩容迁移
 
-**扩容迁移发生在 mapassign 和 mapdelete 函数中，即进行插入、修改、删除时**，才会调用growWrok函数和evacuate函数，完成真正的迁移工作后，才会进行插入、修改或删除。
+**扩容迁移发生在 mapassign 和 mapdelete 函数中，即进行插入、修改、删除时**，才会调用`growWork函数`和`evacuate函数`，完成真正的迁移工作后，才会进行插入、修改或删除。
 
 迁移时是渐进式迁移，一次最多迁移两个bucket桶。
 
-1. 在插入、修改或删除中，如果发现oldbuckets数组不为空，表示此时正在扩容中，需要进行扩容迁移，调用growWork函数，growWork函数调用一次evacuate函数，如果调用完成后，hmap的oldbuckets还是非空，则再调用一次evacuate函数，加快迁移进程。
+1. 在插入、修改或删除中，如果发现oldbuckets数组不为空，表示此时正在扩容中，需要进行扩容迁移，调用`growWork函数`，`growWork函数`调用一次`evacuate函数`，如果调用完成后，hmap的oldbuckets还是非空，则再调用一次`evacuate函数`，加快迁移进程。
 
 ```go
 func growWork(t *maptype, h *hmap, bucket uintptr) {
@@ -706,9 +716,11 @@ func growWork(t *maptype, h *hmap, bucket uintptr) {
 }
 ```
 
-2. 进入evacuate函数，如果是等量扩容，B值不变，老bucket桶上的键值计算出来的桶的序号不变，tophash不变，此时会将老桶上的键值对依次地一个个转移到新桶上，使这些键值对在新桶上排列更加紧凑；
+2. 进入`evacuate函数`：
 
-   如果是增量扩容，容量变为原来的两倍，B值+1，老bucket桶上的键值计算出来的桶的序号改变，这些键值对计算后的bucket桶的序号可能跟之前一样，也可能是相比原来加上2^B，取决于key哈希值后 老B+1 位的值是0还是1。比如：
+* 如果是**等量扩容**，B值不变，老bucket桶上的键值计算出来的桶的序号不变，tophash不变，此时会将老桶上的键值对依次地一个个转移到新桶上，使这些键值对在新桶上排列更加紧凑；
+
+* 如果是**增量扩容**，容量变为原来的两倍，B值+1，老bucket桶上的键值计算出来的桶的序号改变，这些键值对计算后的bucket桶的序号可能跟之前一样，也可能是相比原来加上2^B，取决于key哈希值后 老B+1 位的值是0还是1。比如：
 
    `10010111 | 000011110110110010001111001010100010010110010101010 │ 01010`，B=5，bucket的序号是10，增量扩容后为
 
@@ -723,7 +735,7 @@ func growWork(t *maptype, h *hmap, bucket uintptr) {
    tophash不变，原来老bucket桶上的键值对会重新分流到两个新bucket桶上。将老bucket桶上的键值对和其指向的溢出桶上的键值对进行迁移，依次转移到新桶上，每迁移完一个，key在老buckect的tophash设置为evacuatedX或者evacuatedY（tophash的最低位表示迁移到新桶的哪一part，0为x，1为y），hmap的nevacuate计数+1，直到老bucket桶上的键值对迁移完成，最后清空oldbuckets和oldoverflow字段。
 
    这里两个新的桶对应源码里的X part, Y part，因为扩容到原来的 2 倍，桶的数量是原来的 2 倍，前一半桶被称为 X part，后一半桶被称为 Y part。一个 bucket 中的所有key 可能会分流到 2 个桶中，一个位于 X part，一个位于 Y part。所以在搬迁一个 cell 之前，需要计算这个cell要落入到哪一part。
-
+   
    X part 与 Y part的关系：X part + 2 ^ 老B = Y part，之所以要确定key落在哪个区间，是为了方便计算key要插入的内存地址。
 
 > 扩容前，B = 2，共有 4 个 buckets，lowbits 表示 hash 值的低位。假设我们不关注其他 buckets 情况，专注在 2 号 bucket。并且假设 overflow 太多，触发了等量扩容。
@@ -742,7 +754,7 @@ func growWork(t *maptype, h *hmap, bucket uintptr) {
 
 ## 删除
 
-调用delete函数，无论要删除的key是否存在，delete都不会返回任何结果。删除实际上也是一个key的定位 + 删除的操作，定位到key后，将其键值对置空，hmap的count - 1，tophash置为empty。删除过程也会检查是否处于扩容状态，如果是，则会触发搬迁。
+调用delete函数，无论要删除的key是否存在，delete都不会返回任何结果。删除实际上也是一个key的定位 + 删除的操作，定位到key后，将其键值对置空，hmap的count - 1，tophash置为empty。**删除过程也会检查是否处于扩容状态，如果是，则会触发搬迁**。
 
 ## 遍历
 
