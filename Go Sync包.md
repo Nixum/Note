@@ -123,9 +123,15 @@ const (
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/go_mutex_state.png)
 
 - mutexLocked 对应右边低位第一个bit，1 代表锁被占用，0代表锁空闲
+
 - mutexWoken 对应右边低位第二个bit，1 表示已唤醒，0表示未唤醒
+
+  从正常模式被唤醒，用于加锁和解锁过程中的通信，比如同一时刻，一个协程在解锁，一个协程在加锁，正在加锁的协程可能在自旋，此时标记为唤醒，另一个协程解锁后，锁立马被这个协程拿到，避免唤醒存在阻塞队列中的协程；
+
 - mutexStarving 对应右边低位第三个bit，1 代表锁处于饥饿模式，0代表锁处于正常模式
+
 - mutexWaiterShift 值为3，根据 `mutex.state >> mutexWaiterShift` 得到当前阻塞的`goroutine`数目，最多可以阻塞`2^29`个`goroutine`。
+
 - starvationThresholdNs 值为1e6纳秒，也就是1毫秒，当等待队列中队首goroutine等待时间超过`starvationThresholdNs`也就是1毫秒，mutex进入饥饿模式。
 
 ## 基本
@@ -136,11 +142,11 @@ const (
 
 * 锁有两种模式：正常模式和饥饿模式
 
-  正常模式下，如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；
+  **正常模式下**，如果Mutex已被一个goroutine获取了锁，其他等待的goroutine们会一直等待，组成等待队列，当该goroutine释放锁后，等待的goroutine是以先进先出的队列排队获取锁；
 
   如果此时有新的goroutine也在获取锁，会参与到获取锁的竞争中，这是非公平的，因为新请求锁的goroutine是在CPU上被运行，并且数量也可能很多，所以被唤醒的goroutine获取锁的概率并不大，所以，如果等待队列中的goroutine等待超过1ms，则会优先加入到队列的头部，如果超过1ms都没有获取到锁，则进入饥饿模式；
 
-  饥饿模式下，锁的所有权会直接从释放锁的goroutine转交给队首的goroutine，新请求锁的goroutine就算锁的空闲状态也不会去获取锁，也不会自旋，直接加入等待队列的队尾，以此解决等待的goroutine的饥饿问题；
+  **饥饿模式下**，锁的所有权会直接从释放锁的goroutine转交给队首的goroutine，新请求锁的goroutine就算锁的空闲状态也不会去获取锁，也不会自旋，直接加入等待队列的队尾，以此解决等待的goroutine的饥饿问题；
 
   恢复为正常模式的条件：一个goroutine获取锁后，当前goroutine是队列的最后一个，退出饥饿模式；
 
@@ -164,9 +170,9 @@ const (
 
 ## Lock方法
 
-1. 调用Lock的goroutine通过CAS的方式获取锁，如果获取到了直接返回；
+1. 调用Lock的goroutine通过**CAS的方式设置锁标志**，如果获取到了直接返回；
 
-2. 否则进入lockSlow方法，lockSlow方法主要是通过自旋等待锁的释放；自旋是为了不让goroutine进入休眠，让其在一段时间内保持运行，忙等待快速获取锁；
+2. 否则进入`lockSlow方法`，`lockSlow方法`主要是通过自旋等待锁的释放；自旋是为了不让goroutine进入休眠，让其在一段时间内保持运行，忙等待快速获取锁；
 
    goroutine本身进入自旋的条件比较苛刻：
 
@@ -316,7 +322,7 @@ func (m *Mutex) Unlock() {
     // 修改state的状态为释放锁
 	new := atomic.AddInt32(&m.state, -mutexLocked)
 	if new != 0 {
-		// 说明此时没有成功解锁
+		// 说明此时没有成功解锁，或者有其他goroutine在等待解锁
 		m.unlockSlow(new)
 	}
 }
@@ -331,7 +337,7 @@ func (m *Mutex) unlockSlow(new int32) {
 		for {
 			// 如果没有等待的goroutine，或者 锁有以下几种情况时，直接返回
             // 1. 锁被其他goroutine获取了
-            // 2. 或者有等待的goroutine被唤醒，不用再唤醒其他goroutine，可以直接返回
+            // 2. 或者有等待的goroutine被唤醒，不用再唤醒阻塞队列里的goroutine，可以直接返回
             // 3. 或者锁是饥饿模式，锁之后要直接交给等待队列队首的goroutine
 			if old>>mutexWaiterShift == 0 || old&(mutexLocked|mutexWoken|mutexStarving) != 0 {
 				return
@@ -361,7 +367,7 @@ func (m *Mutex) unlockSlow(new int32) {
 * 可重入锁
 * 增加tryLock方法，通过返回true或false来表示获取锁成功或失败，主要用于控制获取锁失败后的行为，而不用阻塞在方法调用上
 * 增加等待计数器，比如等待多少时间后还没获取到锁则放弃
-* 增加可观测性指标，比如等待锁的goroutine的数量，需要使用unsafe.Pointer方法获取Mutex中的state的值，解析出正在等待的goroutine的数量
+* 增加可观测性指标，比如等待锁的goroutine的数量，需要使用`unsafe.Pointer方法`获取Mutex中的state的值，解析出正在等待的goroutine的数量
 * 实现线程安全的队列，通过在出队和入队方法中使用Mutex保证线程安全
 
 ## 关于Mutex中的sema
@@ -398,13 +404,17 @@ const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
   
 * 同Mutex，RWMutex的零值是未加锁状态，无需显示地初始化
 
-* 由于读写锁的存在，可能会有饥饿问题：比如因为读多写少，导致写锁一直加不上，因此go的RWMutex使用的是写锁优先策略，如果已经有一个writer在等待请求锁的话，会阻止新的reader请求读锁，优先保证writer。如果已经有一些reader请求了读锁，则新请求的writer会等待在其之前的reader都释放掉读锁后才请求获取写锁，等待writer解锁后，后续的reader才能继续请求锁。
+* 由于读写锁的存在，可能会有饥饿问题：比如因为读多写少，导致写锁一直加不上，因此go的RWMutex使用的是写锁优先策略：
+
+  如果已经有一个writer在等待请求锁的话，会阻止新的reader请求读锁，优先保证writer。
+
+  如果已经有一些reader请求了读锁，则新请求的writer会等待在其之前的reader都释放掉读锁后才请求获取写锁，等待writer解锁后，后续的reader才能继续请求锁。
 
 * 同Mutex，均为不可重入，使用时应避免复制；
 
-  要注意reader在加读锁后，加写锁，但必须要先解除读锁后才能解除写锁，否则会形成相互依赖导致死锁；比如先加读锁，再加写锁，解除写锁，解除读锁，这样就会导致死锁，因为加写锁时，需要读锁先释放，而读锁释放又依赖写锁释放，从而导致死锁
+  要注意reader在加读锁后，想要加写锁，则必须要先解除读锁后才能解除写锁，否则会形成相互依赖导致死锁；比如先加读锁，再加写锁，解除写锁，解除读锁，这样就会导致死锁，因为加写锁时，需要读锁先释放，而读锁释放又依赖写锁释放，从而导致死锁
 
-  注意reader是可以重复加读锁的，重复加读锁时，外层reader必须=里层的reader释放锁后自己才能释放锁。
+  注意reader是可以重复加读锁的，重复加读锁时，外层reader必须等里层的reader释放锁后自己才能释放锁。
 
 * 必须先使用RLock / Lock方法才能使用RUnlock / Unlock方法，否则会panic，重复释放锁也会panic。
 
@@ -415,7 +425,7 @@ const rwmutexMaxReaders = 1 << 30 // 最大的reader数量
 **仅对readerCount值进行原子操作**，还有就是操作当前goroutine和reader信号量
 
 1. RLock时，对readerCount的值+1，判断是否< 0，如果是，说明此时有writer在竞争锁或已持有锁，则将当前goroutine加入readerSem指向的队列中，进行等待，防止写锁饥饿。
-2. RUnlock时，对readerCount的值-1，判断是否<0，如果是，说明当前有writer在竞争锁，调用rUnlockSlow方法，对readerWait的值-1，判断是否=0，如果是，说明当前goroutine是最后一个要解除读锁的，此时会唤醒要请求写锁的writer。
+2. RUnlock时，对readerCount的值-1，判断是否<0，如果是，说明当前有writer在竞争锁，调用`rUnlockSlow方法`，对readerWait的值-1，判断是否=0，如果是，说明当前goroutine是最后一个要解除读锁的，此时会唤醒要请求写锁的writer。
 
 ```go
 func (rw *RWMutex) RLock() {
@@ -447,10 +457,10 @@ func (rw *RWMutex) rUnlockSlow(r int32) {
 
 ## Lock方法
 
-RWMutex**内部使用Mutex实现写锁互斥**，解决多个writer间的竞争，readerWait实现写操作不会被读操作阻塞而饿死。
+RWMutex**内部使用Mutex实现写锁互斥**，解决多个writer间的竞争，readerWait字段实现写操作不会被读操作阻塞而饿死。
 
-1. 调用w的Lock方法加锁，防止其他writer上锁，反转 readerCount的值并更新到RWMutex中，使其变成负数（readerCount - rwmutexMaxReaders + rwmutexMaxReaders）告诉reader有writer要请求锁
-2. 如果此时readerCount != 0，说明当前有reader持有读锁，需要记录需要等待完成的reader的数量，即readerWait的值（readerWaiter + 第1步算的readerCount的值），并且如果此时readerWait != 0，将当前goroutine加入writerSema指向的队列中，进行等待。直到有goroutine调用RUnlock方法且是最后一个释放锁时，才会被唤醒。
+1. 调用w的Lock方法加锁，防止其他writer上锁，cas反转 readerCount的值并更新到RWMutex中，使其变成负数`readerCount - rwmutexMaxReaders` 告诉reader有writer要请求锁；
+2. 如果此时`readerCount != 0`，说明当前有reader持有读锁，需要记录需要等待完成的reader的数量，即readerWait的值（readerWaiter + readerCount），并且如果此时readerWait != 0，将当前goroutine加入writerSema指向的队列中，进行等待。直到有goroutine调用RUnlock方法且是最后一个释放锁时，才会被唤醒。
 
 ```go
 func (rw *RWMutex) Lock() {
@@ -469,9 +479,7 @@ func (rw *RWMutex) Lock() {
 
 ## Unlock方法
 
-通过readerWait来唤醒所有正在等待的reader
-
-1. 反转readerCount的值（readerCount + rwmutexMaxReaders），使其变成reader的数量，唤醒这些reader
+1. cas反转readerCount的值（readerCount + rwmutexMaxReaders），使其变成reader的数量，唤醒这些reader
 2. 调用w的Unlock方法释放当前goroutine的锁，让其他writer可以继续竞争。
 
 ```go
@@ -557,7 +565,7 @@ type entry struct {
 
 4. 如果read中不存在，则读取dirty，判断dirty是否存在，存在则更新dirty的键值对；
 
-5. 如果dirty不存在，且dirty中不存在有的键值对在read中没有，如果dirty为空，创建新dirty，同时需要遍历把read中非删除的键值对赋给dirty；更新read的值，表明dirty中存在read中没有的键值对；
+5. 如果dirty不存在，且dirty中不存在有的键值对在read中没有，如果dirty为空，创建新dirty，同时需要遍历把read中非删除的键值对赋给dirty；更新`read.amended`的值，表明dirty中存在read中没有的键值对；
 
 6. 最后再将新的键值对添加到dirty中；
 
@@ -604,7 +612,7 @@ read, _ := m.read.Load().(readOnly)
 5. 同时增加miss的值(miss表示读取穿透的次数)，当miss的值等于dirty的长度时，就会将dirty提升为read，只需简单的赋值即可，然后将dirty置为null，重置miss数，避免总是从dirty中加锁读取；
 6. 解锁，将dirty中的查询结果返回；
 
-总结：优先读read中的key，判断read的标记，加锁，判断dirty是否包含read中不存在的key，如果是，才会去读dirty，同时miss值+1，当miss值=dirty长度时，将dirty中的键值对赋值给read，解锁。
+总结：优先读read中的key，读不到，判断read的标记（dirty是否包含read中不存在的key），加锁，再读read，还读不到，再判断dirty是否包含read中不存在的key，如果是，才会去读dirty，同时miss值+1，当miss值=dirty长度时，将dirty中的键值对赋值给read，解锁。
 
 ```go
 func (m *Map) Load(key interface{}) (value interface{}, ok bool) {
@@ -645,10 +653,10 @@ func (m *Map) missLocked() {
 
 1. 判断read中是否存在该key；
 2. 如果read中不存在，且dirty中包含了read中不存在的key，加锁；
-3. 如果read中真的不存在，且dirty中包含了read中不存在的key，删除dirty中该key和value，此时miss也会 + 1，当miss值=dirty长度时，将dirty中非删除的键值对赋值给read；
+3. 如果read中真的不存在，且dirty中包含了read中不存在的key，删除dirty中该key和value，此时miss也会 + 1，当miss值=dirty长度时，将dirty中非删除的键值对赋值给read，解锁；
 4. 如果存在该key（此时该键值对只会在read中存在），自旋，直接在该key对应的entry打上expunged标记，表示删除；
 
-总结：如果dirty中存在该key，dirty中该键值对会被真正的删除，但此时read中的键值对还没被删除，只是其key对应的value被打上一个expunged标记，表示删除，使其在被get的时候能分辨出来，read中该key真正的删除只有在将dirty提升为read的时候；
+总结：优先读read，读不到，加锁，如果dirty中存在该key，dirty中该键值对会被真正的删除，但此时read中的键值对还没被删除，只是其key对应的value被打上一个expunged标记，表示删除，使其在被get的时候能分辨出来，read中该key真正的删除只有在将dirty提升为read的时候；
 
 ```go
 func (m *Map) Delete(key interface{}) {
@@ -671,6 +679,7 @@ func (m *Map) LoadAndDelete(key interface{}) (value interface{}, loaded bool) {
 		m.mu.Unlock()
 	}
 	if ok {
+        // 自旋，cas给key打上删除标记
 		return e.delete()
 	}
 	return nil, false
@@ -876,7 +885,7 @@ type Pool struct {
 
     // 每个 P 的本地队列，实际类型为 [P]poolLocal数组，长度是固定的，P的id对应[P]poolLocal下标索引，通过这样的设计，多个 G 使用同一个Pool时，减少竞争，提升性能
 	local     unsafe.Pointer
-	// [P]poolLocal 本地队列的大小
+	// [P]poolLocal 本地队列的长度
 	localSize uintptr
 
     // GC 时使用，分别接管 local 和 localSize，victim机制用于减少GC后冷启动导致的性能抖动，让对象分配更平滑，降低GC压力的同时提高命中率，由poolCleanup()方法操作
@@ -1032,7 +1041,7 @@ Pool会在init方法中使用`runtime_registerPoolCleanup`注册GC的钩子`pool
 2. 遍历allPools数组，将local对象赋值给victim，local对象赋值为nil；
 3. 然后将allPools赋值给oldPools，allPools置为nil；
 
-当GC开始时候，就会将 victim cache 中所有对象的回收（因为已经被置为null了）。因为victim cache的设计，pool中的复用对象会在每两个GC循环中清除；
+当GC开始时候，就会将 oldPools数组中 pool对象 已释放的 victim cache 中所有对象的回收（因为已经被置为null了）。因为victim cache的设计，pool中的复用对象会在每两个GC循环中清除；
 
 # 原子操作
 

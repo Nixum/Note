@@ -578,7 +578,7 @@ func makechan(t *chantype, size int) *hchan {
 
    **当recvq中没有等待的接收者，且buf区存在空余空间时**，会使用`chanbuf()`函数获取**sendx索引值**，计算出下一个可以存储数据的位置，然后调用`typedmemmove()`函数将要发送的数据拷贝到buff区，增加sendx索引和qcount计数器，完成之后解锁，返回成功；
 
-6. 阻塞发送 - **最后才是保存在待发送队列，阻塞**
+6. 阻塞发送 - **最后才保存在待发送队列，阻塞（阻塞只发生在这里，此时G和M分离）**
 
    **当recvq中没有等待的接收者，且buf区已满或不存在buf区时**，会先调用`getg()`函数获取正在发送者的goroutine，执行`acquireSudog()`函数获取sudoG对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine）
 
@@ -595,6 +595,8 @@ func makechan(t *chantype, size int) *hchan {
 
 ```go
 // ep指的是用来发送数据的内存指针，数据类型与hchan中的类型一致
+// 返回值表示带发送的数据是否 send 成功，即是否被接受，比如进buff或者被接收者接收；
+// ch <- [val] 时，block=true; select时，block=false
 func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 	// 如果chan是nil，则把发送者的goroutine park（阻塞休眠），此时发送者将被永久阻塞
     if c == nil {
@@ -609,6 +611,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		racereadpc(c.raceaddr(), callerpc, funcPC(chansend))
 	}
 
+    // 下面代码进针对select场景
     // 当chan不为null，且没被close，full方法判断chan发送是否阻塞，是则直接返回true
     // full方法有两种情况判断是否可发送
     // 1. 如果hchan.dataqsiz=0，说明是阻塞队列，如果此时hchan.recvq.first==nil，说明没有接收者，发送阻塞
@@ -708,7 +711,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
 ## 接收数据
 
-使用` str <- ch 或 str, ok <- ch (ok用于判断ch是否关闭，如果没有ok，可能会无法分辨str接收到的零值是发送者发的还是ch关闭)`接收数据，会转化为调用chanrecv1和chanrecv2函数，但最终会调用chanrecv函数接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
+使用` str <- ch 或 str, ok <- ch (ok用于判断ch是否关闭，如果没有ok，可能会无法分辨str接收到的零值是发送者发的还是ch关闭)`接收数据，会转化为调用`chanrecv1和chanrecv2函数`，但最终会调用`chanrecv函数`接收数据。chanrecv1和chanrecv2函数都是设置阻塞参数为true。
 
 1. 如果chan是nil，则把接收者的goroutine park（阻塞休眠），接收者被永久阻塞；
 
@@ -734,7 +737,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
    这个和chansend共用一把锁，所以不会有并发问题；
 
-6. 阻塞接收 - **最后才是保存在接收等待队列，阻塞**
+6. 阻塞接收 - **最后才是保存在接收等待队列，阻塞（阻塞只发生在这里，此时G和M分离）**
 
    **当channel的sendq队列没有等待状态的goroutine，且buf区不存在数据时**，执行`acquireSudog()`函数获取sudoG对象，设置此次阻塞发送的相关信息（如发送的channel、是否在select控制结构中和待发送数据的内存地址、发送数据的goroutine）
 
@@ -751,6 +754,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
 ```go
 // ep指的是用来接收数据的内存指针，数据类型与hchan中的类型一致
+// [val] <- ch 时，block=true; select时，block=false
 func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool) {
 	if debugChan {
 		print("chanrecv: chan=", c, "\n")
@@ -763,6 +767,7 @@ func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool)
 		gopark(nil, nil, waitReasonChanReceiveNilChan, traceEvGoStop, 2)
 		throw("unreachable")
 	}
+    // 这段代码仅针对select的场景
 	// 当chan不为nil，在没有获取锁的情况下，检查chan的buf区大小和是否存在可接收数据
     // empty方法是原子检查，检查chan.dataqsiz、chan.qcount是否为0，发送队列是否为空
 	if !block && empty(c) {
@@ -917,7 +922,7 @@ func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
 
    将接收者等待队列中的sudoG对象加入到待清除队列glist中，这里会优先回收接收者，这样即使从close中的chan读取数据，也不会panic，最多读到默认值；
 
-   这样第6步执行的时候，才会先执行接收者，接收后面发送者的数据，否则发送者发送的数据无法被先接收。
+   这样第6步执行的时候，才会先执行接收者，接收后面发送者的数据（buff数组里的，因为sender里的会被panic掉），否则发送者发送的数据无法被先接收。
 
 4. **其次是释放所有发送者**：
    将发送者等待队列中的sudoG对象加入到待清除队列glist中，这里可能会发生panic，因为往一个close的chan中发送数据会panic；
@@ -945,6 +950,7 @@ func closechan(c *hchan) {
 		if sg == nil {
 			break
 		}
+        // 销毁资源
 		if sg.elem != nil {
 			typedmemclr(c.elemtype, sg.elem)
 			sg.elem = nil
@@ -959,12 +965,14 @@ func closechan(c *hchan) {
 		}
 		glist.push(gp)
 	}
-	// 释放所有发送者：将所有发送者的sudoG等待队列加入到待清除的队列glist中，这里可能会产生panic
+	// 释放所有发送者：将所有发送者的sudoG等待队列加入到待清除的队列glist中
+    // 如果发送者队列存在发送者，那这些发送者所在的goroutine会产生panic
 	for {
 		sg := c.sendq.dequeue()
 		if sg == nil {
 			break
 		}
+        // 销毁资源
 		sg.elem = nil
 		if sg.releasetime != 0 {
 			sg.releasetime = cputicks()
@@ -1023,7 +1031,7 @@ func closechan(c *hchan) {
       ch := make(chan int, 3)
       for i := 0; i < 10; i++ {
   // 这个放在外层和放在里层的效果不同，都可以控制并发量，但是前者会阻塞for循环，后者不会
-          ch <- 1
+          ch <- 1   // 放满三个后就会阻塞循环，此时最多存在3个goroutine
   		go func(k int) {
   			fmt.Println(k) // do something...
   			time.Sleep(time.Second)
