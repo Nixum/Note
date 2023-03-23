@@ -374,9 +374,13 @@ func (m *Mutex) unlockSlow(new int32) {
 
 golang底层通过`runtime_SemacquireMutex`和`runtime_Semrelease`来实现阻塞协程切换和释放被阻塞协程重新运行等操作。
 
-Mutex中的sema是一个信号量地址，在runtime中，有一个长度是251的全局semtable数组，每个元素是一棵平衡树的根，是sudog结构形成的一个协程列表。sematable会被多个协程操作，有并发问题，底层使用真正的锁，依赖操作系统实现，不能被用户使用。
+在runtime中，有一个长度是251的全局semtable数组，每个元素是一棵平衡树的根，树的每个节点是sudog结构组成的一个双向链表。
 
-Mutex通过sema字段，hash映射到semtable数组，从而知道goroutine被包装成sudog之后要存在semtable数组中的哪一棵平衡树上，以此就可以通过同一个信号量找到对应的在等待的协程队列。
+semtable会被多个协程操作，有并发问题，底层使用真正的锁，依赖操作系统实现，不能被用户使用。
+
+Mutex中的sema是一个信号量，Mutex通过sema字段，取其地址右移三位再对数组长度取模，得到semtable的索引，映射到semtable数组，从而知道goroutine被包装成sudog之后要存在semtable数组中的哪一棵平衡树上，以此就可以通过同一个信号量找到对应的在等待的协程双向链表。
+
+但是不同的信号量地址可能会映射到同一个semtable索引，为了避免唤醒错误的协程，会对拿出来的平衡树进行变量，匹配sema的地址，取出对应的协程。
 
 # RWMutex - 读写锁
 
