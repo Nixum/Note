@@ -98,6 +98,88 @@ netpoller中的几个方法：`对epoll的封装 netpollinit、netpollopen、net
 
 # Goroutine
 
+## 结构
+
+### G
+
+goroutine本质是一个执行流，通过`go func(){}()`会开启一个协程，等待被调度，编译的时候，会变成 `runtime.g` 结构体，用于调度，func函数会挂在 `runtime.g` 的startpc字段，func函数的入参会拷贝到栈中，sched用于保存协程切换时的pc位置和栈位置；
+
+```go
+// 实际不止这些字段
+type g struct {
+	goid   int64  // 协程id
+	status uint32 // 协程状态
+	stack  struct { // 协程使用的栈
+		lo uintptr // 该协程拥有的栈低位
+		hi uintptr // 该协程拥有的栈高位
+	}
+	sched       gobuf          // g的运行现场，用于切换时保存上下文
+	stackgroud0 uintptr        // 用于栈扩张
+	stackgroud1 uintptr        // 用于栈收缩
+	m           *m             // 当前g绑定的m
+	param       unsafe.Pointer // wakeup时使用，参数传入
+	waitsince   int64          // g被阻塞后的近似时间
+	waitreason  waitReason     // g被阻塞的原因
+	preempt     bool           // 抢占调度标志
+	lockedm     muintptr       // 如果调用了LockOsThread，g就会被绑定在m上
+	gopc        uintptr        // 创建goroutine语句的指令地址
+	startpc     uintptr        // goroutine函数的指令地址
+	timeer      *timer         // time.Sleep缓存的定时器
+}
+
+type gobuf struct {
+    sp uintptr // 栈指针的位置
+    pc uintptr // 运行到的程序位置，程序计数器的值
+}
+```
+
+### M
+
+G要调度到M上才能运行，M是真正工作的实体，保存了自身使用的栈信息，当前正在M上执行的G信息，与之绑定的P信息等。m结构体记录了与之对应的内核线程的栈信息，在执行调度时使用。
+
+```go
+// 实际不止这些字段
+type m struct {
+	g0         *g         // 执行用户goroutine时，使用用户goroutine自己的栈，因此调度时会发生栈的切换
+	tls        [6]uintptr // LocalThreadStorage，通过tls结构体实现m与工作线程的绑定
+	curg       *g         // 指向正在运行的goroutine对象
+	p          puintptr   // 当前工作线程绑定的P
+	preemptoff string     // 该字段不等于空字符串时，保存curg始终在这个m上运行
+	spinning   bool       // 为true表示当前m处于自旋状态，正在从其他线程偷任务
+	blocked    bool       // m正阻塞在note上
+	park       note       // 没有goroutine需要运行时，工作线程sleep在这个park成员上，其他线程通过这个park唤醒该工作线程
+	alllink    *m         // 记录所有工作线程的链表
+    locks      int32      // 锁的计数器，非0表示对m上锁，禁止被抢占
+}
+```
+
+### P
+
+为M的执行提供上下文，保存M执行G的一些资源，一个M只有绑定了P才能执行goroutine
+
+```go
+type p struct {
+    id          int32         // 在allp中的索引
+	schedtick   uint32        // 每次调用schedule时会加一
+	syscalltick uint32        // 每次系统调用时会加一
+	sysmontick  sysmontick    // 用于sysmon线程记录被监控p的系统调用时间和运行时间
+    m           muintptr      // 执行绑定的m，如果p是idle的话，这个指针是nil
+	runqhead    uint32        // 本地运行队列的队头
+	runqtail    uint32        // 本地运行队列的队尾
+	runq        [256]guintptr // 本地运行队列，一个256长度的数组
+	// runnext非空，表示有一个G在执行，状态是runnable
+	// 这个G被当前G修改为ready状态时，相比runq中的G有更高的优先级
+	// 如果当前G还有剩余的可用时间，那就运行这个G
+	// 运行之后，该G会记串当前G的剩余时间
+	runnext guintptr
+	// 空闲g链表
+	gFree struct {
+		gList
+		n int32
+	}
+}
+```
+
 ## 基本
 
 * GPM模型 - M：N调度模型

@@ -1152,6 +1152,81 @@ func process(timeout time.Duration) bool {
 }
 ```
 
+# select
+
+## 结构
+
+select在runtime中不存在结构体表示，但是case倒是有
+
+```go
+const (
+    // scase.kind
+    // send 或者 recv 发生在一个 nil channel 上，就有可能出现这种情况
+    caseNil = iota
+    caseRecv
+    caseSend
+    caseDefault
+)
+
+// select 中每一个 case 的数据结构定义
+type scase struct {
+	elem unsafe.Pointer // 接收 或 发送数据的变量地址
+	c    *hchan // 存储正在使用的chan
+	kind uint16 // case的种类
+
+	releasetime int64
+	pc          uintptr // return pc (for race detector / msan)
+}
+```
+
+## 基本
+
+* 非阻塞收发：select不会等待其他chan准备就绪，会非阻塞读取或写入数据，直接执行default条件中的内容并返回。
+
+```go
+ch := make(chan int)
+    select {
+    case i := <-ch:
+        println(i)
+    default:
+        println("default")
+    }
+```
+
+* 随机执行：select遇到多个case就绪，会进行随机选择
+
+```go
+ch1 := make(chan int)
+ch2 := make(chan int)
+    select {
+    case j := <-ch1:
+        println(j)
+    case i := <-ch2:
+        println(i)
+    }
+```
+
+* 编译器会对select中的case进行优化，总共有四种情况：
+
+  * 不包含任何case，即空select，此时会阻塞当前的goroutine
+  * 只包含一个case，此时select会被优化成 if ，当chan没有数据可接收时，就会把阻塞当前goroutine，直到有数据到来；如果chan是nil，就会永远阻塞当前goroutine
+
+  ```go
+  select {
+  case v, ok <-ch:
+      // ...    
+  }
+  // 会被优化成
+  if ch == nil {
+      block()
+  }
+  v, ok := <-ch
+  // ...
+  ```
+
+  * 存在两个case，其中一个是default：
+  * 通用的select条件：
+
 # Timer
 
 https://www.cyhone.com/articles/analysis-of-golang-timer/
