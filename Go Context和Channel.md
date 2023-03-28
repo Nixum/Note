@@ -1160,7 +1160,7 @@ select在runtime中不存在结构体表示，但是case倒是有
 
 ```go
 const (
-    // scase.kind
+    // scase.kind，到时select就是轮询判断这些类型的
     // send 或者 recv 发生在一个 nil channel 上，就有可能出现这种情况
     caseNil = iota
     caseRecv
@@ -1181,7 +1181,7 @@ type scase struct {
 
 ## 基本
 
-* 非阻塞收发：select不会等待其他chan准备就绪，会非阻塞读取或写入数据，直接执行default条件中的内容并返回。
+* 非阻塞收发：当chan中存在可接收数据，直接处理那个chan，否则执行default语句
 
 ```go
 ch := make(chan int)
@@ -1225,7 +1225,82 @@ ch2 := make(chan int)
   ```
 
   * 存在两个case，其中一个是default：
-  * 通用的select条件：
+  
+    * 发送，这种情况下，发送是不阻塞的：
+  
+      ```go
+      ch := make(chan int, 1) // 一定要1及以上，才会走case，如果是0会死锁，直接走default，
+      select {
+      case ch <- i:
+          // ...
+      default:
+          // ...
+      }
+      // 底层调用的是chansend(c, elem, false, getcallerpc())，这里的阻塞参数是false， 表示这次发送不会阻塞
+      if selectnbsend(ch, i) {
+          // ...
+      } else {
+          // ...
+      }
+      ```
+  
+    * 接收，这种情况下，chan有值就走case，否则走default
+  
+      ```go
+      select {
+      case v <- ch: // case v, received <- ch:
+          // ...
+      default:
+          // ...
+      }
+      
+      if selectnbrecv(&v, ch) { // if selectnbrecv2(&v, &received, ch) {
+          // ...
+      } else {
+          // ...
+      }
+      ```
+  
+  * 通用的select条件：比如select里包含多个case，会编译成通过`runtime的selectgo方法`处理case，如果`selectgo`会接收 case的序号 还有 是否被接收的标识，然后被编译成多个if，用于判断选中哪个case。
+
+## 流程
+
+1. 获取case数组，随机打乱，确定打乱后的轮询顺序数组pollorder和加锁顺序数组lockorder，数组里存放的元素是chan
+2. 按加锁顺序数组，调用chan的锁，依次进行锁定
+3. 循环遍历轮询顺序数组
+   1. 
+
+```go
+func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
+    cas1 := (*[1 << 16]scase)(unsafe.Pointer(cas0))
+    order1 := (*[1 << 17]uint16)(unsafe.Pointer(order0))
+
+    scases := cas1[:ncases:ncases]
+    // 轮询顺序数组
+    pollorder := order1[:ncases:ncases]
+    // 加锁顺序数组
+    lockorder := order1[ncases:][:ncases:ncases]
+
+    for i := range scases {
+        cas := &scases[i]
+        if cas.c == nil && cas.kind != caseDefault {
+            *cas = scase{}
+        }
+    }
+
+    // 根据chan的地址排序
+    for i := 1; i < ncases; i++ {
+        // 随机轮询，避免chan饿死
+        j := fastrandn(uint32(i + 1))
+        pollorder[i] = pollorder[j]
+        pollorder[j] = uint16(i)
+    }
+    // 按照之前生成的加锁顺序锁定 select 语句中包含所有的 Channel
+    sellock(scases, lockorder)
+
+    // ...
+}
+```
 
 # Timer
 

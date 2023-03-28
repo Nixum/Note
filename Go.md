@@ -202,14 +202,30 @@ type Slice struct {
 ## 基本
 
 * 创建时无需指定长度，如 `slice1 := []int{1,2,3}, 此时长度和容量均为3`
+
 * 从数组上截取`arr1 := [5]int; var slice2 []int = arr1[1:3], 此时长度2，容量5，且对slice2的修改会影响arr1`。
+
 * 可以使用make([]type, len, cap)来创建，len必填，cap非必填，如果cap不填，初始cap=len。如`slice4 := make(int[], 5, 10)，长度5，容量10`。
+
 * 可以使用new来创建，比如 `new([100]int)[0:50]` 效果等同于 `make([]int, 50, 100)`，或者 `slice := *new([]int) 为空切片`
+
 * 空切片：`slice := make([]int, 0) 或 slice := []int{}`，nil切片：`var slice *[]int 或 slice := *new([]int)`；两者的区别在于，空切片会指向一个内存地址，但它没有分配任何的内存空间；nil切片是直接指向nil。
 
   打印时，两者的结果均为`[], len=0， cap=0`，但nil切片与nil比较的结果为true，空切片与nil的比较结果为false。
+  
 * 切片是对数组的一个连续片段的引用，对于**切片底层数组是引用类型**，作为函数参数时，虽然是传切片的值，但是底层数组传递指针，函数内部的修改会影响原始数组
+
 * 一个数组可以创建多个slice，一个slice也可以创建多个slice，但是新老slice会共用底层数组，新老slice的修改都会互相影响。但是如果新slice经过append，使得slice底层数组扩容了，此时slice引用了新的数组，此时新老slice就不会互相影响了。
+
+  语法：`ns = slice1[起始下标:结束下标(不包括):cap容量]`
+
+  ```go
+  slice := []int{1,2,3,4,5}
+  s := slice[0:1] // s = [1]
+  s = slice[0:3] // s = [1, 2], len=2, cap=2
+  s = slice[0:3:5] // s = [1, 2], len=2, cap=5
+  s = slice[:0] // s=[], len=0, cap=0
+  ```
 
 使用new()和make()的区别
 
