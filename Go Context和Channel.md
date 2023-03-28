@@ -727,7 +727,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
    **如果是无buf区的chan**，直接使用`recv()`函数从阻塞的发送者中获取数据；
 
-   **如果是有buf区的chan**，说明此时buf区已满，则先从buf区中获取可接收的数据（从buf区中copy到接收者的内存），然后从sendq队列的队首中读取待发送的数据，加入到buf区中（将发送者的数据copy到buf区），更新可接收和可发送的下标chan.recvx和sendx的值；
+   **如果是有buf区的chan**，说明此时buf区已满，则先从buf区中获取可接收的数据（从buf区中copy到接收者的内存），然后从sendq队列的队首中读取待发送的数据，加入到buf区中（将发送者的数据copy到buf区，替换刚刚buf区copy出去的位置），更新可接收和可发送的下标chan.recvx和sendx的值；
 
    最后调用`goready()`函数将等待发送数据而阻塞gorouotine的状态从Gwaiting 或者 Gscanwaiting 改变成 Grunnable，把goroutine绑定到P的LRQ中，**等待下一轮调度时**立即释放这个等待发送数据的goroutine；
 
@@ -1171,8 +1171,8 @@ const (
 // select 中每一个 case 的数据结构定义
 type scase struct {
 	elem unsafe.Pointer // 接收 或 发送数据的变量地址
-	c    *hchan // 存储正在使用的chan
-	kind uint16 // case的种类
+	c    *hchan         // 存储正在使用的chan
+	kind uint16         // case的种类
 
 	releasetime int64
 	pc          uintptr // return pc (for race detector / msan)
@@ -1206,69 +1206,126 @@ ch2 := make(chan int)
     }
 ```
 
-* 编译器会对select中的case进行优化，总共有四种情况：
+编译器会对select中的case进行优化，总共有四种情况：
 
-  * 不包含任何case，即空select，此时会阻塞当前的goroutine
-  * 只包含一个case，此时select会被优化成 if ，当chan没有数据可接收时，就会把阻塞当前goroutine，直到有数据到来；如果chan是nil，就会永远阻塞当前goroutine
+1. 不包含任何case，即空select，此时会阻塞当前的goroutine
 
-  ```go
-  select {
-  case v, ok <-ch:
-      // ...    
-  }
-  // 会被优化成
-  if ch == nil {
-      block()
-  }
-  v, ok := <-ch
-  // ...
-  ```
+2. 只包含一个case，此时select会被优化成 if ，当chan没有数据可接收时，就会把阻塞当前goroutine，直到有数据到来；如果chan是nil，就会永远阻塞当前goroutine
 
-  * 存在两个case，其中一个是default：
-  
-    * 发送，这种情况下，发送是不阻塞的：
-  
-      ```go
-      ch := make(chan int, 1) // 一定要1及以上，才会走case，如果是0会死锁，直接走default，
-      select {
-      case ch <- i:
-          // ...
-      default:
-          // ...
-      }
-      // 底层调用的是chansend(c, elem, false, getcallerpc())，这里的阻塞参数是false， 表示这次发送不会阻塞
-      if selectnbsend(ch, i) {
-          // ...
-      } else {
-          // ...
-      }
-      ```
-  
-    * 接收，这种情况下，chan有值就走case，否则走default
-  
-      ```go
-      select {
-      case v <- ch: // case v, received <- ch:
-          // ...
-      default:
-          // ...
-      }
-      
-      if selectnbrecv(&v, ch) { // if selectnbrecv2(&v, &received, ch) {
-          // ...
-      } else {
-          // ...
-      }
-      ```
-  
-  * 通用的select条件：比如select里包含多个case，会编译成通过`runtime的selectgo方法`处理case，如果`selectgo`会接收 case的序号 还有 是否被接收的标识，然后被编译成多个if，用于判断选中哪个case。
+```go
+select {
+case v, ok <-ch:
+    // ...    
+}
+// 会被优化成
+if ch == nil {
+    block()
+}
+v, ok := <-ch
+// ...
+```
 
-## 流程
+3. 存在两个case，其中一个是default：
+
+   * 发送，这种情况下，发送是不阻塞的：
+
+   ```go
+   ch := make(chan int, 1) // 一定要1及以上，才会走case，如果是0会死锁，直接走default，
+   select {
+   case ch <- i:
+       // ...
+   default:
+       // ...
+   }
+   // 底层调用的是chansend(c, elem, false, getcallerpc())，这里的阻塞参数是false， 表示这次发送不会阻塞
+   if selectnbsend(ch, i) {
+       // ...
+   } else {
+       // ...
+   }
+   ```
+
+   * 接收，这种情况下，chan有值就走case，否则走default
+
+   ```go
+     select {
+     case v <- ch: // case v, received <- ch:
+         // ...
+     default:
+         // ...
+     }
+     
+     if selectnbrecv(&v, ch) { // if selectnbrecv2(&v, &received, ch) {
+         // ...
+     } else {
+         // ...
+     }
+   ```
+
+   * 通用的select条件：比如select里包含多个case，会编译成通过`runtime的selectgo方法`处理case，`selectgo`会返回 case的序号 还有 是否被接收的标识，然后被编译成多个if，用于判断选中哪个case。
+
+   ```go
+     selv := [3]scase{}
+     order := [6]uint16
+     for i, cas := range cases {
+         c := scase{}
+         c.kind = ...
+         c.elem = ...
+         c.c = ...
+     }
+     chosen, revcOK := selectgo(selv, order, 3)
+     if chosen == 0 {
+         // ...
+         break
+     }
+     if chosen == 1 {
+         // ...
+         break
+     }
+     if chosen == 2 {
+         // ...
+         break
+     }
+   ```
+
+## selectgo的流程
 
 1. 获取case数组，随机打乱，确定打乱后的轮询顺序数组pollorder和加锁顺序数组lockorder，数组里存放的元素是chan
+
 2. 按加锁顺序数组，调用chan的锁，依次进行锁定
-3. 循环遍历轮询顺序数组
-   1. 
+
+3. 进入主循环，遍历 轮询顺序数组pollorder
+   
+
+**第一阶段**，查找是否已经存在准备就绪的chan（此时的chan可以执行收发操作）此时需要处理四种类型的case：
+
+1. 当case不包含chan时，直接跳过；
+
+2. 当case会从chan中接收数据时：
+
+* 如果当前chan的`sendq队列`上有等待的goroutine，就会跳到 `recv标签`，如果没有buf区，则从`sendq队列`上获取数据，否则，从chan的buf区读取数据后，将`sendq队列`中等待的goroutine中的数据放入到buf区中相同的位置；
+* 如果当前chan的buf区不为空，就跳到`bufrecv标签`，从chan的buf区中获取数据
+* 如果当前chan已经被关闭，就会跳到 `rclose标签` 做一些清除的收尾工作；
+
+3. 当case会从chan中发送数据时：
+
+* 如果当前chan已经被关闭，会直接跳到 `sclose标签`，触发panic；
+* 如果当前chan的`recvq队列`上有等待的goroutine，就跳到 `send标签` 向chan发送数据；
+* 如果当前chan的缓冲区存在空闲位置，就会将等待发送的数据存入缓冲区中，因为select相当于有接收者了，不会出现发送阻塞的情况；
+
+4. 当case是default时，表示前面的所有case都没有被执行，此时会解锁所有的chan并返回（意味着当前select结构的收发都是非阻塞的），直接执行default内容；
+
+第一阶段只是查找所有case中是否有可以立即被处理的chan，无论是数据是在等待的goroutine上，还是buf区中，只要存在数据满足条件就会立即处理，然后返回；如果不能立刻找到活跃的chan，就会进入下一循环；
+
+**第二阶段**，将当前goroutine加入到chan对应的收发队列上并等待其他goroutine的唤醒:
+
+* 将当前goroutine，包装成sudogo，遍历case，加入到case的chan的`sendq队列`或者`recvq队列`中（同时，这个sudog会关联当前case的chan，然后将这些sudog组成链表，挂在当前goroutine下，用于唤醒之后的查找）
+* 调用`gopark函数`挂起当前goroutine，等待被调度器唤醒；
+
+**第三阶段**，当前goroutine被唤醒后，找到满足条件的chan并进行处理：
+
+* 等到select对应的chan准备好后，当前goroutine会被调度器唤醒，被唤醒后，获取当前goroutine的sudog，依次对比所有case里chan对应的sudog结构，找到被唤醒的case，并释放其他未被使用的sudog结构；
+*  由于当前的select结构已经被挑选了其中一个case执行，剩下的case中没有被用到的sudog会被直接忽略并释放掉，为了不影响chan的正常使用，还需要将这些废弃的sudog从chan中出队；
 
 ```go
 func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
@@ -1298,7 +1355,7 @@ func selectgo(cas0 *scase, order0 *uint16, ncases int) (int, bool) {
     // 按照之前生成的加锁顺序锁定 select 语句中包含所有的 Channel
     sellock(scases, lockorder)
 
-    // ...
+    // ...后面太长就不贴了
 }
 ```
 
