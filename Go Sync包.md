@@ -202,7 +202,7 @@ const (
 6. **CAS更新当前锁的状态**为new state，如果更新成功
 
    5.1. 如果锁的原状态old state是未被锁，且非饥饿状态，表明当前goroutine获取到了锁，**退出结束**
-   5.2. 判断当前goroutine是新加入的还是被唤醒的，新加入的放到等待队列的尾部，刚被唤醒的加入等待队列的头部，通过信号量阻塞，直到当前goroutine被唤醒
+   5.2. 判断当前goroutine是新加入的还是被唤醒的，新加入的放到等待队列的尾部，刚被唤醒的加入等待队列的头部，**通过信号量阻塞**，直到当前goroutine被唤醒
    5.3. 从这里开始被唤醒的goroutine，都是表示是从阻塞队列里出来的。goroutine被唤醒后，判断当前state是否是饥饿状态，如果不是则更新锁的状态为被唤醒，表示有G被唤醒，继续循环，跳到 2
    5.4. 如果当前state是饥饿状态，当前goroutine获取锁，waiter数量 - 1，设置当前锁的状态是饥饿状态，如果当前goroutine是队列中最后一个goroutine，清除当前锁的饥饿状态，**更新当前锁的状态和waiter数量，退出结束**
 
@@ -372,7 +372,7 @@ func (m *Mutex) unlockSlow(new int32) {
 
 ## 关于Mutex中的sema
 
-golang底层通过`runtime_SemacquireMutex`和`runtime_Semrelease`来实现阻塞协程切换和释放被阻塞协程重新运行等操作。
+golang底层通过`runtime_SemacquireMutex`和`runtime_Semrelease`来实现切换阻塞协程和释放被阻塞协程重新运行等操作。
 
 在runtime中，有一个长度是251的全局semtable数组，每个元素是一棵平衡树的根，树的每个节点是sudog结构组成的一个双向链表。
 
@@ -380,7 +380,7 @@ semtable会被多个协程操作，有并发问题，底层使用真正的锁，
 
 Mutex中的sema是一个信号量，Mutex通过sema字段，取其地址右移三位再对数组长度取模，得到semtable的索引，映射到semtable数组，从而知道goroutine被包装成sudog之后要存在semtable数组中的哪一棵平衡树上，以此就可以通过同一个信号量找到对应的在等待的协程双向链表。
 
-但是不同的信号量地址可能会映射到同一个semtable索引，为了避免唤醒错误的协程，会对拿出来的平衡树进行变量，匹配sema的地址，取出对应的协程。
+但是不同的信号量地址可能会映射到同一个semtable索引，为了避免唤醒错误的协程，会对拿出来的平衡树进行遍历，匹配sema的地址，取出对应的协程。
 
 # RWMutex - 读写锁
 
@@ -536,7 +536,7 @@ type entry struct {
 
 * 基本的并发安全map的实现：将map与RWMutex封装成一个结构体，使用读写锁封装map的各种操作即可。
 
-* 使用RWMutex封装的并发安全的map，因为锁的粒度太大，性能不会太好；通过减少锁的粒度和持有锁的时间，可以提升新能，常见的减少锁的粒度是将锁分片，将锁进行分片，分别控制map中不同的范围的key，类似JDK7中的ConcurrentHashMap的segment锁实现。
+* 使用RWMutex封装的并发安全的map，因为锁的粒度太大，性能不会太好；通过减少锁的粒度和持有锁的时间，可以提升性能，常见的减少锁的粒度是将锁分片，将锁进行分片，分别控制map中不同的范围的key，类似JDK7中的ConcurrentHashMap的segment锁实现。
 
 * 官方出品的sync.Map，有六个方法：
 
@@ -919,7 +919,7 @@ type poolLocalInternal struct {
     // P 的私有对象，使用时无需要加锁，用于不同G执行get和put
 	private interface{}
     // 双向链表
-    // 同一个P上不同G可以多次执行put方法，需要有地方能存储, 并且别的P上的G可能过来偷，所以要加锁
+    // 同一个P上不同G可以多次执行put方法，需要有地方能存储, 并且别的P上的G可能过来偷，通过cas实现
 	shared  poolChain
 }
 ```
@@ -1002,9 +1002,9 @@ type poolDequeue struct {
 
 ## Get方法
 
-1. 如果非第一次访问，调用`p.pin()`函数，**将当前 G 固定在P上，防止被抢占**，并获取pid，再根据pid号找到当前P对应的poolLocal；如果P的数量大于poolLocal的数量，就会进入`p.pinSlow()`方法，创建P个poolLocal。
+1. 如果非第一次访问，调用`p.pin()`函数，**将当前 G 固定在P上，防止被抢占**，并获取pid，再根据pid号找到当前P对应的poolLocal；如果P的数量大于poolLocal的数量，就会进入`p.pinSlow()`方法，加锁，创建P个poolLocal。
 2. 拿到poolLocal后，优先从local的private字段取出一个元素，将private置为null；
-3. 如果从private取出的元素为null，则从当前的local.shared的head中取出一个双端环形队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个双端环形队列继续获取，直到获取到或者遍历完双向链表；
+3. 如果从private取出的元素为null，则从当前的`local.shared`的head中取出一个双端环形队列，遍历队列获取元素，如果有pop出来并返回；如果还取不到，沿着pre指针到下一个双端环形队列继续获取，直到获取到或者遍历完双向链表；
 4. 如果还没有的话，调用`getSlow`函数，遍历其他P的poolLocal（从pid+1对应的poolLocal开始），从它们shared 的 tail 中弹出一个双端环形队列，遍历队列获取元素，如果有，pop出来并返回；如果还取不到（如果当前节点为null，则删除），沿着next指针到下一个双端环形队列继续获取，如果还没有，直到获取到或者遍历完双向链表；如果还没有，就到别的P上继续获取；
 5. 如果所有P的poolLocal.shared都没有，则对victim中以在同样的方式，先从当前P的poolLocal的private里找，找不到再在shared里找，获取一遍；
 6. Pool相关操作**执行完，调用`runtime_procUnpin()`解除非抢占**；
@@ -1033,7 +1033,7 @@ type poolDequeue struct {
 1. 如果Put进来的元素是null，直接返回；
 2. 调用`p.pin()`函数，将当前 G 固定在P上，防止被抢占，并获取pid，再根据pid号找到当前P对应的poolLocal；
 3. 尝试将put进来的元素赋值给private，如果本地private没有值，直接赋值；
-4. 否则，将其加入到shared对应的双端队列的队首；
+4. 否则，原子操作将其加入到shared对应的双端队列的队首；
 
 ## GC前
 

@@ -560,7 +560,7 @@ func makeBucketArray(t *maptype, b uint8, dirtyalloc unsafe.Pointer) (buckets un
 
 2. 确定使用buckets数组还是oldbuckets数组：判断oldbuckets数组中是否为空，不为空说明正处于扩容中，还没完成迁移，则重新计算桶的位置，并在oldbuckets数组找到对应的桶；如果为空，则在buckets数组中找到对应的桶。
 
-3. 在桶中找tophash的位置：用key哈希计算得到的哈希值，取高8个bit位 + minTopshash，计算得到此bucket桶中的tophash，即key在桶中的编号，之后在桶中的正常位遍历比较。
+3. 在桶中找tophash的位置：用key哈希计算得到的哈希值，取高8个bit位 + minTopshash(小于minTopshash值时才需要加)，计算得到此bucket桶中的tophash，即key在桶中的编号，之后在桶中的正常位遍历比较。
 
 4. 每个桶是一整片连续的内存空间，先遍历bucket桶中的正常位，与桶中的tophash进行比较，当找到对应的tophash时，根据tophash进行计算得到key，根据key的大小计算得到value的地址，找到value。
 

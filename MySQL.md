@@ -531,6 +531,7 @@ B类树都是为了磁盘或其他辅助存储设备而设计的一种数据结�
   * `select * from table where id > (页数*页面大小) order by id limit M`， `order by` 使得结果稳定；
   * `select * from table where id > (select ID from table order by id limit M, 1) order by id limit n`，先利用子查询把id查出来，依靠id上的顺序，外层效果跟上面的类似
   * `select * from table where id in (select id from table limit M, N)`，同样也是利用id上的索引，覆盖索引，只查主键时，效率很高。
+  * 普通查询返回是会等整个结果集都查询完毕才会返回，可能会导致客户端直接OOM，so 可以采用流式返回，边查边返回，客户端可以根据查到的结果先进行业务处理，及时回收内存，避免OOM；但是流式查询返回有个问题就是MySQL并不清楚客户端什么时候会关闭，所以MySQL会持续占用这条连接和使用额外的内存或磁盘来存储流式查询的结果，持续的查询也可能导致CPU消耗，消耗较大；两者在查询上的耗时是一样的，只是对客户端友不友好而已；
 
 
 ## 6.分析

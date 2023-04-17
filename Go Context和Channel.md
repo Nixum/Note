@@ -1,10 +1,10 @@
 ---
 title: Go Context和Channel
-description: context、channel 原理
+description: context、channel、select 原理
 date: 2021-03-22
 weight: 5
 categories: ["Go"]
-tags: ["Go channel原理", "context原理"]
+tags: ["Go channel原理", "context原理", "select原理"]
 ---
 
 [TOC]
@@ -916,13 +916,13 @@ func recv(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
 
    如果 chan 已经 closed，再次 close 也会 panic；
 
-   否则的话，如果 chan 不为 nil，chan 也没有 closed，设置chan的标记为close；
+   否则的话，如果 chan 不为 nil，chan 也没有 closed，设置chan的标记为closed；
 
 3. **优先释放所有的接收者**：
 
    将接收者等待队列中的sudoG对象加入到待清除队列glist中，这里会优先回收接收者，这样即使从close中的chan读取数据，也不会panic，最多读到默认值；
 
-   这样第6步执行的时候，才会先执行接收者，接收后面发送者的数据（buff数组里的，因为sender里的会被panic掉），否则发送者发送的数据无法被先接收。
+   这样第6步执行的时候，才会先执行接收者，接收后面发送者的数据（接收buff数组里的数据，因为sender里的会被panic掉），否则发送者发送的数据无法被先接收。
 
 4. **其次是释放所有发送者**：
    将发送者等待队列中的sudoG对象加入到待清除队列glist中，这里可能会发生panic，因为往一个close的chan中发送数据会panic；
@@ -1024,6 +1024,10 @@ func closechan(c *hchan) {
 
 * 信号通知：利用 如果chan为空，那receiver接收数据的时候就会阻塞等待，直到chan被关闭或有新数据进来 的特点，将一个协程将信号(closing、closed、data ready等)传递给另一个或者另一组协程，比如 wait/notify的模式。
 
+* 协程池，把要操作的逻辑封装成task，通过chan传输实现协程复用
+
+* 任务编排：让一组协程按照一定的顺序并发或串行执行，比如实现waitGroup的功能
+
 * 控制并发量，可以配合WaitGroup进行控制goroutine的数量
 
   ```go
@@ -1090,8 +1094,6 @@ func closechan(c *hchan) {
   }
   ```
 
-  任务编排：让一组协程按照一定的顺序并发或串行执行，比如实现waitGroup的功能
-
 * 实现互斥锁的机制，比如，容量为 1 的chan，放入chan的元素代表锁，谁先取得这个元素，就代表谁先获取了锁
 
   ```go
@@ -1111,7 +1113,7 @@ func closechan(c *hchan) {
   
   func (locker *Locker) UnLock() {
       select {
-          case m.ch <- struct{}{}: 
+          case locker.ch <- struct{}{}: 
       	default: 
           	panic(" unlock of unlocked mutex") 
       }
@@ -1230,7 +1232,7 @@ v, ok := <-ch
    * 发送，这种情况下，发送是不阻塞的：
 
    ```go
-   ch := make(chan int, 1) // 一定要1及以上，才会走case，如果是0会死锁，直接走default，
+   ch := make(chan int, 1) // 一定要1及以上，才先会走case，如果是0会死锁，直接走default，
    select {
    case ch <- i:
        // ...
@@ -1320,6 +1322,9 @@ v, ok := <-ch
 **第二阶段**，将当前goroutine加入到chan对应的收发队列上并等待其他goroutine的唤醒:
 
 * 将当前goroutine，包装成sudogo，遍历case，加入到case的chan的`sendq队列`或者`recvq队列`中（同时，这个sudog会关联当前case的chan，然后将这些sudog组成链表，挂在当前goroutine下，用于唤醒之后的查找）
+
+  ![](https://github.com/Nixum/Java-Note/raw/master/picture/go_selectgo.png)
+
 * 调用`gopark函数`挂起当前goroutine，等待被调度器唤醒；
 
 **第三阶段**，当前goroutine被唤醒后，找到满足条件的chan并进行处理：
@@ -1379,4 +1384,4 @@ https://www.cyhone.com/articles/analysis-of-golang-timer/
 
 DelayQueue会根据环形数组中的每个元素进行排序；
 
-添加任务时，判断任务执行时间，加入环形数组中，对应的环形数组的元素（list），加入DelayQueue中。
+添加任务时，判断任务执行时间，加入环形数组中，对应的环形数组的元素（list），加入DelayQueue中。，
