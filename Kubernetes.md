@@ -114,13 +114,11 @@ api-server在收到请求后，会进行一系列的执行链路：
 
   此外，还会对调度器缓存进行更新，因为需要尽最大可能将集群信息Cache化，以提高两个调度算法组的执行效率，调度器只有在操作Cache时，才会加锁。
 
-* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用**Predicate算法**（预选）进行过滤，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
+* 第二个控制循环叫Scheduling Path，是负责Pod调度的主循环，它会不断从调度队列里出队一个Pod，调用**Predicate算法**（预选）进行过滤，验证Pod是否真的能够在该节点上运行，比如资源是否可用，端口是否占用之类的问题，得到可用的Node，Predicate算法需要的Node信息，都是从Cache里直接拿到；
 
   然后调用**Priorities算法**（优选）为这些选出来的Node进行打分，得分最高的Node就是此次调度的结果。
 
 * 得到可调度的Node后，调度器就会将Pod对象的nodeName字段的值，修改为Node的名字，实现绑定，此时修改的是Cache里的值，之后才会创建一个goroutine异步向API Server发起更新Pod的请求，完成真正的绑定工作；这个过程称为乐观绑定。
-
-* Pod在Node上运行起来之前，还会有一个叫Admit的操作，调用一组GeneralPredicates的调度算法验证Pod是否真的能够在该节点上运行，比如资源是否可用，端口是否占用之类的问题。
 
 Scheduler内置各个阶段的插件，Predicate预选阶段和Priorities优选阶段就算遍历回调插件求出可用的Node结果。所以当节点很多的时候，如果所有节点都需要参与预先调度的过程，就会导致调度的延时很高。
 
@@ -224,7 +222,7 @@ PriorityClass里的value值越高，优先级越大，优先级是一个32bit的
 
 #### 抢占过程
 
-当一个高优先级的Pod调度失败时，调度器会试图从当前集群里寻找一个节点，当该节点上的一个或多个低优先级的Pod被删除后，待调度的高优先级的Pod可用被调度到该节点上，但是抢占过程不是立即发生，而只是在待调度的高优先级的Pod上先设置`spec.nominatedNodeName=Node名字`，等到下一个调度周期再决定是否针对要运行在该节点上，之所以这么做是因为被删除的Pod有默认的30秒优雅退出时间，在这个过程中，可能有新的更加被适合给高优先级调度的节点加入。
+当一个高优先级的Pod调度失败时，调度器会试图从当前集群里寻找一个节点，当该节点上的一个或多个低优先级的Pod被删除后，待调度的高优先级的Pod可以被调度到该节点上，但是抢占过程不是立即发生，而只是在待调度的高优先级的Pod上先设置`spec.nominatedNodeName=Node名字`，等到下一个调度周期再决定是否针对要运行在该节点上，之所以这么做是因为被删除的Pod有默认的30秒优雅退出时间，在这个过程中，可能有新的更加被适合给高优先级调度的节点加入。
 
 #### 抢占原理
 
@@ -279,6 +277,7 @@ CRI是对容器操作相关的接口，而不是对于Pod，分为两组类型�
 1. kubectl执行exec命令后，首先发送Get请求到API-Server，获取pod的相关信息；
 2. 获取到信息后，kubectl再发送Post请求，API-Server返回`101 upgrade`响应给kubectl，表示切换到 SPDY 协议。SPDY协议允许在单个TCP连接上复用独立的 stdin / stdout / stderr / spdy-err 流。
 3. API-Server找到对应的Pod和容器，将Post请求转发到节点的Kubelet，再转发到向对应容器的Docker shim请求一个流式端点URL，并将exec请求转发到Docker exec API。Kubelet再将这个URL以 redirect 的方式返回给API-Server，请求就会重定向到对应的Streaming Server上发起exec请求，并维护长连接，之后就是在这个长连接的基础上执行命令和获取结果了。
+4. 之后，用户端就可以和API-Server通信，比如执行容器里的命令，API-Server会转发命令到容器，或者转发容器内的执行结果给用户端。
 
 除了exec命令意外，其他的如 attach、port-forward、logs 等命令也是类似的模式。
 
@@ -1355,7 +1354,7 @@ Done方法：
 
 * 工作在第四层，传输层，一般转发TCP、UDP流量。
 
-* 每次Pod的重启都会导致IP发生变化，导致IP是不固定的（这个IP就是clusterIP），Service可以为一组相同的Pod套上一个固定的IP地址和端口，让我们能够以**TCP/IP**负载均衡的方式进行访问。
+* 每次Pod的重启都会导致IP发生变化，导致IP是不固定的，Service可以为一组相同的Pod套上一个固定的IP地址和端口（这个IP就是clusterIP），让我们能够以**TCP/IP**负载均衡的方式进行访问。
 
   虽然Service每次重启IP也会发生变化，但是相比Pod会更加稳定。
 
@@ -1422,7 +1421,7 @@ Kubernetes集群中每一个节点都运行着一个kube-proxy，这个进程负
 
 **当service使用了selector指定带有对应label的pod时，endpoint controller才会自动创建对应的endpoint对象，产生一个endpoints，endpoints信息存储在etcd中，用来记录一个service对应的所有pod的访问地址**；
 
-说白了，因为Pod ip比较容易变化，而Endpoint的作用就是维护Service和一组Pod的映射，不用频繁修改Service，。
+说白了，因为Pod ip比较容易变化，而Endpoint的作用就是维护Service和一组Pod的映射，不用频繁修改Service。
 
 Endpoints controller的作用：
 
