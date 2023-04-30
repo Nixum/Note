@@ -1985,9 +1985,9 @@ Istio分为控制平面control plane和数据平面data plane，控制面主要�
 
   pilot有两个子组件：
 
-  * pilot-discovery：是控制面与数据面的桥梁，从kubernetes中获取服务信息，如service、endpoint、pod、node的资源信息；监控istio控制面的信息，如vs、gw、dr等，将服务信息和流量规则信息转化为数据面可以理解的格式，通过xDS下发到各个sidecar中；
-  * pilot-agent：根据API-Server中配置的信息生成sidecar配置文件，负责启动、监控sidecar进程，是istio-proxy的一部分，注入到pod中；
-  * pilot-proxy：即pod中的sidecar-istio-proxy，负责流量代理，直接连接pilot-discovery，间接获取集群中各个微服务的注册情况；
+  * **pilot-discovery：是控制面与数据面的桥梁，从kubernetes中获取服务信息，如service、endpoint、pod、node的资源信息；监控istio控制面的信息，如vs、gw、dr等，将服务信息和流量规则信息转化为数据面可以理解的格式，通过xDS下发到各个sidecar中；**
+  * **pilot-agent：根据API-Server中配置的信息生成sidecar配置文件，负责启动、监控sidecar进程，是istio-proxy的一部分，注入到pod中；**
+  * **pilot-proxy：即pod中的istio-proxy，负责流量代理，直接连接pilot-discovery，间接获取集群中各个微服务的注册情况；istio-proxy发起的连接都是长连接，不受业务服务的影响，通过连接池维护；**
 
 * Citadel负责安全、授权认证，比如证书的分发和轮换，让sidecar代理两端实现双向TLS认证、访问授权；
 
@@ -2218,3 +2218,4 @@ spec:
 
 [源码分析 kubernetes scheduler 核心调度器的实现原理](https://github.com/rfyiamcool/notes/blob/main/kubernetes_scheduler_code.md)
 
+[gRPC 长连接在微服务业务系统中的实践](https://www.infoq.cn/article/cpxr35bwjttgncltyekz)
