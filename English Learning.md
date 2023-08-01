@@ -147,6 +147,12 @@ tags: ["总结"]
 
 * be aware of ：对什么很清楚，知道什么，意识到什么
 
+* be interested in doing sth：做某事感兴趣
+
+* be mad at sb：对某人生气
+
+* be keen on sth/doing sth：热衷某事
+
 * begin to do sth：开始做某事
 
 * belong to sb：属于某人
@@ -155,17 +161,29 @@ tags: ["总结"]
 
 * borrow sth from sb：从某人那借来某物
 
+* board the plane：登机
+
+* black or white：非黑即白，比如see things in balck or white：看待事物非黑即白
+
+* black out：晕了，昏迷
+
 * cover the distance in ...：覆盖距离
 
 * call at 等价于 visit 等价于 call on：访问
 
 * drive on to sw：继续开向某处
 
+* drive me mad：把我逼疯
+
+* dream of doing sth：梦想做某事
+
 * enter for：参加
 
 * fail to do sth：失败做某事
 
 * get sth for sb：给某人拿某些东西
+
+* give up doing sth：放弃做某事
 
 * have gone to：已经去了，人没回来
 
@@ -262,6 +280,8 @@ tags: ["总结"]
 
 * wave to sb：向某人招手
 
+* without doing sth：没有做某事
+
 * up to now：到目前为止
 
 * use to do sth：过去常常做某事（现在不做了）
@@ -314,6 +334,6 @@ tags: ["总结"]
 
 * may / might 表推测，可能是
 
-  * | may / might 表推测 | 现在                                                         | 过去                                                         |
-    | ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
-    | 肯定 / 否定        | may / might (not) do<br />may / might (not) be  adj / n<br />may / might (not) be doing | may / might (not) have done <br />may / might (not)have been adj / n <br />may / might (not) have been doing |
+  | may / might 表推测 | 现在                                                         | 过去                                                         |
+  | ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+  | 肯定 / 否定        | may / might (not) do<br />may / might (not) be  adj / n<br />may / might (not) be doing | may / might (not) have done <br />may / might (not)have been adj / n <br />may / might (not) have been doing |
