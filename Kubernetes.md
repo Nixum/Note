@@ -48,7 +48,7 @@ tags: ["Kubernetes", "Istio"]
   
 * Device Plugin：管理节点上的硬件设备，比如GPU
 
-* Worker节点作用：运行或执行用户作业
+* Node节点作用：运行或执行用户作业
 
   * kubelet：负责创建、管理各个节点上运行时的容器和Pod，这个交互依赖CRI的远程调用接口，通过Socket和CRI通信；
 
@@ -63,7 +63,8 @@ tags: ["Kubernetes", "Istio"]
 
     从API-Server获取所有service信息，创建Endpoints，转发service到Pod间的请求，默认使用iptables模式，但当service数量变多时有性能问题，1.8版本后使用IPVS模式提升性能；
 
-* coreDNS：低版本的kubernetes使用kube-dns，1.12后默认使用coreDNS，用于实现域名查找功能
+  * coreDNS：低版本的kubernetes使用kube-dns，1.12后默认使用coreDNS，用于实现域名查找功能
+
 
 ### 核心组件的协作流程
 
@@ -377,7 +378,14 @@ kubelet会为每个节点上创建一个基本的cbr0网桥，并为每一个Pod
 
 对于initContainer命令的作用是按配置顺序最先执行，执行完之后才会执行container命令，例如，对war包所在容器使用initContainer命令，将war包复制到挂载的卷下后，再执行tomcat的container命令启动tomcat以此来启动web应用，这种先启动一个辅助容器来完成一些独立于主进程（主容器）之外的工作，称为sidecar，边车。
 
-Pod可以理解为一个机器，容器是里面的进程，凡是调度、网络、储存、安全相关、跟namespace相关的属性，都是Pod级别的。
+Pod可以理解为一个机器，容器是里面的进程，凡是调度、网络、储存、安全相关、跟namespace相关的属性，都是Pod级别的：
+
+* PID Namespace：默认不共享，但是可以调参`shareProcessNamespace=true`打开，默认情况下，容器内的PID一致，但是PID名词空间不一致；
+* Network Namespace：Pod中的多个容器共享同一个IP和端口范围；
+* IPC Namespace：Pod中的多个容器能够使用共享内存，信号量，消息队列等IPC机制进行通信；
+* UTS Namespace：Pod中的多个容器共享一个主机名和域名；
+* Mount Namespace：Pod中的各个容器可以访问在Pod级别定义的Volumes；
+* User Namespace：算是比较特殊的，高版本才有，把宿主机的一个普通用户映射到容器中的root用户，这样容器进程以为自己是root并且在它所在的名称空间内有各种权限，以此控制容器的用户权限
 
 ### 关于Pause容器 / Infra容器
 
@@ -627,14 +635,14 @@ startupProbe：启动检查探针，应用一些启动缓慢的业务，避免�
 ```yaml
 ...
 livenessProbe:
-     httpGet: # 除此之外还有Exec、TCPSocket两种不同的probe方式
+     httpGet: # 除此之外还有Exec命令、TCPSocket两种不同的probe方式
        path: /healthz
        port: 8080
        httpHeaders:
        - name: X-Custom-Header
          value: Awesome
-       initialDelaySeconds: 3
-       periodSeconds: 3
+       initialDelaySeconds: 3 # 容器启动后多久开始探测
+       periodSeconds: 3 # 探测周期
 ```
 
 ### Pod的恢复机制
@@ -2219,3 +2227,5 @@ spec:
 [源码分析 kubernetes scheduler 核心调度器的实现原理](https://github.com/rfyiamcool/notes/blob/main/kubernetes_scheduler_code.md)
 
 [gRPC 长连接在微服务业务系统中的实践](https://www.infoq.cn/article/cpxr35bwjttgncltyekz)
+
+[從網路觀點來看導入 Kubernetes 的可能痛點](https://www.hwchiu.com/k8s-network-issue.html)

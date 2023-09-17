@@ -3,8 +3,8 @@ title: 英语学习总结
 description: note
 date: 2023-06-23
 weight: 7
-categories: ["总结"]
-tags: ["总结"]
+categories: ["英语", "总结"]
+tags: ["总结", "英语"]
 ---
 
 [TOC]
@@ -112,11 +112,21 @@ tags: ["总结"]
 
 * a crowd of beggars：一群人乞丐
 
+* a short while age：不久前
+
+* admit doing sth：承认做某事 / sb admin that
+
 * ask (sb) for sth：向某人想要某些东西
 
 * ask sb to do sth：请求某人做某事
 
+* account for the fact that：解释事实，that后面加一个句子解释这个事实
+
+* as if : 好像，似乎，就像
+
 * a few hours earlier：几个小时前
+
+* a pile of：一大堆...
 
 * at five to twelve：差5分钟到12点，即11点55分
 
@@ -137,7 +147,15 @@ tags: ["总结"]
   * be allowd to do sth：被允许做某事
   * allow sb to do sth：允许某人做某事
 
+* as ... as... ：像什么什么一样什么，eg：as busy as usal 像往常一样忙碌，否定是 not as(也可以用so) ... as ...
+
+* 介词 + 地方：at + 小地方，on + 大地方
+
 * base on：基于xxx
+
+* be able to do：能做某事，与 can / could 的区别：两者都表达一种普通能力，只是 was able to do，表示过去的成功事件
+
+* be busy doing sth：忙于做某事
 
 * be going to do sth：将来要做啥 等价于 be gonna do sth
 
@@ -147,15 +165,25 @@ tags: ["总结"]
 
 * be aware of ：对什么很清楚，知道什么，意识到什么
 
+* be astonish at sth：对什么感到很惊讶
+
 * be interested in doing sth：做某事感兴趣
 
 * be mad at sb：对某人生气
 
 * be keen on sth/doing sth：热衷某事
 
-* begin to do sth：开始做某事
+* be / get upset about sth：对什么感到沮丧/不安
+
+* be up for sale：待售
+
+* get / be tired of sth / doing sth：厌倦做某事
+
+* begin to do sth：等价于begin doing sth，都是表示 开始做某事 
 
 * belong to sb：属于某人
+
+* be confined to xxx：被困在 xxx
 
 * bear sth in mind：牢记这sth一点
 
@@ -171,39 +199,53 @@ tags: ["总结"]
 
 * call at 等价于 visit 等价于 call on：访问
 
+* clear conscience（良心）：问心无愧
+
+* catch up with sb：追上某人 / 遇见某人
+
+* complain about sth：抱怨某事
+
 * drive on to sw：继续开向某处
 
 * drive me mad：把我逼疯
 
 * dream of doing sth：梦想做某事
 
+* don't have to do 等价于 don't need to do ，不必做某事
+
 * enter for：参加
 
+* expect sth to be done：期待mou's
+
 * fail to do sth：失败做某事
+
+* far more interesting：有趣得多得多，far 这里表达远超，程度副词
 
 * get sth for sb：给某人拿某些东西
 
 * give up doing sth：放弃做某事
 
-* have gone to：已经去了，人没回来
+* get a fright / give me a fright：受到惊吓 / 吓我一跳 
 
-* have been to：已经去过，人回来了
+* going througth：翻阅
 
-* have done : 现在完成时
-  * 用法一：表示过去的事情对现在产生了影响，等价于 did + do/does（做过了什么，现在怎么样）
-  * 用法二：从过去持续到现在的事情，一般会加时间
+* have trouble with sth：做某事情有麻烦或困难
 
-* had done：过去完成时
+* have a glimpse of sth/sb：瞥见某人 / 某事
 
-  * 用法一：过去的过去，强调的是两个过去是有关联的，不然用一般过去时即可
-  * 用法二：过去时间点A发生，对过去时间点B产生了影响
-  * 用法三：一个动作从过去A持续或重复到过去B
+* hear / see doing sth：非全程听/看到做某事，hear / see do sth：全程都听 / 看到做某事
 
 * in this way：在路上
 
 * in return for xxx：作为xxx的回报
 
 * in twenty minutes(' time)：12分钟之后 / in six months：6个月后
+
+* intend to do sth：计划做某事
+
+* inquire about：询问...
+
+* it occurred to sb that（to do sth）...：某人突然间想到
 
 * knock at the door：敲门
 
@@ -215,6 +257,8 @@ tags: ["总结"]
 
 * laugh at sb：嘲笑某人
 
+* look forward to sth / doing sth：盼望做某事
+
 * make a decision：做决定
 
 * make up my mind：下定决心 
@@ -223,6 +267,12 @@ tags: ["总结"]
 
 * move to a house in 地方 / move to 地方：搬到某个地方
 
+* not know the way to 地方：不知道那个地方的路
+
+* no sooner ... than ... ：等价于 as soon as，表示 一 ... 就
+
+* on doing sth, ... 等价于 as soon as，都表示 一...就
+
 * on the last day：在最后一天
 
 * on this occasion：在这种场合，occasion：n 场合；occasionally：adv 是偶然的
@@ -230,6 +280,8 @@ tags: ["总结"]
 * one way of another：不管怎么样
 
 * one good turn deserves another：礼尚往来，好人有好报，turn这里表行为
+
+* once upon a time：很久以前
 
 * pocket money：零钱，零花钱
 
@@ -245,6 +297,10 @@ tags: ["总结"]
 
 * remind sb of sth/sb：提醒某人想起某事/人
 
+* regretted doing sth：后悔做某事
+
+* run into serious trouble：遇到严重的困难
+
 * spend固定用法：
   * spend on：在...方面花费
   * spend money on：花多少钱买某物
@@ -252,7 +308,19 @@ tags: ["总结"]
 
 * stand on sb's head：倒立
 
+* start doing sth：开始做某事
+
+* set up a new world record：创建新的世界记录 / break the record：打破世界记录
+
 * shout at sb：带情绪的那种喊，shout to sb：使某人能听到的那种喊
+
+* so + adj/adv：表程度，可以是形容词或副词，
+
+  such + adj + n：表程度，但一定是形容词+名词，形容词也可以去掉
+
+  so adj/adv that ... 、 such + (adj) + n + that：如此...以至于...
+
+* succeed in doing sth：成功做某事
 
 * take it away from me：从我身边抢走
 
@@ -284,7 +352,11 @@ tags: ["总结"]
 
 * up to now：到目前为止
 
-* use to do sth：过去常常做某事（现在不做了）
+* use to do sth：过去常常做某事（现在不做了），否定式为 didn't use to do
+
+  * 区别 be use to doing：习惯做某事
+
+# 语法
 
 * 比较级，最高级，一般规则是加 er/ est，其他的
   * 单音节，元音 + 辅音结尾，双写辅音字母，加 er / est
@@ -304,12 +376,37 @@ tags: ["总结"]
   * in + 年/季/月，早上/下午/晚上
   * at + 时间点
 
+* have gone to：已经去了，人没回来
+
+* have been to：已经去过，人回来了
+
+* have / has done : 现在完成时
+
+  * 用法一：表示过去的事情对现在产生了影响，等价于 did + do/does（做过了什么，现在怎么样）
+  * 用法二：从过去持续到现在的事情，一般会加时间
+
+* had done：过去完成时
+
+  * 用法一：过去的过去，强调的是两个过去是有关联的，不然用一般过去时即可
+  * 用法二：过去时间点A发生，对过去时间点B产生了影响
+  * 用法三：一个动作从过去A持续或重复到过去B
+
+* will have done：将来完成时，否定：won't have done 
+
+  后面常见于接未来时间 **by** next Monday、**by** tomorrow
+
+  * 用法一：一个动作持续或重复到将来
+  * 用法二：一个动作截止到未来某个时间前完成
+
+![](https://github.com/Nixum/Java-Note/raw/master/picture/完成时时态.png)
+
 * 被动语句
 
   * am/is/are + done
   * was/were + done
   * am/is/are + being + done
   * have/has + been + done
+  * had + been + done
 
 * if 引导的条件从句，主将从现，eg：if you don't hurry, you will miss the train.
 
@@ -326,7 +423,7 @@ tags: ["总结"]
   * have to 等价于 have got to，have gotta do，都是表示必须（比较少用，口语用的多）
 
   * have got 等价于 have，都是表示 拥有
-  
+
   * | must / can 表推测 | 现在                                               | 过去                                                         |
     | ----------------- | -------------------------------------------------- | ------------------------------------------------------------ |
     | 肯定              | must do<br />must be adj / n<br />must be doing    | must have done<br />must have been adj / n<br />must have been doing |
@@ -337,3 +434,119 @@ tags: ["总结"]
   | may / might 表推测 | 现在                                                         | 过去                                                         |
   | ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
   | 肯定 / 否定        | may / might (not) do<br />may / might (not) be  adj / n<br />may / might (not) be doing | may / might (not) have done <br />may / might (not)have been adj / n <br />may / might (not) have been doing |
+
+* need
+  
+  * 动词，含义同want：need to do sth，否定 don't need to do sth（等价于 don't have to do sth，不必做某事）
+  
+  * 情态动词，含义同can，表不必（常出现在否定句/疑问句）：needn't do 等价于 can’t do
+  
+    needn't have done：本不必如此，但事情已经发生了，有后悔的语言效果；要区分needn't do，两种意思还是不太一样
+  
+  * need doing sth：被动语句，等价于 need to be done
+  
+* 并列连词
+
+  * both A and B ：A 和 B 都
+  * either A or B：A 或 B，就近原则，看B是不是复数，来决定后面的动词是什么
+  * neither A nor B：既不是 A 也不是 B ，就近原则，看B是不是复数，来决定后面的动词是什么
+  * not only ... but also ...：不仅...而且...
+
+* 虚拟语气：**if + did/were, 主语 + would / should / could / might do**，这里的did并非表示过去，比如有 `if i were you, i wouldn't do that`这句话是对的
+
+  * if 从句中的 动词 与现在的事实相反
+  * 说话人认为，if 从句中 动词 发生的机率非常低，所以如果 if 从句里是否定句，那将biao's
+
+* 定语从句 与 同位语从句 的区别：
+
+  两者都作补充说明，但定语从句是修饰，而同位语从句是一个完整的句子补充说明一个名词，去掉连接词也是完整的，而定语从句的 that / which / who 是充当句子成分的，比如主语或宾语，不能去掉
+
+  名词性从句，从句一般充当名词，解释名词，常用的连词：that / if or whether / 常用特殊疑问词
+
+  * 宾语从句：
+
+    He asked (**if** Mr. Gilbert's operation had been successful) and the doctor told him (**that** it had been).
+
+    He then asked (**when** Mr. Gilbert would be allowed to go home)...
+
+  * 同位语从句：
+
+    No one could account for the fact **that** one of the boxes was extremely heavy.
+
+  * 表语从句：
+
+  * 主语从句：
+
+    **It** seem certain **that their plane would crash.** 这里从句指代的是it
+
+  形容词从句，从句解释形容词，常用连接词 that / who /which / where / whose / when
+
+  * 定语从句：
+
+    Jasper White is one of those rare people (**who** believe in acient myths.)
+
+  * 非限定性定语从句
+
+  副词性从句，从句解释副词，如 状语从句；
+
+  * 时间状语从句：常用连词：when / while / as / before / after / as soon as / til / until；特殊连词：ever since / since / the moment / no sooner ... than ... / hardly ... when 
+  * 地点状语从句
+  * 原因状语从句：常用连词：because / as / for / since
+  * 目的状语从句：常用连词：so that / in order that / that ...； 特殊连词：in order to / as ... as to
+  * 结果状语从句：常用连词：so ... that / such ... that ...
+  * 条件状语从句：常用连词：if / unless
+  * 让步状语从句：常用连词：although / though / even thougt / even if / no matter how / whatever / whoever...
+  * 比较状语从句：as ... as / than
+  * 方式状语从句：as / like / as if / the way
+
+* 分词作定语
+
+  * done作定语
+
+    * 被动一般
+
+      The taxi is a small airplane **called** a 'Pilatus Porter'.
+
+    * 被动完成
+
+      on a **ploughed** field
+
+    * 主动完成
+
+      a **retired** captain = a captain who has retired
+
+  * doing作定语
+
+    * 主动进行
+
+      the **sleeping** child = the child who is sleeping.
+
+    * 主动一般
+
+      I like the girl **dancing with that guy**.
+
+* 分词作状语，简化状语从句
+
+  * 一般需要**前后主语一致**；去掉状语从句的主语，连词可留；从句的动词变成分词；分词有两种，如果从句是主动进行或者主动一般，使用doing，如果从句是被动完成 或 被动一般，使用done；
+
+    原句：When the baby opened his eyes, he began to cry. 
+
+    改成分词状语引导：Opening his eyes, the baby began to cry.
+
+  * 如果分词要强调从句的动词发生在主句动作前，使用having done
+
+    原句：After he had completed the book, he had a holiday.
+
+    改成分词状语引导：(After) Having completed the book, he had a holiday.
+
+  * 如果是否定的，使用 not + 分词
+
+    原句：Because i didn't want to wake her, I left the house silently.
+
+    改成分词状语引导：Not wanting to wake her, I left the house silently.
+
+  * 特殊的，be + 形容词 + 名词
+
+    原句：My girlfriend is a doctor, she knows what medicine you should take;
+
+    改成分词状语引导：（Being）a doctor, my grilfriend knows what medicine you should take.
