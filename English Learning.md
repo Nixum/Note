@@ -102,6 +102,10 @@ tags: ["总结", "英语"]
 
 * A give B a lift：A给了B搭便车
 
+* A be strict with B：A对B很严格
+
+* A serves as B：A当作B
+
 * a great number of + 名词复数 等价于 a lot of：大量
 
 * a glass of beer：一杯啤酒
@@ -114,6 +118,8 @@ tags: ["总结", "英语"]
 
 * a short while age：不久前
 
+* a blessing in disguise：因祸得福
+
 * admit doing sth：承认做某事 / sb admin that
 
 * ask (sb) for sth：向某人想要某些东西
@@ -124,15 +130,21 @@ tags: ["总结", "英语"]
 
 * as if : 好像，似乎，就像
 
+* as 做方式状语的连接词有的含义：1. 像，2. 当...， 3. 作为...，4. 按照....的方式，
+
 * a few hours earlier：几个小时前
 
 * a pile of：一大堆...
+
+* a great deal of + 不可数名词，表示大量的xx
 
 * at five to twelve：差5分钟到12点，即11点55分
 
 * at that moment：在那个瞬间 等价 at present
 
 * all parts of the country：全国各地
+
+* admire sb for sth / doing sth：赞美某人某事
 
 * apply to sb：适用于某人
 
@@ -153,9 +165,13 @@ tags: ["总结", "英语"]
 
 * base on：基于xxx
 
+* be armed(被动) with sth 等价于 arm sb/sth with sth：装备某物
+
 * be able to do：能做某事，与 can / could 的区别：两者都表达一种普通能力，只是 was able to do，表示过去的成功事件
 
 * be busy doing sth：忙于做某事
+
+* be eager to do sth：渴望做某事
 
 * be going to do sth：将来要做啥 等价于 be gonna do sth
 
@@ -166,6 +182,10 @@ tags: ["总结", "英语"]
 * be aware of ：对什么很清楚，知道什么，意识到什么
 
 * be astonish at sth：对什么感到很惊讶
+
+* be confident that ... + 句子
+
+* be dressed in ：穿着了什么（被动）
 
 * be interested in doing sth：做某事感兴趣
 
@@ -185,6 +205,8 @@ tags: ["总结", "英语"]
 
 * be confined to xxx：被困在 xxx
 
+* become / be an expert at doing sth：在做某事上次成为专家
+
 * bear sth in mind：牢记这sth一点
 
 * borrow sth from sb：从某人那借来某物
@@ -201,9 +223,11 @@ tags: ["总结", "英语"]
 
 * clear conscience（良心）：问心无愧
 
+* claim one's life：夺走某人的性命
+
 * catch up with sb：追上某人 / 遇见某人
 
-* complain about sth：抱怨某事
+* complain about sth：抱怨某事 / complain of sth
 
 * drive on to sw：继续开向某处
 
@@ -221,6 +245,10 @@ tags: ["总结", "英语"]
 
 * far more interesting：有趣得多得多，far 这里表达远超，程度副词
 
+* forbid sb to do sth：禁止某人做某事
+
+* gaze at / glance at：盯着，凝视着
+
 * get sth for sb：给某人拿某些东西
 
 * give up doing sth：放弃做某事
@@ -229,9 +257,23 @@ tags: ["总结", "英语"]
 
 * going througth：翻阅
 
+* go on a diet 等价于 be on a diet ：表示节食
+
+* go downhill：走下坡路
+
+* go to church：做礼拜，go to the church：去教堂
+
+* hesitate to do sth：犹豫做某事
+
+* hesitate for a moment / second：等价于 wait a moment，表示等一会
+
 * have trouble with sth：做某事情有麻烦或困难
 
 * have a glimpse of sth/sb：瞥见某人 / 某事
+
+* have a habit of doing sth：有习惯做某事，develop a habit：养成习惯
+
+* have authority to do：有权力做某事
 
 * hear / see doing sth：非全程听/看到做某事，hear / see do sth：全程都听 / 看到做某事
 
@@ -241,11 +283,19 @@ tags: ["总结", "英语"]
 
 * in twenty minutes(' time)：12分钟之后 / in six months：6个月后
 
+* in the front of (内部的前面) / in front of (外部的前面)
+
 * intend to do sth：计划做某事
 
 * inquire about：询问...
 
+* it is a blessing that ... ：很幸运的是...
+
+* it is said that ... 等价于 be said to do sth：表示 据说
+
 * it occurred to sb that（to do sth）...：某人突然间想到
+
+* it take sb sometime to do sth：花费某人多长时间做某事
 
 * knock at the door：敲门
 
@@ -259,7 +309,11 @@ tags: ["总结", "英语"]
 
 * look forward to sth / doing sth：盼望做某事
 
+* look down on sb：看不起某人，等价于 scornfully，轻蔑地
+
 * make a decision：做决定
+
+* make sb do sth：让某人做某事
 
 * make up my mind：下定决心 
 
@@ -271,9 +325,11 @@ tags: ["总结", "英语"]
 
 * no sooner ... than ... ：等价于 as soon as，表示 一 ... 就
 
-* on doing sth, ... 等价于 as soon as，都表示 一...就
+* on doing sth, ... 等价于 as soon as，等价于 the moment，都表示 一...就
 
 * on the last day：在最后一天
+
+* on the course：在路上，course还有其他意思，比如课程，过程，经过，球场，of course 当然
 
 * on this occasion：在这种场合，occasion：n 场合；occasionally：adv 是偶然的
 
@@ -289,7 +345,25 @@ tags: ["总结", "英语"]
 
 * pay it back：把他还回来
 
+* pay sb a visit：拜访某人
+
+* persuade sb (not) to do sth：说服某人做某事
+
+* put forward a plan ：提出一个计划
+
 * put it behind me：抛之脑后，遗忘掉
+
+* put my finger on it：引申含义，明确的指出
+
+* point the finger at：引申含义，指责或责备某人
+
+* (would) prefer to do sth 等价于 prefer doing sth，更喜欢做某事 
+
+* prefer A to B：和b比我更喜欢A
+
+* prefer doing A to doing B ：和做 B 相比我更喜欢做A
+
+* (would) prefer to do A rather than B：和做B相比，我更喜欢做A
 
 * receive sth from sb：从谁那收到东西
 
@@ -301,18 +375,28 @@ tags: ["总结", "英语"]
 
 * run into serious trouble：遇到严重的困难
 
+* save up for years to buy sth：存了很多年钱买某物
+
+* sort of 等价于 kind of：各种类型，各种种类，what sort of / what kind of，all sorts of / all kinds of 
+
 * spend固定用法：
   * spend on：在...方面花费
   * spend money on：花多少钱买某物
   * spend time (in) doing：花时间做某事
 
+* speed it / things / this up：加速做某事
+
 * stand on sb's head：倒立
 
 * start doing sth：开始做某事
 
+* stick to the plan：坚持这个计划
+
 * set up a new world record：创建新的世界记录 / break the record：打破世界记录
 
 * shout at sb：带情绪的那种喊，shout to sb：使某人能听到的那种喊
+
+* so far：到目前为止
 
 * so + adj/adv：表程度，可以是形容词或副词，
 
@@ -322,9 +406,13 @@ tags: ["总结", "英语"]
 
 * succeed in doing sth：成功做某事
 
+* suggest that ... does / should do，建议某人做某事，should可省略，可do可does
+
 * take it away from me：从我身边抢走
 
 * take a lift / ask for a lift / give sb a lift：请求搭便车
+
+* to make matters worse：使事情变得更糟糕的是
 
 * think about sth/sb：思考某人/某事
 
@@ -337,6 +425,8 @@ tags: ["总结", "英语"]
 * that's neat 等价于 that's cool
 
 * the last day of the year：一年的最后一天
+
+* threaten sb with sth：威胁某人某事
 
 * two minutes past twelve：12点过2分
 
@@ -355,10 +445,18 @@ tags: ["总结", "英语"]
 * use to do sth：过去常常做某事（现在不做了），否定式为 didn't use to do
 
   * 区别 be use to doing：习惯做某事
+  * 与would do的区别，would do指的是过去重复发生的动作、过去经常做某事，use to do指过去的状态 或者 暗含现在不发生了 或者 讨论经常且重要的习惯行为(比较主观，看情况)
 
 # 语法
 
+* 强调句：it is(was) + 强调部分 + that(who) + 剩余部分
+  
+  eg：it was my secretan that sent the bill to Mr.Harding yesterday.
+  
+  it was the bill that my secretary sent to Mr.Harding yesterday.  两者强调的部分不一样
+  
 * 比较级，最高级，一般规则是加 er/ est，其他的
+
   * 单音节，元音 + 辅音结尾，双写辅音字母，加 er / est
   * 双音节，辅音字母 + y结尾，变y为i，加 er / est
   * 一些另外 或者 多音节(>=3个音节)，是加 more，most 或者 less，lest
@@ -380,6 +478,11 @@ tags: ["总结", "英语"]
 
 * have been to：已经去过，人回来了
 
+* have/has （not） been doing sth：现在完成进行时
+
+  * 用法一：过去进行的动作(结束)对现有的影响
+  * 用法二：过去进行的动作持续（重复）到现在，也许还会继续
+
 * have / has done : 现在完成时
 
   * 用法一：表示过去的事情对现在产生了影响，等价于 did + do/does（做过了什么，现在怎么样）
@@ -397,6 +500,12 @@ tags: ["总结", "英语"]
 
   * 用法一：一个动作持续或重复到将来
   * 用法二：一个动作截止到未来某个时间前完成
+  
+* had been doing sth：过去完成进行时
+
+  * 用法一：过去A进行的v（结束）对过去B产生的影响
+  * 用法二：过去A进行的 v 持续或重复到过去B
+
 
 ![](https://github.com/Nixum/Java-Note/raw/master/picture/完成时时态.png)
 
@@ -407,8 +516,6 @@ tags: ["总结", "英语"]
   * am/is/are + being + done
   * have/has + been + done
   * had + been + done
-
-* if 引导的条件从句，主将从现，eg：if you don't hurry, you will miss the train.
 
 * how many对可数名词提问，how much对不可数名词提问
 
@@ -436,15 +543,15 @@ tags: ["总结", "英语"]
   | 肯定 / 否定        | may / might (not) do<br />may / might (not) be  adj / n<br />may / might (not) be doing | may / might (not) have done <br />may / might (not)have been adj / n <br />may / might (not) have been doing |
 
 * need
-  
+
   * 动词，含义同want：need to do sth，否定 don't need to do sth（等价于 don't have to do sth，不必做某事）
-  
+
   * 情态动词，含义同can，表不必（常出现在否定句/疑问句）：needn't do 等价于 can’t do
-  
+
     needn't have done：本不必如此，但事情已经发生了，有后悔的语言效果；要区分needn't do，两种意思还是不太一样
-  
+
   * need doing sth：被动语句，等价于 need to be done
-  
+
 * 并列连词
 
   * both A and B ：A 和 B 都
@@ -452,10 +559,18 @@ tags: ["总结", "英语"]
   * neither A nor B：既不是 A 也不是 B ，就近原则，看B是不是复数，来决定后面的动词是什么
   * not only ... but also ...：不仅...而且...
 
-* 虚拟语气：**if + did/were, 主语 + would / should / could / might do**，这里的did并非表示过去，比如有 `if i were you, i wouldn't do that`这句话是对的
+* 虚拟语气：
 
-  * if 从句中的 动词 与现在的事实相反
-  * 说话人认为，if 从句中 动词 发生的机率非常低，所以如果 if 从句里是否定句，那将biao's
+  * **if + did/were, 主语 + would / should / could / might do**，这里的did并非表示过去，比如有 `if i were you, i wouldn't do that`这句话是对的
+    * if 从句中的 动词 与 **现在的事实** 相反
+    * 说话人认为，if 从句中 动词 发生的机率非常低，所以如果 if 从句里是否定句，那将biao's
+  * if + 主语 + had done...，主语 + would / should / could / might + have done.
+    * if 从句中的 动词 与 **过去的事实** 相反
+    * 变体，if + 主语 + could have done ，比如  if you **could have made** 等价于 if you **had been able to** make
+
+* if 引导的条件从句，主将从现，eg：if you don't hurry, you will miss the train.
+
+* if 真实条件句：A动作成立关联B动作成立，不符合虚拟语气结构，不与事实相反，比如 if 引导的主将从现句子是一种例子，其他例子：if you didn't study English at school, you won't understand this book. 或者 if jack didn't come to work yesterday, he was probably ill.
 
 * 定语从句 与 同位语从句 的区别：
 
@@ -493,6 +608,8 @@ tags: ["总结", "英语"]
   * 地点状语从句
   * 原因状语从句：常用连词：because / as / for / since
   * 目的状语从句：常用连词：so that / in order that / that ...； 特殊连词：in order to / as ... as to
+
+    eg：so that：以便，为了，一般用于连接两个句子，表目的
   * 结果状语从句：常用连词：so ... that / such ... that ...
   * 条件状语从句：常用连词：if / unless
   * 让步状语从句：常用连词：although / though / even thougt / even if / no matter how / whatever / whoever...
