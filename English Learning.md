@@ -106,6 +106,10 @@ tags: ["总结", "英语"]
 
 * A serves as B：A当作B
 
+* A be equipped with B：A装备了B，equip sb with sth：给某人装备某物
+
+* A be referred to as B：把A称为B，等价于 refer to A as B
+
 * a great number of + 名词复数 等价于 a lot of：大量
 
 * a glass of beer：一杯啤酒
@@ -114,11 +118,17 @@ tags: ["总结", "英语"]
 
 * a parcel of diamonds: 一包钻石
 
+* a colony of bee：一群蜜蜂
+
 * a crowd of beggars：一群人乞丐
 
 * a short while age：不久前
 
+* a trail of：一系列，一长串
+
 * a blessing in disguise：因祸得福
+
+* as it did 引导方式状语从句，eg：Looks the same as it did twenty years ago. 这里it did指的就是Look the same. 
 
 * admit doing sth：承认做某事 / sb admin that
 
@@ -131,6 +141,8 @@ tags: ["总结", "英语"]
 * as if : 好像，似乎，就像
 
 * as 做方式状语的连接词有的含义：1. 像，2. 当...， 3. 作为...，4. 按照....的方式，
+
+* at large：逍遥法外；在逃；未被捕获的
 
 * a few hours earlier：几个小时前
 
@@ -161,15 +173,25 @@ tags: ["总结", "英语"]
 
 * as ... as... ：像什么什么一样什么，eg：as busy as usal 像往常一样忙碌，否定是 not as(也可以用so) ... as ...
 
-* 介词 + 地方：at + 小地方，on + 大地方
+* a slip of the tongue：口误
+
+* avoid doing sth：避免做某事
 
 * base on：基于xxx
 
+* be accustomed to doing：习惯做某事
+
 * be armed(被动) with sth 等价于 arm sb/sth with sth：装备某物
 
-* be able to do：能做某事，与 can / could 的区别：两者都表达一种普通能力，只是 was able to do，表示过去的成功事件
+* be able to do：能做某事，等价于 be due to do，与 can / could 的区别：两者都表达一种普通能力，只是 was able to do，表示过去的成功事件，
+
+* be always doing sth：be + doing 与 always 连用时，表示频率过高，令说话者心烦，生厌（不绝对）
 
 * be busy doing sth：忙于做某事
+
+* be busy with sth：忙于某件事
+
+* be confident that + 句子：对xxx有信心
 
 * be eager to do sth：渴望做某事
 
@@ -185,9 +207,25 @@ tags: ["总结", "英语"]
 
 * be confident that ... + 句子
 
-* be dressed in ：穿着了什么（被动）
+* be called in to do sth：被叫来做某事
+
+* be dressed in ：穿着了什么（被动） 
+
+* be dressed up as：打扮成了什么，也可以省略be
+
+* be disappointed to learn that：很沮丧的得知...
+
+* be equal to sth：胜任某事
+
+* be fanatical about/doing sth：对某事，做某事很狂热
 
 * be interested in doing sth：做某事感兴趣
+
+* be instructed to do sth：被指示/命令做某事
+
+* be instructed in doing sth 等价于 instruct sb in sth/doing sth：教某人做某事
+
+* be lined up：排成一排
 
 * be mad at sb：对某人生气
 
@@ -196,6 +234,20 @@ tags: ["总结", "英语"]
 * be / get upset about sth：对什么感到沮丧/不安
 
 * be up for sale：待售
+
+* be worth doing：值得去做某事
+
+* be pleased with：对什么感到满意
+
+* be popular with：在xxx之间受欢迎
+
+* be put to shame：等价于 put sb to shame，使某人感到惭愧
+
+* be responsible for：对...有责任
+
+* be reluctant to do sth：不情愿做某事
+
+* be sensitive about sth：对某事感到敏感
 
 * get / be tired of sth / doing sth：厌倦做某事
 
@@ -217,7 +269,13 @@ tags: ["总结", "英语"]
 
 * black out：晕了，昏迷
 
+* break into cheers：欢呼起来
+
+* burst into tears：爆哭
+
 * cover the distance in ...：覆盖距离
+
+* cause sb/sth to do sth：引起某人做某事
 
 * call at 等价于 visit 等价于 call on：访问
 
@@ -225,11 +283,27 @@ tags: ["总结", "英语"]
 
 * claim one's life：夺走某人的性命
 
+* claim to have done sth：声称已经做过某事
+
+* cling to sb/sth：附着在...
+
+* charge at sb：冲向某人，有攻击性，等价于 attack
+
 * catch up with sb：追上某人 / 遇见某人
+
+* cover sb/sth with a：用a覆盖sb/sth
 
 * complain about sth：抱怨某事 / complain of sth
 
+* continue doing / to do sth：继续做某事
+
+* despite the fact that...：除了这样一个事实是...
+
+* devote oneself to sth / doing sth：致力于做某事
+
 * drive on to sw：继续开向某处
+
+* died of 后面一般加疾病，表示死于什么疾病
 
 * drive me mad：把我逼疯
 
@@ -237,9 +311,17 @@ tags: ["总结", "英语"]
 
 * don't have to do 等价于 don't need to do ，不必做某事
 
+* do anything to do sth：使出浑身解数做某事
+
 * enter for：参加
 
-* expect sth to be done：期待mou's
+* expect sth to be done：期待某事被做
+
+* entitle sb to sth / to do sth：给某人有权利做某事，entitle另一个意思是给某个东西起名字
+
+* enable sb to do sth：确保某人做某事
+
+* feel obliged to do sth：觉得有义务做某事，obliged to 等价于 bound to，意思是不得不做，一定做
 
 * fail to do sth：失败做某事
 
@@ -247,11 +329,21 @@ tags: ["总结", "英语"]
 
 * forbid sb to do sth：禁止某人做某事
 
+* feel sorry for sb：觉得某人挺可怜、值得同情，可悲
+
+* find sb doing sth：发现某人做某事
+
+* for one cause or another：等价于 for one reason or another，因为诸多原因
+
 * gaze at / glance at：盯着，凝视着
 
 * get sth for sb：给某人拿某些东西
 
 * give up doing sth：放弃做某事
+
+* give rise to：等价于 lead to 等价于cause，表示导致...
+
+* get into (such) a mess：陷入麻烦 / 弄到一身灰尘
 
 * get a fright / give me a fright：受到惊吓 / 吓我一跳 
 
@@ -259,13 +351,23 @@ tags: ["总结", "英语"]
 
 * go on a diet 等价于 be on a diet ：表示节食
 
+* go on doing sth：持续 / 坚持做某事
+
+* go on strike：罢工
+
 * go downhill：走下坡路
 
 * go to church：做礼拜，go to the church：去教堂
 
+* go to extreme to do sth：走极端做某事
+
+* happend to do：碰巧做某事
+
 * hesitate to do sth：犹豫做某事
 
 * hesitate for a moment / second：等价于 wait a moment，表示等一会
+
+* have difficulty in doing sth：走某事很困难
 
 * have trouble with sth：做某事情有麻烦或困难
 
@@ -275,9 +377,17 @@ tags: ["总结", "英语"]
 
 * have authority to do：有权力做某事
 
+* have/get the nerve to do sth：有勇气做某事
+
 * hear / see doing sth：非全程听/看到做某事，hear / see do sth：全程都听 / 看到做某事
 
+* hold up the traffic：阻塞交通，hold up the line：阻碍排队
+
+* i is/was wondering + 句子：我想知道的是...
+
 * in this way：在路上
+
+* in sb's honor：向某人致敬
 
 * in return for xxx：作为xxx的回报
 
@@ -287,19 +397,29 @@ tags: ["总结", "英语"]
 
 * intend to do sth：计划做某事
 
-* inquire about：询问...
+* insist on doing sth：坚持做某事
 
 * it is a blessing that ... ：很幸运的是...
 
 * it is said that ... 等价于 be said to do sth：表示 据说
 
+* it is disturbing to think that + 句子：很困扰的是... + 句子
+
 * it occurred to sb that（to do sth）...：某人突然间想到
 
 * it take sb sometime to do sth：花费某人多长时间做某事
 
+* it is no use pretending that + 句子：假装做...是没有用的
+
+* it comes as a surprise to learn that + 句子：得知某事很惊讶
+
 * knock at the door：敲门
 
 * keep guard：站岗，守卫，守在这里
+
+* keep in touch with sb：与某人保持联系
+
+* keep track of：追踪xxx的进展
 
 * lend sb sth：借给某人某物
 
@@ -311,11 +431,23 @@ tags: ["总结", "英语"]
 
 * look down on sb：看不起某人，等价于 scornfully，轻蔑地
 
+* look on：旁观
+
+* mind doing sth：介意做某事，格式：do you mind my smoking?为什么要用my，可以理解为smoke是属于"我的"，属于固定搭配，得是 “某人的”，可以省略，也可以用me
+
+* mark the occasion：纪念这个场合
+
+* make a spectacle of oneself：出洋相
+
+* make no effort to do sth：不努力做某事
+
 * make a decision：做决定
 
 * make sb do sth：让某人做某事
 
 * make up my mind：下定决心 
+
+* manage to do sth：等价于 was able to do sth，含义：过去成功做了某事，设法做成了某事
 
 * might / may as well：（没有更好的选择）只能去做了
 
@@ -339,7 +471,11 @@ tags: ["总结", "英语"]
 
 * once upon a time：很久以前
 
+* once more：再一次，重新
+
 * pocket money：零钱，零花钱
+
+* play truant from school：逃学
 
 * pay for sth：支付某如
 
@@ -357,6 +493,8 @@ tags: ["总结", "英语"]
 
 * point the finger at：引申含义，指责或责备某人
 
+* prevent sb from doing sth：阻止某人做某事
+
 * (would) prefer to do sth 等价于 prefer doing sth，更喜欢做某事 
 
 * prefer A to B：和b比我更喜欢A
@@ -365,19 +503,33 @@ tags: ["总结", "英语"]
 
 * (would) prefer to do A rather than B：和做B相比，我更喜欢做A
 
+* protect A from B：保护A免于B的(伤害)
+
+* provide sb with sth：提供给某人某物
+
 * receive sth from sb：从谁那收到东西
 
 * refuse to do sth：拒绝做某事
 
 * remind sb of sth/sb：提醒某人想起某事/人
 
+* remember sb for + sth：想起某人某事
+
 * regretted doing sth：后悔做某事
 
 * run into serious trouble：遇到严重的困难
 
+* run out of：用尽，耗尽
+
 * save up for years to buy sth：存了很多年钱买某物
 
+* should (not) do 或者 ought (not) to do，都是表示应该做
+
+* should have done 或者 ought to have done，都是表示本应该做某事，但却没有
+
 * sort of 等价于 kind of：各种类型，各种种类，what sort of / what kind of，all sorts of / all kinds of 
+
+* spot sb doing sth：看到某人做某事
 
 * spend固定用法：
   * spend on：在...方面花费
@@ -388,13 +540,23 @@ tags: ["总结", "英语"]
 
 * stand on sb's head：倒立
 
-* start doing sth：开始做某事
+* start doing sth：开始做某事， 等价于 set out to do sth 、intend to do sth、begin to do sth
 
 * stick to the plan：坚持这个计划
 
+* step side：站到一边；从重要的职位离开，辞职；撤退
+
+* stop by：顺便来访
+
 * set up a new world record：创建新的世界记录 / break the record：打破世界记录
 
+* seem to be doing：似乎在做某事
+
 * shout at sb：带情绪的那种喊，shout to sb：使某人能听到的那种喊
+
+* stick my plan：坚持我的计划
+
+* stamp out：踩灭、踩出
 
 * so far：到目前为止
 
@@ -408,9 +570,21 @@ tags: ["总结", "英语"]
 
 * suggest that ... does / should do，建议某人做某事，should可省略，可do可does
 
+* sneer at sb 或者 with a sneer：冷笑某人
+
+* sb take a long time to do sth：某人花费很长时间做某事
+
+* take sth/sb seriously：认真对待某事/某人
+
 * take it away from me：从我身边抢走
 
+* take plates of ...：给...拍片
+
 * take a lift / ask for a lift / give sb a lift：请求搭便车
+
+* take charge of ：负责，掌管，承担责任，控制
+
+* take off：飞机起飞，touch down：飞机降落
 
 * to make matters worse：使事情变得更糟糕的是
 
@@ -419,6 +593,8 @@ tags: ["总结", "英语"]
 * tech sb sth：教给某人某事
 
 * try to do sth：尝试做某事
+
+* turn out to be：结果是，原来是，证明是
 
 * to sb's surprise：让某人惊讶的是
 
@@ -430,6 +606,10 @@ tags: ["总结", "英语"]
 
 * two minutes past twelve：12点过2分
 
+* the news get around：消息传播开来
+
+* wake up with start：惊醒
+
 * work for xx：给xx工作
 
 * well-konw：著名
@@ -440,15 +620,30 @@ tags: ["总结", "英语"]
 
 * without doing sth：没有做某事
 
+* urge sb to do sth：怂恿某人做某事
+
 * up to now：到目前为止
+
+* use up：用光
 
 * use to do sth：过去常常做某事（现在不做了），否定式为 didn't use to do
 
   * 区别 be use to doing：习惯做某事
+  * 区别 be used to do sth：被用来做某事
   * 与would do的区别，would do指的是过去重复发生的动作、过去经常做某事，use to do指过去的状态 或者 暗含现在不发生了 或者 讨论经常且重要的习惯行为(比较主观，看情况)
+  
+* be use as：被当作，use A as B：把A当成B
 
 # 语法
 
+* 介词 + 地方：at + 小地方，on + 大地方
+  
+* ever + 在疑问词后面，比如what、why、who 表示强调，根据语气，可能带有 surprise / astonishment(惊讶) / anger / irritation(激怒) / dismay 等情绪
+  
+* do / does / did 肯定句表强调，一般加在动词后面，后面动词原型，eg：She **did do** morning exercises this morning; 这里的did是表强调，去掉did也可以，She did morning exercises this morning; 这里的did是do的过去式；
+  
+* was / were doing表礼貌，此时可以跟未来的时间一起搭配
+  
 * 强调句：it is(was) + 强调部分 + that(who) + 剩余部分
   
   eg：it was my secretan that sent the bill to Mr.Harding yesterday.
@@ -473,6 +668,14 @@ tags: ["总结", "英语"]
   * on + 具体的某一天
   * in + 年/季/月，早上/下午/晚上
   * at + 时间点
+
+* having been done：完成时的被动，可结合 分词作状语 使用
+
+* have / get something done：
+
+  * 含义一：让别人来做某事，自己不做
+  
+  * 含义二：意外，不幸的遭遇，翻译成 被 
 
 * have gone to：已经去了，人没回来
 
@@ -500,7 +703,7 @@ tags: ["总结", "英语"]
 
   * 用法一：一个动作持续或重复到将来
   * 用法二：一个动作截止到未来某个时间前完成
-  
+
 * had been doing sth：过去完成进行时
 
   * 用法一：过去A进行的v（结束）对过去B产生的影响
@@ -552,6 +755,10 @@ tags: ["总结", "英语"]
 
   * need doing sth：被动语句，等价于 need to be done
 
+  * should (not) do 或者 ought (not) to do，都是表示应该做
+
+  * should have done 或者 ought to have done，都是表示本应该做某事，但却没有
+
 * 并列连词
 
   * both A and B ：A 和 B 都
@@ -559,6 +766,10 @@ tags: ["总结", "英语"]
   * neither A nor B：既不是 A 也不是 B ，就近原则，看B是不是复数，来决定后面的动词是什么
   * not only ... but also ...：不仅...而且...
 
+* **if 引导的条件从句，主将从现**，eg：if you don't hurry, you will miss the train.
+
+  **if 真实条件句**：A动作成立关联B动作成立，不符合虚拟语气结构，不与事实相反，比如 if 引导的主将从现句子是一种例子，其他例子：if you didn't study English at school, you won't understand this book. 或者 if jack didn't come to work yesterday, he was probably ill.
+  
 * 虚拟语气：
 
   * **if + did/were, 主语 + would / should / could / might do**，这里的did并非表示过去，比如有 `if i were you, i wouldn't do that`这句话是对的
@@ -567,10 +778,6 @@ tags: ["总结", "英语"]
   * if + 主语 + had done...，主语 + would / should / could / might + have done.
     * if 从句中的 动词 与 **过去的事实** 相反
     * 变体，if + 主语 + could have done ，比如  if you **could have made** 等价于 if you **had been able to** make
-
-* if 引导的条件从句，主将从现，eg：if you don't hurry, you will miss the train.
-
-* if 真实条件句：A动作成立关联B动作成立，不符合虚拟语气结构，不与事实相反，比如 if 引导的主将从现句子是一种例子，其他例子：if you didn't study English at school, you won't understand this book. 或者 if jack didn't come to work yesterday, he was probably ill.
 
 * 定语从句 与 同位语从句 的区别：
 
@@ -667,3 +874,30 @@ tags: ["总结", "英语"]
     原句：My girlfriend is a doctor, she knows what medicine you should take;
 
     改成分词状语引导：（Being）a doctor, my grilfriend knows what medicine you should take.
+
+* 限定性定语从句和非限定性定语从句，都是做补充和说明，区别是非限定性定语从句前面有逗号，且去掉这句也无所谓，而限定性定语从句的修饰是指定的，比如：
+
+  * He has a daugter who works in a hospital. 表示有一个在医院工作的女儿，可能也有其他女儿，但是这里特指那个在医院工作的
+  * He has a daugter, who works in a hospital. （= and she works in a hospital）表示有一个女儿，这个女儿是在医院工作
+
+* only部分倒装
+
+  * only 在句首时，主谓可能颠倒，属于语言习惯，有时和than一起出现，only than...
+
+    Only on one occasion **have I** ever felt frightened.
+
+    Onlythen **did I** understand what she meant.
+
+    Only after her death **was I** able  to do that.
+
+  * only 说明主语，主谓不倒装
+
+    Only policemen can come in.
+
+    Only my mother really understands me.
+    
+  * not only + 部分倒装（简单理解为将原句改成一般疑问句），起到强调的作用，eg：
+  
+    And **you will not only** have to pay him to do this, far more important, you will have to agree with him. 部分倒装之后：
+  
+    And **not only will you** have  to pay him to do this, far more important, you will have to agree with him. 
