@@ -175,6 +175,8 @@ tags: ["总结", "英语"]
 
 * a slip of the tongue：口误
 
+* attempt to do sth：企图/尝试做某事
+
 * avoid doing sth：避免做某事
 
 * base on：基于xxx
@@ -293,6 +295,8 @@ tags: ["总结", "英语"]
 
 * cover sb/sth with a：用a覆盖sb/sth
 
+* connect a to b：连接a和b，等价于 a be connected to b
+
 * complain about sth：抱怨某事 / complain of sth
 
 * continue doing / to do sth：继续做某事
@@ -360,6 +364,8 @@ tags: ["总结", "英语"]
 * go to church：做礼拜，go to the church：去教堂
 
 * go to extreme to do sth：走极端做某事
+
+* help oneself to sth：未经许可拿某人某物，偷某人某物
 
 * happend to do：碰巧做某事
 
@@ -585,6 +591,8 @@ tags: ["总结", "英语"]
 * take charge of ：负责，掌管，承担责任，控制
 
 * take off：飞机起飞，touch down：飞机降落
+
+* too adj to do sth：太 adj 以至于不能做某事
 
 * to make matters worse：使事情变得更糟糕的是
 
