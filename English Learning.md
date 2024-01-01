@@ -189,6 +189,8 @@ tags: ["总结", "英语"]
 
 * be always doing sth：be + doing 与 always 连用时，表示频率过高，令说话者心烦，生厌（不绝对）
 
+* be base on：基于....
+
 * be busy doing sth：忙于做某事
 
 * be busy with sth：忙于某件事
@@ -219,7 +221,11 @@ tags: ["总结", "英语"]
 
 * be equal to sth：胜任某事
 
+* be exempted from：从...被免除
+
 * be fanatical about/doing sth：对某事，做某事很狂热
+
+* be likely to do sth：可能去做某事
 
 * be interested in doing sth：做某事感兴趣
 
@@ -250,6 +256,8 @@ tags: ["总结", "英语"]
 * be reluctant to do sth：不情愿做某事
 
 * be sensitive about sth：对某事感到敏感
+
+* be tolerant of：容忍某事
 
 * get / be tired of sth / doing sth：厌倦做某事
 
@@ -301,6 +309,8 @@ tags: ["总结", "英语"]
 
 * continue doing / to do sth：继续做某事
 
+* died from：死于环境、事故，died of：死于疾病、衰老
+
 * despite the fact that...：除了这样一个事实是...
 
 * devote oneself to sth / doing sth：致力于做某事
@@ -316,6 +326,8 @@ tags: ["总结", "英语"]
 * don't have to do 等价于 don't need to do ，不必做某事
 
 * do anything to do sth：使出浑身解数做某事
+
+* even if：即使，even though：尽管
 
 * enter for：参加
 
@@ -373,11 +385,15 @@ tags: ["总结", "英语"]
 
 * hesitate for a moment / second：等价于 wait a moment，表示等一会
 
+* have sth in common...：在某事上是相同的
+
 * have difficulty in doing sth：走某事很困难
 
 * have trouble with sth：做某事情有麻烦或困难
 
 * have a glimpse of sth/sb：瞥见某人 / 某事
+
+* have / make an impact on：在...上产生影响
 
 * have a habit of doing sth：有习惯做某事，develop a habit：养成习惯
 
@@ -404,6 +420,8 @@ tags: ["总结", "英语"]
 * intend to do sth：计划做某事
 
 * insist on doing sth：坚持做某事
+
+* it seems that + 句子：似乎是...
 
 * it is a blessing that ... ：很幸运的是...
 
@@ -443,19 +461,21 @@ tags: ["总结", "英语"]
 
 * mark the occasion：纪念这个场合
 
-* make a spectacle of oneself：出洋相
+* make a spectacle of oneself：让某人出洋相
 
 * make no effort to do sth：不努力做某事
 
 * make a decision：做决定
 
-* make sb do sth：让某人做某事
+* make sb do sth：让某人做某事，被动，不能省略to，为 be made to do sth，被迫做某事，等价于 be forced to do sth
 
 * make up my mind：下定决心 
 
 * manage to do sth：等价于 was able to do sth，含义：过去成功做了某事，设法做成了某事
 
 * might / may as well：（没有更好的选择）只能去做了
+
+* mixture of a and b：a和b的混合物
 
 * move to a house in 地方 / move to 地方：搬到某个地方
 
@@ -566,6 +586,8 @@ tags: ["总结", "英语"]
 
 * so far：到目前为止
 
+* so long as：只要...
+
 * so + adj/adv：表程度，可以是形容词或副词，
 
   such + adj + n：表程度，但一定是形容词+名词，形容词也可以去掉
@@ -595,6 +617,8 @@ tags: ["总结", "英语"]
 * too adj to do sth：太 adj 以至于不能做某事
 
 * to make matters worse：使事情变得更糟糕的是
+
+* to sb's horror：使某人惊恐
 
 * think about sth/sb：思考某人/某事
 
@@ -651,6 +675,8 @@ tags: ["总结", "英语"]
 * do / does / did 肯定句表强调，一般加在动词后面，后面动词原型，eg：She **did do** morning exercises this morning; 这里的did是表强调，去掉did也可以，She did morning exercises this morning; 这里的did是do的过去式；
   
 * was / were doing表礼貌，此时可以跟未来的时间一起搭配
+  
+* yet，表示前后句子的表达前后反差很大，yet引导的句子表示很惊喜很惊讶，强转折，表然而但是
   
 * 强调句：it is(was) + 强调部分 + that(who) + 剩余部分
   
