@@ -3,8 +3,8 @@ title: 向量数据库与RAG
 description: 简单介绍向量数据库以及在RAG中的应用，附带小demo
 date: 2024-06-22
 weight: -2
-categories: ["消息队列"]
-tags: ["消息队列"]
+categories: ["向量数据库", "RAG", "AI"]
+tags: ["向量数据库", "RAG", "AI"]
 ---
 
 [TOC]
@@ -299,3 +299,12 @@ print(response["answer"])
 [基于LLM+向量库的文档对话痛点及解决方案](https://zhuanlan.zhihu.com/p/651179780)
 
 [LLM+Embedding构建问答系统的局限性及优化方案](https://zhuanlan.zhihu.com/p/641132245)
+
+[langchain - How to split Markdown by Headers](https://python.langchain.com/v0.2/docs/how_to/markdown_header_metadata_splitter/)
+
+[langchain入门](https://aitutor.liduos.com/02-langchain/02-1.html)
+
+[chatgpt原理1](https://www.wehelpwin.com/article/4387)
+
+[chatgpt原理2](https://brightliao.com/2023/04/25/chatgpt-a-technical-summary/)
+
