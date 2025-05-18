@@ -2,7 +2,7 @@
 title: 英语学习总结
 description: note
 date: 2023-06-23
-weight: 7
+weight: 10
 categories: ["英语", "总结"]
 tags: ["总结", "英语"]
 ---
