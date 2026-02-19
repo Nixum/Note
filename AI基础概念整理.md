@@ -3,6 +3,7 @@ title: AI基础概念整理
 description: 记录常见的AI基础概念以及一些工程方案
 date: 2025-05-01
 lastmod: 2025-05-01
+weight: -3
 categories: ["AI", "工程"]
 tags: ["AI基础概念", "上下文工程", "大模型LLM"]
 ---
